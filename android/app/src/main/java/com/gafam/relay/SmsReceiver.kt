@@ -22,21 +22,28 @@ class SmsReceiver : BroadcastReceiver() {
                 Log.d("GAFAM_Relay", "SMS Intercepté de $sender : $body")
                 
                 // Envoi en arrière-plan vers le VPC
-                sendToVpc(sender, body)
+                sendToVpc(context, sender, body)
             }
         }
     }
 
-    private fun sendToVpc(sender: String, body: String) {
-        // Lance le réseau dans un thread séparé (interdit sur le main thread)
+    private fun sendToVpc(context: Context, sender: String, body: String) {
+        val prefs = context.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val apiUrl = prefs.getString("apiUrl", null)
+        val jwtSecret = prefs.getString("jwtSecret", null)
+
+        if (apiUrl == null || jwtSecret == null) {
+            Log.d("GAFAM_Relay", "Ignoré: l'app n'est pas encore jumelée avec un VPC.")
+            return
+        }
+
         thread {
             try {
-                // TODO: L'adresse IP sera configurable plus tard via l'interface Kotlin
-                val vpcUrl = URL("http://10.0.2.2:5150/api/sms") 
+                val vpcUrl = URL("$apiUrl/api/sms/") 
                 val connection = vpcUrl.openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
                 connection.setRequestProperty("Content-Type", "application/json")
-                connection.setRequestProperty("Authorization", "Bearer TEST_JWT_SECRET")
+                connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
                 connection.doOutput = true
 
                 val jsonBody = JSONObject().apply {
