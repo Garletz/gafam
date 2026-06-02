@@ -25,12 +25,12 @@
     doConnecting = true;
     try {
       console.log(get(t)('alerts.auth_opening'));
-      const token = await invoke('start_do_oauth');
-      alert(get(t)('alerts.auth_success') + " " + token);
+      const response = await invoke('start_do_oauth') as string;
+      const data = JSON.parse(response);
+      alert(get(t)('alerts.auth_success') + " " + data.url);
       
-      // MOCK values for DigitalOcean flow (will be real later)
-      vpcUrl = "http://10.0.2.2:5150"; 
-      jwtToken = token as string;
+      vpcUrl = data.url; 
+      jwtToken = data.token;
       
       doConnecting = false;
       showPairingScreen();

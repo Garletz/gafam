@@ -20,10 +20,9 @@ async fn start_do_oauth(app: AppHandle) -> Result<String, String> {
         .map(char::from)
         .collect();
 
-    // We borrow the Outline Manager's OAuth Client ID for testing purposes.
-    // In production, GAFAM would register its own OAuth App on DigitalOcean.
-    let client_id = "7f84935771d49c2331e1cfb60c7827e20eaf128103435d82ad20b3c53253b721";
-    let port = 55189; // Standard Outline Manager fallback port
+    // Use the user's provided OAuth Client ID
+    let client_id = "07c3e339b16ffe83e08f31e9c5a7b223feddb81d73437ddd4bca1a454968ba94";
+    let port = 55189; // Standard callback port
 
     let (tx, rx) = oneshot::channel::<String>();
     let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
@@ -93,13 +92,18 @@ async fn start_do_oauth(app: AppHandle) -> Result<String, String> {
     // Wait for the token from the HTTP callback
     let token = rx.await.map_err(|_| "Failed to retrieve OAuth token".to_string())?;
     
-    // Create droplet
-    create_droplet(&token).await.map_err(|e| e.to_string())?;
+    // Create droplet and get its IP
+    let (ip, jwt_secret) = create_droplet(&token).await.map_err(|e| e.to_string())?;
 
-    Ok("GAFAM VPC Droplet created successfully!".to_string())
+    let response_json = serde_json::json!({
+        "url": format!("http://{}:5150", ip),
+        "token": jwt_secret
+    });
+
+    Ok(response_json.to_string())
 }
 
-async fn create_droplet(token: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn create_droplet(token: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     
     let jwt_secret: String = rand::thread_rng()
@@ -108,12 +112,10 @@ async fn create_droplet(token: &str) -> Result<(), Box<dyn std::error::Error>> {
         .map(char::from)
         .collect();
 
-    // The magical cloud-init user_data script
     let user_data = format!(
         r#"#!/bin/bash
 export JWT_SECRET="{}"
-# Simulating the script fetch since TonRepo doesn't exist yet:
-# curl -sSL https://raw.githubusercontent.com/TonRepo/GAFAM/main/deploy-vpc.sh | bash
+curl -sSL https://raw.githubusercontent.com/Garletz/gafam/main/deploy-vpc.sh | bash
 echo "GAFAM VPC DEPLOYED" > /root/gafam_status.log
 "#, jwt_secret
     );
@@ -139,7 +141,47 @@ echo "GAFAM VPC DEPLOYED" > /root/gafam_status.log
         return Err(format!("DigitalOcean API Error: {}", err_text).into());
     }
 
-    Ok(())
+    let create_json: serde_json::Value = res.json().await?;
+    let droplet_id = create_json["droplet"]["id"].as_u64().ok_or("No droplet ID returned")?;
+
+    // Poll for the IPv4 address
+    let mut ip_address = String::new();
+    for _ in 0..30 { // Poll for up to ~90 seconds
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        
+        let get_res = client.get(format!("https://api.digitalocean.com/v2/droplets/{}", droplet_id))
+            .bearer_auth(token)
+            .send()
+            .await?;
+            
+        if get_res.status().is_success() {
+            let droplet_info: serde_json::Value = get_res.json().await?;
+            let status = droplet_info["droplet"]["status"].as_str().unwrap_or("");
+            
+            if status == "active" {
+                if let Some(v4_nets) = droplet_info["droplet"]["networks"]["v4"].as_array() {
+                    for net in v4_nets {
+                        if net["type"].as_str() == Some("public") {
+                            if let Some(ip) = net["ip_address"].as_str() {
+                                ip_address = ip.to_string();
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if !ip_address.is_empty() {
+            break;
+        }
+    }
+
+    if ip_address.is_empty() {
+        return Err("Droplet created but timed out waiting for public IPv4 address".into());
+    }
+
+    Ok((ip_address, jwt_secret))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
