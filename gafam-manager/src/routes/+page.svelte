@@ -2,7 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { t } from "svelte-i18n";
   import { get } from "svelte/store";
-  import QRCode from 'qrcode';
+  import QRious from 'qrious';
 
   let selectedCloud = "";
   let vpcIp = "";
@@ -61,7 +61,13 @@
     setTimeout(() => {
         if (canvas) {
             const data = JSON.stringify({ url: vpcUrl, token: jwtToken });
-            QRCode.toCanvas(canvas, data, { width: 250, margin: 2, color: { dark: '#111111', light: '#ffffff' } });
+            new QRious({
+              element: canvas,
+              value: data,
+              size: 250,
+              background: 'white',
+              foreground: 'black'
+            });
         }
     }, 50);
   }
@@ -102,7 +108,7 @@
 
       <div class="input-group">
         <label for="jwt">{$t('manual.json_label')}</label>
-        <textarea id="jwt" bind:value={jwtToken} placeholder='&#123;"apiUrl": "...", "jwtSecret": "..."&#125;'></textarea>
+        <textarea id="jwt" bind:value={jwtToken} placeholder="Paste JSON configuration here..."></textarea>
       </div>
 
       <button class="btn-primary" on:click={handleManualConnect} disabled={jwtToken.length < 10}>
