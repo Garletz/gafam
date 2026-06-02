@@ -10,6 +10,7 @@
   let jwtToken = "";
   let vpcUrl = "";
   let doConnecting = false;
+  let loadingText = "";
   let canvas: HTMLCanvasElement;
 
   function selectCloud(provider: string) {
@@ -23,9 +24,31 @@
 
   async function startDigitalOceanAuth() {
     doConnecting = true;
+    loadingText = "Waiting for your authorization in the browser...";
+    
+    let stepIndex = 0;
+    const steps = [
+      "Creating DigitalOcean Droplet...",
+      "Waiting for Droplet to boot...",
+      "Retrieving public IPv4 address...",
+      "Waiting for Cloud-Init script to finish...",
+      "Installing Docker on the Droplet (this takes ~60s)...",
+      "Downloading GAFAM backend...",
+      "Starting Secure API...",
+      "Finalizing VPC configuration..."
+    ];
+    
+    const progressInterval = setInterval(() => {
+        if (stepIndex < steps.length) {
+            loadingText = steps[stepIndex];
+            stepIndex++;
+        }
+    }, 12000);
+
     try {
       console.log(get(t)('alerts.auth_opening'));
       const response = await invoke('start_do_oauth') as string;
+      clearInterval(progressInterval);
       const data = JSON.parse(response);
       alert(get(t)('alerts.auth_success') + " " + data.url);
       
@@ -35,6 +58,7 @@
       doConnecting = false;
       showPairingScreen();
     } catch (e) {
+      clearInterval(progressInterval);
       console.error(e);
       alert(get(t)('alerts.auth_error') + " " + e);
       doConnecting = false;
@@ -117,19 +141,24 @@
     </div>
   {:else if selectedCloud === 'digitalocean'}
     <div class="panel">
-      <button class="back-btn" on:click={() => selectCloud('')}>{$t('oauth.back')}</button>
-      <h2>{$t('oauth.title')}</h2>
-      <p>{$t('oauth.desc')}</p>
-      
-      <div class="actions">
-        <button class="btn-primary" on:click={startDigitalOceanAuth} disabled={doConnecting}>
-          {#if doConnecting}
-            {$t('oauth.connecting')}
-          {:else}
+      {#if !doConnecting}
+        <button class="back-btn" on:click={() => selectCloud('')}>{$t('oauth.back')}</button>
+        <h2>{$t('oauth.title')}</h2>
+        <p>{$t('oauth.desc')}</p>
+        
+        <div class="actions">
+          <button class="btn-primary" on:click={startDigitalOceanAuth}>
             {$t('oauth.authorize_btn')}
-          {/if}
-        </button>
-      </div>
+          </button>
+        </div>
+      {:else}
+        <div class="loading-container" style="text-align: center; padding: 40px 20px;">
+          <div class="spinner"></div>
+          <h2 style="margin-top: 20px;">Deploying your VPC</h2>
+          <p style="color: var(--primary-color); font-weight: bold; margin-top: 10px;">{loadingText}</p>
+          <p style="opacity: 0.6; font-size: 0.9em; margin-top: 15px;">Please do not close this window. This process usually takes 1 to 2 minutes.</p>
+        </div>
+      {/if}
     </div>
   {:else if selectedCloud === 'paired'}
     <div class="panel" style="text-align: center;">

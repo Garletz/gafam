@@ -49,7 +49,9 @@ class MainActivity : AppCompatActivity() {
             val options = ScanOptions()
             options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
             options.setPrompt("Scan the GAFAM VPC QR Code")
-            options.setBeepEnabled(false)
+            options.setBeepEnabled(true)
+            options.setOrientationLocked(true)
+            options.setCaptureActivity(CustomScannerActivity::class.java)
             barcodeLauncher.launch(options)
         }
         layout.addView(scanBtn)
@@ -78,6 +80,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleScanResult(contents: String) {
+        statusText.text = "✅ QR Code Scanned!\n\nConnecting to VPC and verifying secure handshake..."
+        
         try {
             val json = JSONObject(contents)
             val apiUrl = json.getString("url")
@@ -97,15 +101,17 @@ class MainActivity : AppCompatActivity() {
                             .putString("apiUrl", apiUrl)
                             .putString("jwtSecret", jwtSecret)
                             .apply()
-                        Toast.makeText(this, "Successfully Paired!", Toast.LENGTH_LONG).show()
-                        updateStatus()
+                        statusText.text = "🎉 Successfully Paired!\n\nRelay Agent is ACTIVE\n\nConnected to:\n$apiUrl\n\nWaiting for SMS..."
+                        Toast.makeText(this, "VPC Connection Secured", Toast.LENGTH_LONG).show()
                     } else {
-                        Toast.makeText(this, "Pairing Failed. Check Network.", Toast.LENGTH_LONG).show()
+                        statusText.text = "❌ Pairing Failed.\n\nCould not reach the VPC or invalid token.\nPlease check your network or try scanning again."
+                        Toast.makeText(this, "Network or Auth Error", Toast.LENGTH_LONG).show()
                     }
                 }
             }
         } catch (e: Exception) {
             Log.e("GAFAM", "QR Parse Error", e)
+            statusText.text = "❌ Invalid QR Code format.\n\nPlease scan a valid GAFAM VPC QR Code."
             Toast.makeText(this, "Invalid QR Code", Toast.LENGTH_LONG).show()
         }
     }
