@@ -1,0 +1,37 @@
+{
+  "app": {
+    "title": "GAFAM Manager",
+    "subtitle": "Initialize your Private VPC easily."
+  },
+  "cloud": {
+    "do": {
+      "title": "DigitalOcean",
+      "desc": "1-click automated deployment via OAuth"
+    },
+    "advanced": {
+      "title": "Advanced Server",
+      "desc": "Run the script on an existing Linux server"
+    }
+  },
+  "manual": {
+    "back": "← Back",
+    "title": "Manual Deployment",
+    "instructions": "Connect to your server via SSH and run this command:",
+    "copy": "Copy",
+    "json_label": "Generated JSON Configuration:",
+    "connect_btn": "Connect VPC"
+  },
+  "oauth": {
+    "back": "← Back",
+    "title": "Connect to DigitalOcean",
+    "desc": "You will be redirected to DigitalOcean to authorize GAFAM Manager to create a Droplet for your VPC.",
+    "authorize_btn": "Authorize DigitalOcean",
+    "connecting": "Connecting..."
+  },
+  "alerts": {
+    "script_copied": "Script copied! Run it on your Linux server as root.",
+    "auth_success": "Success:",
+    "auth_error": "Error:",
+    "auth_opening": "Opening browser for DigitalOcean authentication..."
+  }
+}
