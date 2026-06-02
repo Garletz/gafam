@@ -206,12 +206,6 @@ pub struct CreateContactParams {
     pub avatar_color: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct MockSmsParams {
-    pub sender_number: String,
-    pub message_body: String,
-}
-
 #[debug_handler]
 async fn get_contacts(State(ctx): State<AppContext>) -> Result<Response> {
     let db = &ctx.db;
@@ -286,78 +280,7 @@ async fn create_contact(
     format::json(serde_json::json!({ "status": "contact_created" }))
 }
 
-#[debug_handler]
-async fn get_sms(State(ctx): State<AppContext>) -> Result<Response> {
-    let db = &ctx.db;
-    
-    // Ensure table exists
-    let _ = db.execute(Statement::from_string(
-        db.get_database_backend(),
-        "CREATE TABLE IF NOT EXISTS gafam_sms (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_number TEXT, message_body TEXT, received_at TEXT, is_read INTEGER)".to_string(),
-    )).await.map_err(|e| {
-        tracing::error!("Failed to create gafam_sms: {:?}", e);
-        loco_rs::Error::BadRequest(e.to_string())
-    })?;
 
-    // Query all SMS ordered by received_at DESC
-    let query_res = db.query_all(Statement::from_string(
-        db.get_database_backend(),
-        "SELECT id, sender_number, message_body, received_at, is_read FROM gafam_sms ORDER BY received_at DESC".to_string(),
-    )).await.map_err(|e| {
-        loco_rs::Error::BadRequest(e.to_string())
-    })?;
-
-    let mut messages = Vec::new();
-    for row in query_res {
-        let id: i32 = row.try_get("", "id").unwrap_or_default();
-        let sender_number: String = row.try_get("", "sender_number").unwrap_or_default();
-        let message_body: String = row.try_get("", "message_body").unwrap_or_default();
-        let received_at: String = row.try_get("", "received_at").unwrap_or_default();
-        let is_read: i32 = row.try_get("", "is_read").unwrap_or_default();
-        messages.push(serde_json::json!({
-            "id": id,
-            "sender_number": sender_number,
-            "message_body": message_body,
-            "received_at": received_at,
-            "is_read": is_read == 1,
-        }));
-    }
-
-    format::json(messages)
-}
-
-#[debug_handler]
-async fn mock_receive_sms(
-    State(ctx): State<AppContext>,
-    Json(params): Json<MockSmsParams>,
-) -> Result<Response> {
-    let db = &ctx.db;
-
-    // Ensure table exists
-    let _ = db.execute(Statement::from_string(
-        db.get_database_backend(),
-        "CREATE TABLE IF NOT EXISTS gafam_sms (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_number TEXT, message_body TEXT, received_at TEXT, is_read INTEGER)".to_string(),
-    )).await.map_err(|e| {
-        loco_rs::Error::BadRequest(e.to_string())
-    })?;
-
-    let stmt = Statement::from_sql_and_values(
-        db.get_database_backend(),
-        "INSERT INTO gafam_sms (sender_number, message_body, received_at, is_read) VALUES (?, ?, ?, 0)",
-        vec![
-            params.sender_number.into(),
-            params.message_body.into(),
-            chrono::Utc::now().to_rfc3339().into(),
-        ]
-    );
-
-    let _ = db.execute(stmt).await.map_err(|e| {
-        tracing::error!("Insert SMS failed: {:?}", e);
-        loco_rs::Error::BadRequest(e.to_string())
-    })?;
-
-    format::json(serde_json::json!({ "status": "sms_received" }))
-}
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -370,6 +293,4 @@ pub fn routes() -> Routes {
         .add("/notes", post(save_note))
         .add("/contacts", get(get_contacts))
         .add("/contacts", post(create_contact))
-        .add("/sms", get(get_sms))
-        .add("/sms/mock-receive", post(mock_receive_sms))
 }

@@ -33,7 +33,7 @@ fi
 
 # 4. Pull the pre-built GAFAM API image from GitHub Container Registry
 echo "[*] Downloading GAFAM API..."
-docker pull ghcr.io/garletz/gafam-backend:latest
+docker pull ghcr.io/garletz/gafam:latest
 
 # 5. Build and Deploy
 echo "[*] Starting GAFAM VPC services..."
@@ -46,7 +46,7 @@ docker run -d \
   --restart always \
   -p 5150:5150 \
   -e JWT_SECRET="${JWT_SECRET}" \
-  ghcr.io/garletz/gafam-backend:latest
+  ghcr.io/garletz/gafam:latest
 
 echo ""
 echo "=========================================="
