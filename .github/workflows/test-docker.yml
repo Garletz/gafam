@@ -1,0 +1,19 @@
+name: Test Go Docker Run
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  test-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker Image
+        run: docker build -t test-gafam ./vpc-relay
+      - name: Run Docker Image
+        run: |
+          docker run -d --name test-api -p 5150:5150 test-gafam
+          sleep 5
+          docker logs test-api
+          curl -v http://localhost:5150/api/_ping || true
