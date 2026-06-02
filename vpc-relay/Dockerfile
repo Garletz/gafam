@@ -5,7 +5,6 @@ WORKDIR /app
 # We initialize the Go module inside Docker to avoid needing Go locally
 RUN go mod init github.com/Garletz/gafam/vpc-relay
 RUN go get modernc.org/sqlite
-RUN go get github.com/golang-jwt/jwt/v5
 RUN go mod tidy
 
 COPY . .

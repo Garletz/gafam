@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
 	_ "modernc.org/sqlite"
 )
 
