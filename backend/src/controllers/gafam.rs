@@ -280,6 +280,66 @@ async fn create_contact(
     format::json(serde_json::json!({ "status": "contact_created" }))
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PairDeviceParams {
+    pub device_name: String,
+    pub device_id: String,
+}
+
+#[debug_handler]
+async fn pair_device(
+    State(ctx): State<AppContext>,
+    Json(params): Json<PairDeviceParams>,
+) -> Result<Response> {
+    let db = &ctx.db;
+
+    // Ensure table exists
+    let _ = db.execute(Statement::from_string(
+        db.get_database_backend(),
+        "CREATE TABLE IF NOT EXISTS gafam_devices (id INTEGER PRIMARY KEY AUTOINCREMENT, device_name TEXT, device_id TEXT UNIQUE, is_primary INTEGER, created_at TEXT)".to_string(),
+    )).await.map_err(|e| {
+        tracing::error!("Failed to create gafam_devices: {:?}", e);
+        loco_rs::Error::BadRequest(e.to_string())
+    })?;
+
+    // Check if any devices exist
+    let query_res = db.query_one(Statement::from_string(
+        db.get_database_backend(),
+        "SELECT COUNT(*) as count FROM gafam_devices".to_string(),
+    )).await.map_err(|e| {
+        loco_rs::Error::BadRequest(e.to_string())
+    })?;
+
+    let is_primary = match query_res {
+        Some(res) => {
+            let count: i64 = res.try_get("", "count").unwrap_or(0);
+            if count == 0 { 1 } else { 0 } // First device is primary
+        }
+        None => 1,
+    };
+
+    let stmt = Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO gafam_devices (device_name, device_id, is_primary, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(device_id) DO UPDATE SET is_primary = is_primary",
+        vec![
+            params.device_name.into(),
+            params.device_id.into(),
+            is_primary.into(),
+            chrono::Utc::now().to_rfc3339().into(),
+        ]
+    );
+
+    let _ = db.execute(stmt).await.map_err(|e| {
+        tracing::error!("Pair device failed: {:?}", e);
+        loco_rs::Error::BadRequest(e.to_string())
+    })?;
+
+    format::json(serde_json::json!({ 
+        "status": "paired",
+        "is_primary": is_primary == 1
+    }))
+}
+
 
 
 pub fn routes() -> Routes {
@@ -293,4 +353,5 @@ pub fn routes() -> Routes {
         .add("/notes", post(save_note))
         .add("/contacts", get(get_contacts))
         .add("/contacts", post(create_contact))
+        .add("/pair-device", post(pair_device))
 }

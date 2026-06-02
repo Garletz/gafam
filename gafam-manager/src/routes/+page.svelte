@@ -2,12 +2,15 @@
   import { invoke } from "@tauri-apps/api/core";
   import { t } from "svelte-i18n";
   import { get } from "svelte/store";
+  import QRCode from 'qrcode';
 
   let selectedCloud = "";
   let vpcIp = "";
   let generatedScript = 'sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/TonRepo/GAFAM/main/deploy-vpc.sh)"';
   let jwtToken = "";
+  let vpcUrl = "";
   let doConnecting = false;
+  let canvas: HTMLCanvasElement;
 
   function selectCloud(provider: string) {
     selectedCloud = provider;
@@ -24,12 +27,43 @@
       console.log(get(t)('alerts.auth_opening'));
       const token = await invoke('start_do_oauth');
       alert(get(t)('alerts.auth_success') + " " + token);
+      
+      // MOCK values for DigitalOcean flow (will be real later)
+      vpcUrl = "http://10.0.2.2:5150"; 
+      jwtToken = token as string;
+      
       doConnecting = false;
+      showPairingScreen();
     } catch (e) {
       console.error(e);
       alert(get(t)('alerts.auth_error') + " " + e);
       doConnecting = false;
     }
+  }
+
+  function handleManualConnect() {
+    try {
+      const config = JSON.parse(jwtToken);
+      if (config.apiUrl && config.jwtSecret) {
+        vpcUrl = config.apiUrl;
+        jwtToken = config.jwtSecret;
+        showPairingScreen();
+      } else {
+        alert("Invalid JSON format. Expected apiUrl and jwtSecret.");
+      }
+    } catch(e) {
+      alert("Invalid JSON data.");
+    }
+  }
+
+  function showPairingScreen() {
+    selectedCloud = 'paired';
+    setTimeout(() => {
+        if (canvas) {
+            const data = JSON.stringify({ url: vpcUrl, token: jwtToken });
+            QRCode.toCanvas(canvas, data, { width: 250, margin: 2, color: { dark: '#111111', light: '#ffffff' } });
+        }
+    }, 50);
   }
 </script>
 
@@ -71,7 +105,7 @@
         <textarea id="jwt" bind:value={jwtToken} placeholder='&#123;"apiUrl": "...", "jwtSecret": "..."&#125;'></textarea>
       </div>
 
-      <button class="btn-primary" disabled={jwtToken.length < 10}>
+      <button class="btn-primary" on:click={handleManualConnect} disabled={jwtToken.length < 10}>
         {$t('manual.connect_btn')}
       </button>
     </div>
@@ -90,6 +124,20 @@
           {/if}
         </button>
       </div>
+    </div>
+  {:else if selectedCloud === 'paired'}
+    <div class="panel" style="text-align: center;">
+      <button class="back-btn" on:click={() => selectCloud('')}>Disconnect</button>
+      <h2>VPC Connected</h2>
+      <p>Scan this QR Code with your GAFAM Android Relay app to link it securely to your new VPC.</p>
+      
+      <div style="background: white; padding: 20px; border-radius: 12px; display: inline-block; margin-top: 20px;">
+         <canvas bind:this={canvas}></canvas>
+      </div>
+      
+      <p style="margin-top: 20px; font-size: 0.9em; opacity: 0.7;">
+         VPC URL: <code>{vpcUrl}</code>
+      </p>
     </div>
   {/if}
 </main>

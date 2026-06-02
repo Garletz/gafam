@@ -68,7 +68,7 @@
 
       <div class="input-group">
         <label for="jwt">Configuration JSON générée :</label>
-        <textarea id="jwt" bind:value={jwtToken} placeholder='{"apiUrl": "...", "jwtSecret": "..."}'></textarea>
+        <textarea id="jwt" bind:value={jwtToken} placeholder={`{"apiUrl": "...", "jwtSecret": "..."}`}></textarea>
       </div>
 
       <button class="btn-primary" disabled={jwtToken.length < 10}>
