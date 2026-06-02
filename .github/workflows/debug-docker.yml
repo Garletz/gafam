@@ -1,0 +1,39 @@
+name: Debug Production Docker Image
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  debug-docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Pull and Run Image
+        run: |
+          REPO_LOWERCASE=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/$REPO_LOWERCASE:latest"
+          echo "Pulling $IMAGE..."
+          docker pull $IMAGE
+          
+          echo "Starting container..."
+          docker run -d --name gafam-test -p 5150:5150 -e JWT_SECRET="test_secret_123" $IMAGE
+          
+          echo "Waiting 5 seconds..."
+          sleep 5
+          
+          echo "Dumping container logs:"
+          docker logs gafam-test
+          
+          echo "Checking curl:"
+          curl -v http://localhost:5150/api/_ping || true
