@@ -1,0 +1,21 @@
+* Host localhost:5150 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying [::1]:5150...
+* Connected to localhost (::1) port 5150
+> GET /api/_ping HTTP/1.1
+> Host: localhost:5150
+> User-Agent: curl/8.5.0
+> Accept: */*
+> 
+< HTTP/1.1 200 OK
+< Content-Type: application/json
+< Date: Tue, 02 Jun 2026 16:53:26 GMT
+< Content-Length: 16
+< 
+{ [16 bytes data]
+100    16  100    16    0     0  13389      0 --:--:-- --:--:-- --:--:-- 16000
+* Connection #0 to host localhost left intact
+{"status":"ok"}
