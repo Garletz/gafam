@@ -93,9 +93,12 @@
         vpcUrl = '';
         startPollingDirectory();
         statusMsg = 'Session expired. Please reauthorize from your phone.';
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        statusMsg = errorData.error ? `Proxy error: ${errorData.error}` : `HTTP Error ${res.status}`;
       }
-    } catch (e) {
-      statusMsg = 'Cannot reach VPC.';
+    } catch (e: any) {
+      statusMsg = 'Cannot reach Cloudflare proxy: ' + e.message;
     }
   }
 
