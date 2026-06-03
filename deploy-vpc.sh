@@ -44,7 +44,8 @@ docker rm -f gafam-api 2>/dev/null || true
 docker run -d \
   --name gafam-api \
   --restart always \
-  -p 8080:5150 \
+  -p 8080:8080 \
+  -e PORT="8080" \
   -e JWT_SECRET="${JWT_SECRET}" \
   ghcr.io/garletz/gafam:latest
 
