@@ -184,12 +184,25 @@ echo "GAFAM VPC DEPLOYED" > /root/gafam_status.log
     Ok((ip_address, jwt_secret))
 }
 
+#[tauri::command]
+async fn ping_vpc(url: String) -> Result<bool, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    match client.get(&format!("{}/api/_ping", url)).send().await {
+        Ok(res) => Ok(res.status().is_success()),
+        Err(_) => Ok(false)
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![start_do_oauth])
+        .invoke_handler(tauri::generate_handler![start_do_oauth, ping_vpc])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

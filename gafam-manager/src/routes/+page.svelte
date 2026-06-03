@@ -48,12 +48,36 @@
     try {
       console.log(get(t)('alerts.auth_opening'));
       const response = await invoke('start_do_oauth') as string;
-      clearInterval(progressInterval);
       const data = JSON.parse(response);
-      alert(get(t)('alerts.auth_success') + " " + data.url);
       
       vpcUrl = data.url; 
       jwtToken = data.token;
+      
+      // Wait for VPC to be fully operational
+      loadingText = "Droplet created! Waiting for VPC API to become ready (can take up to 2 minutes)...";
+      stepIndex = steps.length;
+      
+      let isReady = false;
+      for (let i = 0; i < 60; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          try {
+              const pingOk = await invoke('ping_vpc', { url: vpcUrl });
+              if (pingOk) {
+                  isReady = true;
+                  break;
+              }
+          } catch(err) {
+              console.log("Ping failed, retrying...");
+          }
+      }
+      
+      clearInterval(progressInterval);
+      
+      if (!isReady) {
+          throw new Error("VPC failed to become ready after 2 minutes.");
+      }
+      
+      alert(get(t)('alerts.auth_success') + " " + data.url);
       
       doConnecting = false;
       showPairingScreen();
