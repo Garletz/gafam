@@ -56,6 +56,23 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(scanBtn)
         
+        val defaultSmsBtn = Button(this)
+        defaultSmsBtn.text = "Set as Default SMS App"
+        defaultSmsBtn.setOnClickListener {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val roleManager = getSystemService(android.app.role.RoleManager::class.java)
+                if (roleManager?.isRoleAvailable(android.app.role.RoleManager.ROLE_SMS) == true) {
+                    val intent = roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_SMS)
+                    startActivityForResult(intent, 102)
+                }
+            } else {
+                val intent = android.content.Intent(android.provider.Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT)
+                intent.putExtra(android.provider.Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName)
+                startActivityForResult(intent, 102)
+            }
+        }
+        layout.addView(defaultSmsBtn)
+        
         setContentView(layout)
         updateStatus()
 
@@ -63,7 +80,7 @@ class MainActivity : AppCompatActivity() {
             != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.INTERNET, Manifest.permission.CAMERA),
+                arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.INTERNET, Manifest.permission.CAMERA),
                 101
             )
         }
