@@ -1,3 +1,37 @@
+# macOS
+.DS_Store
+
+# Git Submodules (or legacy apps)
 outline-apps/
 outline-server/
-.DS_Store
+
+# Android / APK
+*.apk
+android/app/build/
+android/.gradle/
+android/local.properties
+android/captures/
+
+# VPC Relay / Go / Database
+vpc-relay/gafam_relay.sqlite
+vpc-relay/gafam_relay.sqlite-journal
+vpc-relay/vpc-relay
+data/
+
+# Logs & Archives
+*.log
+*.zip
+
+# Wrangler / Cloudflare
+.wrangler/
+wrangler.toml.local
+wrangler.jsonc.local
+frontend/.wrangler/
+frontend-old/.wrangler/
+
+# Node / JS
+node_modules/
+
+# Env vars
+.env
+.env.*

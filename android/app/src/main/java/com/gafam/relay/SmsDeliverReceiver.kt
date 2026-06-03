@@ -18,6 +18,15 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 val sender = sms.originatingAddress ?: "Unknown"
                 val body = sms.messageBody ?: ""
                 Log.d("GAFAM_Relay", "SMS Deliver Intercepté de $sender : $body")
+                
+                // Intercept verification SMS
+                if (body.startsWith("GAFAM-VFY-")) {
+                    val localIntent = Intent("com.gafam.relay.VFY_SMS")
+                    localIntent.putExtra("body", body)
+                    context.sendBroadcast(localIntent)
+                    return
+                }
+
                 sendToVpc(context, sender, body)
             }
         }

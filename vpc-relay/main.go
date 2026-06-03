@@ -52,6 +52,21 @@ func initDB() {
 		log.Fatal("Failed to create gafam_sms table:", err)
 	}
 
+	createSessionsTable := `
+	CREATE TABLE IF NOT EXISTS gafam_sessions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		session_id TEXT UNIQUE,
+		phone TEXT,
+		status TEXT DEFAULT 'pending',
+		session_token TEXT,
+		web_requested_at DATETIME,
+		device_confirmed_at DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createSessionsTable); err != nil {
+		log.Fatal("Failed to create gafam_sessions table:", err)
+	}
+
 	log.Println("Database initialized successfully.")
 }
 
@@ -85,6 +100,24 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		// Allow gafam.cloud and subdomains
+		if strings.HasSuffix(origin, ".gafam.cloud") || origin == "https://gafam.cloud" || origin == "http://localhost:5173" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
@@ -100,11 +133,18 @@ func main() {
 	// Public Routes
 	mux.HandleFunc("GET /api/_ping", pingHandler)
 
-	// Protected Routes
+	// Protected Routes (Bearer token from APK)
 	mux.HandleFunc("POST /api/gafam/pair-device", authMiddleware(pairDeviceHandler))
 	mux.HandleFunc("POST /api/sms/", authMiddleware(smsHandler))
-	// Add GET SMS for future Web Client
 	mux.HandleFunc("GET /api/sms/", authMiddleware(getSmsHandler))
+
+	// Auth Routes for Web Client handshake
+	mux.HandleFunc("POST /api/auth/request-session", requestSessionHandler)
+	mux.HandleFunc("POST /api/auth/confirm-session", authMiddleware(confirmSessionHandler))
+	mux.HandleFunc("GET /api/auth/check-session", checkSessionHandler)
+
+	// Session-protected routes for Web Client
+	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -112,7 +152,7 @@ func main() {
 	}
 
 	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s", port)
-	if err := http.ListenAndServe("0.0.0.0:"+port, mux); err != nil {
+	if err := http.ListenAndServe("0.0.0.0:"+port, corsMiddleware(mux)); err != nil {
 		log.Fatal("Server error:", err)
 	}
 }

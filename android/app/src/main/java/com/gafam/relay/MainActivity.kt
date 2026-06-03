@@ -19,6 +19,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 import kotlin.concurrent.thread
+import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.telephony.SmsManager
+import android.text.InputType
+import android.widget.EditText
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,6 +38,8 @@ class MainActivity : AppCompatActivity() {
             handleScanResult(result.contents)
         }
     }
+
+    private var vfyReceiver: BroadcastReceiver? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,6 +81,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
         layout.addView(defaultSmsBtn)
+
+        val authWebBtn = Button(this)
+        authWebBtn.text = "Authorize Web Login"
+        authWebBtn.setOnClickListener {
+            val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+            val apiUrl = prefs.getString("apiUrl", null)
+            val token = prefs.getString("jwtSecret", null)
+            if (apiUrl == null || token == null) {
+                Toast.makeText(this, "Not paired with a VPC yet", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            confirmWebSession(apiUrl, token)
+        }
+        layout.addView(authWebBtn)
         
         setContentView(layout)
         updateStatus()
@@ -84,15 +107,85 @@ class MainActivity : AppCompatActivity() {
                 101
             )
         }
+
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        if (prefs.getString("myPhoneNumber", null) == null) {
+            promptForPhoneNumber()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        vfyReceiver?.let { unregisterReceiver(it) }
     }
 
     private fun updateStatus() {
         val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         val url = prefs.getString("apiUrl", null)
+        val phone = prefs.getString("myPhoneNumber", "Not Set")
         if (url != null) {
-            statusText.text = "Relay Agent is ACTIVE\n\nConnected to:\n$url\n\nWaiting for SMS..."
+            statusText.text = "Relay Agent is ACTIVE\n\nPhone: $phone\nConnected to:\n$url\n\nWaiting for SMS..."
         } else {
-            statusText.text = "Relay Agent is INACTIVE\n\nPlease scan a VPC QR Code to connect."
+            statusText.text = "Relay Agent is INACTIVE\nPhone: $phone\n\nPlease scan a VPC QR Code to connect."
+        }
+    }
+
+    private fun promptForPhoneNumber() {
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_CLASS_PHONE
+        input.hint = "Ex: 0611223344"
+
+        AlertDialog.Builder(this)
+            .setTitle("Enter Your Phone Number")
+            .setMessage("We need to verify your phone number via a self-SMS to link it securely.")
+            .setView(input)
+            .setCancelable(false)
+            .setPositiveButton("Verify") { _, _ ->
+                val phone = input.text.toString().trim()
+                if (phone.isNotEmpty()) {
+                    startSelfSmsVerification(phone)
+                } else {
+                    promptForPhoneNumber()
+                }
+            }
+            .show()
+    }
+
+    private fun startSelfSmsVerification(phone: String) {
+        val secretCode = "GAFAM-VFY-${(1000..9999).random()}"
+        statusText.text = "⏳ Verifying phone number via self-SMS...\nPlease wait."
+
+        // Register temporary receiver
+        val filter = IntentFilter("com.gafam.relay.VFY_SMS")
+        vfyReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val body = intent.getStringExtra("body") ?: ""
+                if (body.contains(secretCode)) {
+                    Log.d("GAFAM_Relay", "Self-SMS Verification Success!")
+                    getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+                        .edit().putString("myPhoneNumber", phone).apply()
+                    Toast.makeText(this@MainActivity, "Phone Verified!", Toast.LENGTH_LONG).show()
+                    updateStatus()
+                    context.unregisterReceiver(this)
+                    vfyReceiver = null
+                }
+            }
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(vfyReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(vfyReceiver, filter)
+        }
+
+        // Send SMS to self
+        try {
+            val smsManager = SmsManager.getDefault()
+            smsManager.sendTextMessage(phone, null, secretCode, null, null)
+            Toast.makeText(this, "Verification SMS sent...", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e("GAFAM_Relay", "Error sending verification SMS", e)
+            Toast.makeText(this, "Failed to send SMS. Ensure permissions are granted.", Toast.LENGTH_LONG).show()
+            promptForPhoneNumber()
         }
     }
 
@@ -155,6 +248,49 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e("GAFAM", "Pairing Network Error", e)
                 callback(false)
+            }
+        }
+    }
+
+    private fun confirmWebSession(apiUrl: String, token: String) {
+        statusText.text = "🔐 Authorizing Web Login..."
+        thread {
+            try {
+                val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+                val phone = prefs.getString("myPhoneNumber", "")
+
+                val url = URL("$apiUrl/api/auth/confirm-session")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.doOutput = true
+
+                val payload = JSONObject()
+                payload.put("phone", phone)
+
+                conn.outputStream.write(payload.toString().toByteArray())
+
+                val code = conn.responseCode
+                Log.d("GAFAM", "Web auth confirm response: $code")
+                runOnUiThread {
+                    if (code in 200..299) {
+                        statusText.text = "✅ Web Login Authorized!\n\nThe web client is now connected.\n\nRelay Agent is ACTIVE\nWaiting for SMS..."
+                        Toast.makeText(this, "Web Login Authorized!", Toast.LENGTH_LONG).show()
+                    } else if (code == 404) {
+                        statusText.text = "⚠️ No pending web login request.\n\nOpen gafam.cloud first, then press this button."
+                        Toast.makeText(this, "No pending request", Toast.LENGTH_LONG).show()
+                    } else {
+                        statusText.text = "❌ Failed to authorize web login."
+                        Toast.makeText(this, "Authorization failed", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("GAFAM", "Web auth error", e)
+                runOnUiThread {
+                    statusText.text = "❌ Network error during web authorization."
+                    Toast.makeText(this, "Network Error", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

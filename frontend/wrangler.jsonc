@@ -1,0 +1,24 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "gafam-relay",
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"compatibility_date": "2026-06-03",
+	"compatibility_flags": [
+		"nodejs_als"
+	],
+	"assets": {
+		"directory": ".svelte-kit/cloudflare",
+		"binding": "ASSETS"
+	},
+	"routes": [
+		{ "pattern": "gafam.cloud", "custom_domain": true },
+		{ "pattern": "*.gafam.cloud/*", "zone_name": "gafam.cloud" }
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "gafam-directory",
+			"database_id": "c9c02fec-16e7-450a-abe0-588171e7d4ab"
+		}
+	]
+}
