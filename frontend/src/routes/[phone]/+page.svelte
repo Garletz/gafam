@@ -77,9 +77,15 @@
 
   async function loadSms() {
     try {
-      const res = await fetch(`${vpcUrl}/api/web/sms?token=${sessionToken}`);
+      // Use Cloudflare proxy to avoid Mixed Content / CORS / AdBlocker issues
+      const res = await fetch(`/api/proxy?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${sessionToken}`);
       if (res.ok) {
         smsList = await res.json();
+        if (smsList.error) {
+           statusMsg = 'VPC returned an error: ' + smsList.error;
+        } else {
+           statusMsg = ''; // clear error
+        }
       } else if (res.status === 403) {
         // Session expired or invalid
         state = 'waiting';
@@ -143,8 +149,12 @@
       <div class="dashboard">
         <div class="dashboard__header">
           <h2>Messages</h2>
-          <button class="dashboard__refresh" onclick={loadSms}>↻ Refresh</button>
+          <button class="btn-refresh" onclick={loadSms}>↻ Refresh</button>
         </div>
+        
+        {#if statusMsg}
+          <div class="error-banner">{statusMsg}</div>
+        {/if}
 
         {#if smsList.length === 0}
           <div class="dashboard__empty">

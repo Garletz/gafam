@@ -14,6 +14,7 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
+            val pendingResult = goAsync()
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
             for (sms in messages) {
                 val sender = sms.originatingAddress ?: "Unknown"
@@ -36,18 +37,19 @@ class SmsReceiver : BroadcastReceiver() {
                 context.sendBroadcast(uiIntent)
                 
                 // Envoi en arrière-plan vers le VPC
-                sendToVpc(context, sender, body)
+                sendToVpc(context, sender, body, pendingResult)
             }
         }
     }
 
-    private fun sendToVpc(context: Context, sender: String, body: String) {
+    private fun sendToVpc(context: Context, sender: String, body: String, pendingResult: PendingResult?) {
         val prefs = context.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         val apiUrl = prefs.getString("apiUrl", null)
         val jwtSecret = prefs.getString("jwtSecret", null)
 
         if (apiUrl == null || jwtSecret == null) {
             Log.d("GAFAM_Relay", "Ignoré: l'app n'est pas encore jumelée avec un VPC.")
+            pendingResult?.finish()
             return
         }
 
@@ -73,9 +75,10 @@ class SmsReceiver : BroadcastReceiver() {
 
                 val responseCode = connection.responseCode
                 Log.d("GAFAM_Relay", "Réponse VPC: $responseCode")
-                
             } catch (e: Exception) {
                 Log.e("GAFAM_Relay", "Erreur d'envoi VPC", e)
+            } finally {
+                pendingResult?.finish()
             }
         }
     }
