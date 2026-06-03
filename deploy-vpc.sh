@@ -44,7 +44,7 @@ docker rm -f gafam-api 2>/dev/null || true
 docker run -d \
   --name gafam-api \
   --restart always \
-  -p 5150:5150 \
+  -p 8080:5150 \
   -e JWT_SECRET="${JWT_SECRET}" \
   ghcr.io/garletz/gafam:latest
 
@@ -52,6 +52,6 @@ echo ""
 echo "=========================================="
 echo "✅ GAFAM VPC successfully deployed!"
 echo "=========================================="
-echo "🌐 API is running on port 5150"
+echo "🌐 API is running on port 8080"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
 echo "=========================================="

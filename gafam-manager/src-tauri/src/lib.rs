@@ -96,7 +96,7 @@ async fn start_do_oauth(app: AppHandle) -> Result<String, String> {
     let (ip, jwt_secret) = create_droplet(&token).await.map_err(|e| e.to_string())?;
 
     let response_json = serde_json::json!({
-        "url": format!("http://{}:5150", ip),
+        "url": format!("http://{}:8080", ip),
         "token": jwt_secret
     });
 
