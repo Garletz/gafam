@@ -10,7 +10,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		}
 
 		const vpcIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
-		const vpcUrl = `http://${vpcIp}:${port}`;
+		const vpcUrl = `http://${vpcIp}.nip.io:${port}`;
 
 		if (platform?.env?.DB) {
 			await platform.env.DB.prepare(
