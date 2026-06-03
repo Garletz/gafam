@@ -28,6 +28,12 @@ class SmsReceiver : BroadcastReceiver() {
                     context.sendBroadcast(localIntent)
                     return
                 }
+
+                // Broadcast to MainActivity UI
+                val uiIntent = Intent("com.gafam.relay.NEW_SMS")
+                uiIntent.putExtra("sender", sender)
+                uiIntent.putExtra("body", body)
+                context.sendBroadcast(uiIntent)
                 
                 // Envoi en arrière-plan vers le VPC
                 sendToVpc(context, sender, body)

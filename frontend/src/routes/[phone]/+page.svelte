@@ -17,7 +17,26 @@
   let statusMsg = $state('');
 
   onMount(() => {
-    // If server already provided valid data, we verify it
+    // 1. Check if we have a saved session in localStorage
+    const saved = localStorage.getItem(`gafam_auth_${phone}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.vpcUrl && parsed.sessionToken) {
+          vpcUrl = parsed.vpcUrl;
+          sessionToken = parsed.sessionToken;
+        }
+      } catch(e) {}
+    }
+
+    // 2. If server provided new data (before it was consumed), we use it and save it
+    if (data.savedVpcUrl && data.sessionToken) {
+      vpcUrl = data.savedVpcUrl;
+      sessionToken = data.sessionToken;
+      localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken }));
+    }
+
+    // 3. Decide what to do
     if (vpcUrl && sessionToken) {
       state = 'connected';
       loadSms();
@@ -43,6 +62,7 @@
             clearInterval(pollInterval);
             vpcUrl = result.vpcUrl;
             sessionToken = result.sessionToken;
+            localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken }));
             state = 'connected';
             statusMsg = '';
             loadSms();
@@ -78,6 +98,7 @@
     sessionToken = '';
     vpcUrl = '';
     smsList = [];
+    localStorage.removeItem(`gafam_auth_${phone}`);
     startPollingDirectory();
   }
 

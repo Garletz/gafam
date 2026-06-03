@@ -41,10 +41,22 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 		).bind(phone).all();
 
 		if (results && results.length > 0) {
+			const vpcUrl = results[0].vpc_url;
+			const sessionToken = results[0].session_token;
+
+			if (sessionToken) {
+				// SECURITY FIX: Ephemeral Token.
+				// As soon as the web client reads the token, we delete it from Cloudflare D1.
+				// This ensures nobody else can connect by visiting the same domain later.
+				await platform.env.DB.prepare(
+					'UPDATE directory SET session_token = NULL WHERE phone_number = ?'
+				).bind(phone).run();
+			}
+
 			return json({ 
 				success: true, 
-				vpcUrl: results[0].vpc_url,
-				sessionToken: results[0].session_token 
+				vpcUrl,
+				sessionToken 
 			});
 		}
 	}

@@ -30,6 +30,8 @@ import android.widget.EditText
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
+    private lateinit var smsLogText: TextView
+    private val smsHistory = mutableListOf<String>()
 
     private val barcodeLauncher = registerForActivityResult(ScanContract()) { result ->
         if (result.contents == null) {
@@ -40,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var vfyReceiver: BroadcastReceiver? = null
+    private var smsUiReceiver: BroadcastReceiver? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,6 +98,37 @@ class MainActivity : AppCompatActivity() {
             confirmWebSession(apiUrl, token)
         }
         layout.addView(authWebBtn)
+
+        val testSmsBtn = Button(this)
+        testSmsBtn.text = "Send Test SMS to Myself"
+        testSmsBtn.setOnClickListener {
+            val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+            val phone = prefs.getString("myPhoneNumber", null)
+            if (phone == null) {
+                Toast.makeText(this, "No phone number registered.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            try {
+                val smsManager = SmsManager.getDefault()
+                val testMessage = "GAFAM Test SMS - ${System.currentTimeMillis()}"
+                smsManager.sendTextMessage(phone, null, testMessage, null, null)
+                Toast.makeText(this, "Test SMS sent to $phone", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Failed to send SMS.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        layout.addView(testSmsBtn)
+
+        val smsLogTitle = TextView(this)
+        smsLogTitle.text = "\nRecent Intercepted SMS:"
+        smsLogTitle.textSize = 16f
+        smsLogTitle.setTypeface(null, android.graphics.Typeface.BOLD)
+        layout.addView(smsLogTitle)
+
+        smsLogText = TextView(this)
+        smsLogText.textSize = 13f
+        smsLogText.text = "No SMS intercepted yet."
+        layout.addView(smsLogText)
         
         setContentView(layout)
         updateStatus()
@@ -112,11 +146,31 @@ class MainActivity : AppCompatActivity() {
         if (prefs.getString("myPhoneNumber", null) == null) {
             promptForPhoneNumber()
         }
+
+        // Setup UI Receiver
+        smsUiReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val sender = intent.getStringExtra("sender") ?: "Unknown"
+                val body = intent.getStringExtra("body") ?: ""
+                
+                smsHistory.add(0, "From: $sender\n$body\n")
+                if (smsHistory.size > 10) smsHistory.removeAt(smsHistory.size - 1)
+                
+                smsLogText.text = smsHistory.joinToString("\n---\n")
+            }
+        }
+        val uiFilter = IntentFilter("com.gafam.relay.NEW_SMS")
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(smsUiReceiver, uiFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(smsUiReceiver, uiFilter)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         vfyReceiver?.let { unregisterReceiver(it) }
+        smsUiReceiver?.let { unregisterReceiver(it) }
     }
 
     private fun updateStatus() {
