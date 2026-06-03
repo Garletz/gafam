@@ -10,6 +10,11 @@ export const reroute: Reroute = ({ url }) => {
 		
 		// Si c'est un numéro (ou un alias alphanumérique simple)
 		if (subdomain && subdomain !== 'www') {
+			// Ne pas réécrire les appels API
+			if (url.pathname.startsWith('/api/')) {
+				return;
+			}
+			
 			// On réécrit l'URL en interne pour pointer vers la route /[phone]
 			if (url.pathname === '/') {
 				return `/${subdomain}`;
