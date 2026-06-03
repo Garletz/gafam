@@ -7,7 +7,8 @@ export const GET: RequestHandler = async ({ url }) => {
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
 
 	try {
-		const response = await fetch(`${vpcUrl}/api/web/sms?token=${token}`);
+		const fetchUrl = `${vpcUrl}/api/web/sms?token=${token}`;
+		const response = await fetch(fetchUrl);
 		if (!response.ok) {
 			return json({ error: 'VPC error' }, { status: response.status });
 		}
