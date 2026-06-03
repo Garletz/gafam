@@ -16,29 +16,38 @@ class SmsReceiver : BroadcastReceiver() {
         if (intent.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
             val pendingResult = goAsync()
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-            for (sms in messages) {
-                val sender = sms.originatingAddress ?: "Unknown"
-                val body = sms.messageBody ?: ""
-                
-                Log.d("GAFAM_Relay", "SMS Intercepté de $sender : $body")
-
-                // Intercept verification SMS
-                if (body.startsWith("GAFAM-VFY-")) {
-                    val localIntent = Intent("com.gafam.relay.VFY_SMS")
-                    localIntent.putExtra("body", body)
-                    context.sendBroadcast(localIntent)
-                    return
-                }
-
-                // Broadcast to MainActivity UI
-                val uiIntent = Intent("com.gafam.relay.NEW_SMS")
-                uiIntent.putExtra("sender", sender)
-                uiIntent.putExtra("body", body)
-                context.sendBroadcast(uiIntent)
-                
-                // Envoi en arrière-plan vers le VPC
-                sendToVpc(context, sender, body, pendingResult)
+            
+            if (messages.isEmpty()) {
+                pendingResult.finish()
+                return
             }
+            
+            val sender = messages[0].originatingAddress ?: "Unknown"
+            val bodyBuilder = StringBuilder()
+            for (sms in messages) {
+                bodyBuilder.append(sms.messageBody ?: "")
+            }
+            val body = bodyBuilder.toString()
+            
+            Log.d("GAFAM_Relay", "SMS Intercepté de $sender : $body")
+
+            // Intercept verification SMS
+            if (body.startsWith("GAFAM-VFY-")) {
+                val localIntent = Intent("com.gafam.relay.VFY_SMS")
+                localIntent.putExtra("body", body)
+                context.sendBroadcast(localIntent)
+                pendingResult.finish()
+                return
+            }
+
+            // Broadcast to MainActivity UI
+            val uiIntent = Intent("com.gafam.relay.NEW_SMS")
+            uiIntent.putExtra("sender", sender)
+            uiIntent.putExtra("body", body)
+            context.sendBroadcast(uiIntent)
+            
+            // Envoi en arrière-plan vers le VPC
+            sendToVpc(context, sender, body, pendingResult)
         }
     }
 
@@ -57,6 +66,8 @@ class SmsReceiver : BroadcastReceiver() {
             try {
                 val vpcUrl = URL("$apiUrl/api/sms/") 
                 val connection = vpcUrl.openConnection() as HttpURLConnection
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
                 connection.requestMethod = "POST"
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
