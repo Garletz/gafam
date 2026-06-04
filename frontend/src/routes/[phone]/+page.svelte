@@ -16,6 +16,71 @@
   let smsList = $state<any[]>([]);
   let pollInterval: ReturnType<typeof setInterval>;
   let statusMsg = $state('');
+  
+  // Sending SMS state
+  let outboxRecipient = $state('');
+  let outboxBody = $state('');
+  let outboxStatus = $state('');
+
+  // Web Crypto API Helpers
+  async function deriveKey(secret: string) {
+    const enc = new TextEncoder();
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', enc.encode(secret));
+    return window.crypto.subtle.importKey(
+      "raw",
+      hashBuffer,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+
+  function base64ToArrayBuffer(base64: string) {
+    const binary_string = window.atob(base64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  function arrayBufferToBase64(buffer: ArrayBuffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  }
+
+  async function decryptAESGCM(encryptedBase64: string, ivBase64: string, secret: string) {
+    const key = await deriveKey(secret);
+    const iv = base64ToArrayBuffer(ivBase64);
+    const ciphertext = base64ToArrayBuffer(encryptedBase64);
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      key,
+      ciphertext
+    );
+    return new TextDecoder().decode(decrypted);
+  }
+
+  async function encryptAESGCM(plaintext: string, secret: string) {
+    const key = await deriveKey(secret);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const ciphertext = await window.crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encoded
+    );
+    return {
+      encrypted_data: arrayBufferToBase64(ciphertext),
+      iv: arrayBufferToBase64(iv.buffer)
+    };
+  }
 
   onMount(() => {
     // 1. Check if we have a saved session in localStorage
@@ -81,15 +146,25 @@
 
   async function loadSms() {
     try {
-      // Use Cloudflare proxy (TCP Socket) to bypass Error 1003 on raw IPv4 addresses
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
       const res = await fetch(`/api/proxy?${proxyParams.toString()}`);
       if (res.ok) {
-        smsList = await res.json();
-        if (smsList.error) {
-           statusMsg = 'VPC returned an error: ' + smsList.error;
+        const payload = await res.json();
+        if (payload.error) {
+           statusMsg = 'VPC returned an error: ' + payload.error;
+        } else if (payload.encrypted_data && payload.iv) {
+           // Decrypt the payload
+           try {
+             const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+             smsList = JSON.parse(plaintext);
+             statusMsg = ''; // clear error
+           } catch (decErr: any) {
+             statusMsg = 'Decryption failed: ' + decErr.message;
+           }
         } else {
-           statusMsg = ''; // clear error
+           // Fallback if not encrypted (during migration)
+           smsList = payload;
+           statusMsg = '';
         }
       } else if (res.status === 403) {
         // Session expired or invalid
@@ -104,6 +179,35 @@
       }
     } catch (e: any) {
       statusMsg = 'Cannot reach Cloudflare proxy: ' + e.message;
+    }
+  }
+
+  async function sendSms(e: Event) {
+    e.preventDefault();
+    if (!outboxRecipient || !outboxBody) return;
+    
+    outboxStatus = 'Encrypting & Sending...';
+    try {
+      const plaintext = JSON.stringify({ recipient: outboxRecipient, body: outboxBody });
+      const encryptedPayload = await encryptAESGCM(plaintext, sessionToken);
+      
+      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
+      const res = await fetch(`/api/proxy?${proxyParams.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(encryptedPayload)
+      });
+      
+      if (res.ok) {
+        outboxStatus = 'Sent to VPC Outbox! (Waiting for Android relay)';
+        outboxBody = '';
+        outboxRecipient = '';
+        setTimeout(() => outboxStatus = '', 3000);
+      } else {
+        outboxStatus = 'Failed to send: HTTP ' + res.status;
+      }
+    } catch (err: any) {
+      outboxStatus = 'Error: ' + err.message;
     }
   }
 
@@ -163,6 +267,18 @@
         
         {#if statusMsg}
           <div class="error-banner">{statusMsg}</div>
+        {/if}
+
+        <!-- New SMS Form -->
+        <form class="outbox-form" onsubmit={sendSms}>
+          <div class="outbox-form__inputs">
+            <input type="text" placeholder="Recipient Number (e.g. 0611223344)" bind:value={outboxRecipient} required />
+            <input type="text" placeholder="Message text..." bind:value={outboxBody} required />
+          </div>
+          <button type="submit" class="btn-send">Send SMS</button>
+        </form>
+        {#if outboxStatus}
+          <div class="outbox-status">{outboxStatus}</div>
         {/if}
 
         {#if smsList.length === 0}
@@ -462,5 +578,52 @@
     .relay-header { padding: 16px 20px; }
     .relay-content { padding: 24px 16px; }
     .login-card { padding: 32px 24px; }
+    .outbox-form { flex-direction: column; }
+  }
+
+  .outbox-form {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    background: var(--bg-card);
+    padding: 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+  }
+
+  .outbox-form__inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+  }
+
+  .outbox-form__inputs input {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+  }
+
+  .btn-send {
+    padding: 0 24px;
+    background: var(--accent);
+    color: white;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: background 0.2s;
+  }
+  
+  .btn-send:hover {
+    background: var(--accent-light);
+  }
+
+  .outbox-status {
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 24px;
+    text-align: center;
   }
 </style>
