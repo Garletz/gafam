@@ -156,28 +156,8 @@
       return;
     }
 
-    statusMsg = 'Contacting Cloudflare Directory...';
-    try {
-      const res = await fetch(`/api/directory?phone=${phone}&time=${challengeTimeStr}`);
-      if (res.ok) {
-        const result = await res.json();
-        if (result.success) {
-          encryptedSafe = result.encrypted_safe;
-          safeSalt = result.salt;
-          safeIv = result.iv;
-          statusMsg = '';
-          startWaitingForTime();
-        } else {
-           statusMsg = 'Challenge time incorrect or safe already consumed.';
-        }
-      } else if (res.status === 429) {
-        statusMsg = 'Rate limit exceeded. Too many wrong attempts. Try again later.';
-      } else {
-        statusMsg = 'No matching challenge found. Did you type the correct time?';
-      }
-    } catch (e: any) {
-      statusMsg = 'Network error contacting Cloudflare.';
-    }
+    statusMsg = '';
+    startWaitingForTime();
   }
 
   function startWaitingForTime() {
@@ -226,11 +206,36 @@
   }
 
   async function processChallenge() {
-    statusMsg = 'Deciphering safe... (this will take a moment)';
+    statusMsg = 'Retrieving & Deciphering safe... (this will take a moment)';
     
     // We wait a tiny bit so the UI updates
     setTimeout(async () => {
       try {
+        const res = await fetch(`/api/directory?phone=${phone}&time=${challengeTimeStr}`);
+        
+        if (res.status === 429) {
+           state = 'error';
+           try {
+             const errData = await res.json();
+             statusMsg = errData.error || 'Rate limit exceeded. Try again later.';
+           } catch(e) {
+             statusMsg = 'Rate limit exceeded. Try again later.';
+           }
+           return;
+        }
+
+        const result = await res.json();
+        if (!result.success) {
+           state = 'error';
+           statusMsg = 'Decryption failed (bad time or clicks).';
+           return;
+        }
+
+        encryptedSafe = result.encrypted_safe;
+        safeSalt = result.salt;
+        safeIv = result.iv;
+        const lockedDownCorrectTime = result.locked_down_correct_time;
+
         const passphrase = `${challengeTimeStr}-${challengeClicks}`;
         const aesKey = await derivePBKDF2Key(passphrase, safeSalt);
         
@@ -259,7 +264,11 @@
         }
       } catch (err) {
         state = 'setup';
-        statusMsg = 'Challenge failed. Wrong clicks or honeypot (fake safe).';
+        if (typeof lockedDownCorrectTime !== 'undefined' && lockedDownCorrectTime === true) {
+            statusMsg = 'SECURITY ALERT: Massive brute-force detected. Safe locked down. Please wait 24h or use a different phone number.';
+        } else {
+            statusMsg = 'Challenge failed. Wrong clicks or honeypot (fake safe).';
+        }
       }
     }, 50);
   }

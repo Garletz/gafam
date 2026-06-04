@@ -109,14 +109,68 @@ export const GET: RequestHandler = async ({ url, platform, request }) => {
 		`SELECT id, encrypted_safe, salt, iv FROM directory_v2 WHERE phone_number = ? AND access_time = ? AND consumed = 0 ORDER BY created_at DESC LIMIT 1`
 	).bind(phone, time).first<{ id: number; encrypted_safe: string; salt: string; iv: string }>();
 
-	if (!safe) {
-		// Wrong time or no safe available — increment rate limit
-		await platform.env.DB.prepare(
-			`INSERT INTO rate_limits (ip_address, phone_number, attempts, last_attempt_at) VALUES (?, ?, 1, CURRENT_TIMESTAMP)
-			 ON CONFLICT(ip_address, phone_number) DO UPDATE SET attempts = attempts + 1, last_attempt_at = CURRENT_TIMESTAMP`
-		).bind(clientIp, phone).run();
+	// --- GLOBAL RATE LIMIT (DDoS / Botnet Protection) ---
+	const globalAttemptsRow = await platform.env.DB.prepare(
+		`SELECT SUM(attempts) as total FROM rate_limits WHERE phone_number = ? AND last_attempt_at > datetime('now', '-24 hours')`
+	).bind(phone).first<{ total: number }>();
 
-		return json({ success: false, reason: 'invalid_time' }, { status: 404 });
+	const globalAttempts = globalAttemptsRow?.total || 0;
+
+	if (safe && globalAttempts >= 20) {
+		// DANGER: We are under attack, and the attacker (or user) just hit the CORRECT time.
+		// We DESTROY the real safe silently so it can never be cracked.
+		await platform.env.DB.prepare(
+			`DELETE FROM directory_v2 WHERE id = ?`
+		).bind(safe.id).run();
+
+		// We return a FAKE safe, but we set a hidden flag.
+		const fakeSaltBytes = new Uint8Array(16);
+		crypto.getRandomValues(fakeSaltBytes);
+		const fakeIvBytes = new Uint8Array(12);
+		crypto.getRandomValues(fakeIvBytes);
+		
+		const fakeSafeLen = Math.floor(Math.random() * 20) + 130;
+		const fakeSafeBytes = new Uint8Array(fakeSafeLen);
+		crypto.getRandomValues(fakeSafeBytes);
+
+		return json({
+			success: true,
+			encrypted_safe: btoa(String.fromCharCode(...fakeSafeBytes)),
+			salt: btoa(String.fromCharCode(...fakeSaltBytes)),
+			iv: btoa(String.fromCharCode(...fakeIvBytes)),
+			locked_down_correct_time: true
+		});
+	}
+
+	// --- ALWAYS INCREMENT RATE LIMIT TO PREVENT SIDE-CHANNEL ATTACKS ---
+	await platform.env.DB.prepare(
+		`INSERT INTO rate_limits (ip_address, phone_number, attempts, last_attempt_at) VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+		 ON CONFLICT(ip_address, phone_number) DO UPDATE SET attempts = attempts + 1, last_attempt_at = CURRENT_TIMESTAMP`
+	).bind(clientIp, phone).run();
+
+	if (!safe) {
+		// GENERATE DYNAMIC FAKE SAFE TO OBFUSCATE THE FAILURE
+		// Generate realistic lengths to prevent length-based filtering
+		const fakeSaltBytes = new Uint8Array(16);
+		crypto.getRandomValues(fakeSaltBytes);
+		const fakeIvBytes = new Uint8Array(12);
+		crypto.getRandomValues(fakeIvBytes);
+		
+		const fakeSafeLen = Math.floor(Math.random() * 20) + 130; // Real safes are ~136 bytes
+		const fakeSafeBytes = new Uint8Array(fakeSafeLen);
+		crypto.getRandomValues(fakeSafeBytes);
+		
+		const fakeSalt = btoa(String.fromCharCode(...fakeSaltBytes));
+		const fakeIv = btoa(String.fromCharCode(...fakeIvBytes));
+		const fakeSafe = btoa(String.fromCharCode(...fakeSafeBytes));
+
+		return json({
+			success: true,
+			encrypted_safe: fakeSafe,
+			salt: fakeSalt,
+			iv: fakeIv,
+			is_fake: true
+		});
 	}
 
 	// --- Ephemeral: Mark as consumed ---
