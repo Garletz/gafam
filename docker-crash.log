@@ -10,10 +10,15 @@
 > User-Agent: curl/8.5.0
 > Accept: */*
 > 
-* HTTP 1.0, assume close after body
-< HTTP/1.0 400 Bad Request
+< HTTP/1.1 200 OK
+< Access-Control-Allow-Credentials: true
+< Access-Control-Allow-Headers: Content-Type, Authorization
+< Access-Control-Allow-Methods: GET, POST, OPTIONS
+< Content-Type: application/json
+< Date: Thu, 04 Jun 2026 11:18:16 GMT
+< Content-Length: 16
 < 
-{ [48 bytes data]
-100    48    0    48    0     0  35901      0 --:--:-- --:--:-- --:--:-- 48000
-* Closing connection
-Client sent an HTTP request to an HTTPS server.
+{ [16 bytes data]
+100    16  100    16    0     0  14585      0 --:--:-- --:--:-- --:--:-- 16000
+* Connection #0 to host localhost left intact
+{"status":"ok"}
