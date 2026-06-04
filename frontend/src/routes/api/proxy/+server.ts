@@ -168,3 +168,59 @@ export const POST: RequestHandler = async ({ url, request }) => {
 		return json({ error: e.message }, { status: 500 });
 	}
 };
+
+export const DELETE: RequestHandler = async ({ url }) => {
+	const vpcUrl = url.searchParams.get('vpcUrl');
+	const token = url.searchParams.get('token');
+
+	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
+
+	try {
+		const parsed = new URL(vpcUrl);
+		const host = parsed.hostname;
+		const port = parseInt(parsed.port) || 5150;
+
+		try {
+			// @ts-ignore
+			const { connect } = await import(/* @vite-ignore */ 'cloudflare:sockets');
+			const socket = connect(`${host}:${port}`);
+			const writer = socket.writable.getWriter();
+			const encoder = new TextEncoder();
+
+			const httpRequest = [
+				`DELETE /api/auth/logout?token=${encodeURIComponent(token)} HTTP/1.1`,
+				`Host: ${host}`,
+				`Connection: close`,
+				``,
+				``
+			].join('\r\n');
+
+			await writer.write(encoder.encode(httpRequest));
+			writer.releaseLock();
+
+			const reader = socket.readable.getReader();
+			const decoder = new TextDecoder();
+			let rawResponse = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				rawResponse += decoder.decode(value, { stream: true });
+			}
+
+			return json({ success: true });
+
+		} catch (socketError: any) {
+			try {
+				const response = await fetch(`${vpcUrl}/api/auth/logout?token=${encodeURIComponent(token)}`, {
+					method: 'DELETE'
+				});
+				return json({ success: response.ok });
+			} catch (fetchError: any) {
+				return json({ error: 'Both socket and fetch failed' }, { status: 500 });
+			}
+		}
+	} catch (e: any) {
+		return json({ error: e.message }, { status: 500 });
+	}
+};

@@ -70,6 +70,7 @@ func initDB() {
 		session_token TEXT,
 		web_requested_at DATETIME,
 		device_confirmed_at DATETIME,
+		expires_at DATETIME,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	if _, err := db.Exec(createSessionsTable); err != nil {
@@ -162,6 +163,7 @@ func main() {
 
 	// Rendez-vous Synchrone Mécanique (Manifest 12)
 	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
+	mux.HandleFunc("DELETE /api/auth/logout", logoutHandler)
 
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))

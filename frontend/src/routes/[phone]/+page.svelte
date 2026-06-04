@@ -328,7 +328,13 @@
     }
   }
 
-  function logout() {
+  async function logout() {
+    if (vpcUrl && sessionToken) {
+      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
+      // Fire and forget
+      fetch(`/api/proxy?${proxyParams.toString()}`, { method: 'DELETE' }).catch(() => {});
+    }
+
     state = 'setup';
     sessionToken = '';
     vpcUrl = '';

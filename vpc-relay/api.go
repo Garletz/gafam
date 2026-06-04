@@ -422,6 +422,20 @@ func getPublicIP() string {
 	return string(ip)
 }
 
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, `{"error":"Missing token"}`, http.StatusBadRequest)
+		return
+	}
+	_, err := db.Exec(`DELETE FROM gafam_sessions WHERE session_token = ?`, token)
+	if err != nil {
+		http.Error(w, `{"error":"Failed to delete session"}`, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func confirmSessionHandler(w http.ResponseWriter, r *http.Request) {
 	// Called by the APK when user presses "Authorize Web Login" (LEGACY)
 	
@@ -485,9 +499,10 @@ func confirmSessionHandler(w http.ResponseWriter, r *http.Request) {
 // encrypted "safe" on Cloudflare.
 func challengeAuthHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Phone          string `json:"phone"`
-		ChallengeTime  string `json:"challengeTime"`   // e.g. "1836"
-		ChallengeClicks int   `json:"challengeClicks"`  // e.g. 4
+		Phone           string `json:"phone"`
+		ChallengeTime   string `json:"challengeTime"`   // e.g. "1836"
+		ChallengeClicks int    `json:"challengeClicks"` // e.g. 4
+		TtlMinutes      int    `json:"ttlMinutes"`      // 0 = eternal
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -503,8 +518,14 @@ func challengeAuthHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID := generateToken(32)
 	sessionToken := generateToken(64)
 
-	_, err := db.Exec(`INSERT INTO gafam_sessions (session_id, phone, status, session_token, created_at, device_confirmed_at) VALUES (?, ?, 'confirmed', ?, datetime('now'), datetime('now'))`,
-		sessionID, req.Phone, sessionToken)
+	var expiresAtStr *string
+	if req.TtlMinutes > 0 {
+		t := time.Now().Add(time.Duration(req.TtlMinutes) * time.Minute).Format("2006-01-02 15:04:05")
+		expiresAtStr = &t
+	}
+
+	_, err := db.Exec(`INSERT INTO gafam_sessions (session_id, phone, status, session_token, created_at, device_confirmed_at, expires_at) VALUES (?, ?, 'confirmed', ?, datetime('now'), datetime('now'), ?)`,
+		sessionID, req.Phone, sessionToken, expiresAtStr)
 	if err != nil {
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
@@ -662,10 +683,26 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		// 1. Authenticate Request
 		var status string
-		err := db.QueryRow(`SELECT status FROM gafam_sessions WHERE session_token = ? AND status = 'confirmed' AND device_confirmed_at > datetime('now', '-30 minutes')`, token).Scan(&status)
+		var expiresAt sql.NullTime
+		err := db.QueryRow(`SELECT status, expires_at FROM gafam_sessions WHERE session_token = ?`, token).Scan(&status, &expiresAt)
 		if err != nil {
-			http.Error(w, "Invalid or expired session: "+err.Error(), http.StatusForbidden)
+			if err == sql.ErrNoRows {
+				http.Error(w, `{"error":"Invalid session"}`, http.StatusForbidden)
+			} else {
+				http.Error(w, `{"error":"Database error"}`, http.StatusInternalServerError)
+			}
+			return
+		}
+
+		if status != "confirmed" {
+			http.Error(w, `{"error":"Session not confirmed"}`, http.StatusForbidden)
+			return
+		}
+
+		if expiresAt.Valid && expiresAt.Time.Before(time.Now()) {
+			http.Error(w, `{"error":"Session expired"}`, http.StatusForbidden)
 			return
 		}
 
