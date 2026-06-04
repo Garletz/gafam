@@ -1,23 +1,12 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	_ "modernc.org/sqlite"
 )
