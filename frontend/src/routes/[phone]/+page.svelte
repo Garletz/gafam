@@ -12,6 +12,7 @@
   let state = $state<'waiting' | 'connected'>('waiting');
   let sessionToken = $state(data.sessionToken || '');
   let vpcUrl = $state(data.savedVpcUrl || '');
+  let certFingerprint = $state(data.certFingerprint || '');
   let smsList = $state<any[]>([]);
   let pollInterval: ReturnType<typeof setInterval>;
   let statusMsg = $state('');
@@ -25,6 +26,7 @@
         if (parsed.vpcUrl && parsed.sessionToken) {
           vpcUrl = parsed.vpcUrl;
           sessionToken = parsed.sessionToken;
+          certFingerprint = parsed.certFingerprint || '';
         }
       } catch(e) {}
     }
@@ -33,7 +35,8 @@
     if (data.savedVpcUrl && data.sessionToken) {
       vpcUrl = data.savedVpcUrl;
       sessionToken = data.sessionToken;
-      localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken }));
+      certFingerprint = data.certFingerprint || '';
+      localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken, certFingerprint }));
     }
 
     // 3. Decide what to do
@@ -62,7 +65,8 @@
             clearInterval(pollInterval);
             vpcUrl = result.vpcUrl;
             sessionToken = result.sessionToken;
-            localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken }));
+            certFingerprint = result.certFingerprint || '';
+            localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken, certFingerprint }));
             state = 'connected';
             statusMsg = '';
             loadSms();
@@ -77,8 +81,9 @@
 
   async function loadSms() {
     try {
-      // Use Cloudflare proxy to avoid Mixed Content / CORS / AdBlocker issues
-      const res = await fetch(`/api/proxy?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${sessionToken}`);
+      // Use Cloudflare proxy (TCP Socket) to bypass Error 1003 on raw IPv4 addresses
+      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
+      const res = await fetch(`/api/proxy?${proxyParams.toString()}`);
       if (res.ok) {
         smsList = await res.json();
         if (smsList.error) {
@@ -106,6 +111,7 @@
     state = 'waiting';
     sessionToken = '';
     vpcUrl = '';
+    certFingerprint = '';
     smsList = [];
     localStorage.removeItem(`gafam_auth_${phone}`);
     startPollingDirectory();

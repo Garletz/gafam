@@ -1,18 +1,76 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 var db *sql.DB
 var jwtSecret []byte
+
+// CertFingerprint is the SHA-256 fingerprint of the self-signed TLS certificate.
+// It is announced to the Cloudflare directory so the Worker can verify the VPC identity.
+var CertFingerprint string
+
+func generateSelfSignedCert() (tls.Certificate, error) {
+	// Generate ECDSA private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	// Certificate template
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject: pkix.Name{
+			Organization: []string{"GAFAM Relay VPC"},
+			CommonName:   "gafam-vpc",
+		},
+		NotBefore:             time.Now().Add(-1 * time.Minute),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	// Self-sign the certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	// Compute SHA-256 fingerprint of the raw DER bytes
+	fingerprint := sha256.Sum256(certDER)
+	CertFingerprint = "sha256:" + hex.EncodeToString(fingerprint[:])
+	log.Printf("TLS Certificate fingerprint: %s", CertFingerprint)
+
+	// Encode to PEM
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyBytes, err := x509.MarshalECPrivateKey(privateKey)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+
+	return tls.X509KeyPair(certPEM, keyPEM)
+}
 
 func initDB() {
 	var err error
@@ -85,12 +143,6 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		tokenString := parts[1]
-		
-		// In a real system you'd use jwt.Parse. For this relay, we just check if it matches our shared secret
-		// because the Desktop Manager didn't sign a standard JWT, it just sent the raw secret as the token in the QR code!
-		// Wait, the Rust Manager generates: let jwt_secret: String = rand::thread_rng().sample_iter(&Alphanumeric).take(32).collect();
-		// It's a raw secret string, not a JWT!
-		// So we just string match it.
 		if tokenString != string(jwtSecret) {
 			http.Error(w, "Invalid Token", http.StatusForbidden)
 			return
@@ -103,7 +155,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		// Allow gafam.cloud and subdomains
+		// Allow gafam.cloud and subdomains, plus local dev
 		if strings.HasSuffix(origin, ".gafam.cloud") || origin == "https://gafam.cloud" || origin == "http://localhost:5173" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
@@ -125,6 +177,12 @@ func main() {
 		log.Println("WARNING: JWT_SECRET not set, using development secret.")
 	}
 	jwtSecret = []byte(secret)
+
+	// Generate self-signed TLS certificate at startup
+	cert, err := generateSelfSignedCert()
+	if err != nil {
+		log.Fatal("Failed to generate TLS certificate:", err)
+	}
 
 	initDB()
 
@@ -151,8 +209,22 @@ func main() {
 		port = "5150"
 	}
 
-	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s", port)
-	if err := http.ListenAndServe("0.0.0.0:"+port, corsMiddleware(mux)); err != nil {
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	server := &http.Server{
+		Addr:      "0.0.0.0:" + port,
+		Handler:   corsMiddleware(mux),
+		TLSConfig: tlsConfig,
+	}
+
+	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTPS, self-signed TLS)", port)
+	log.Printf("Fingerprint: %s", CertFingerprint)
+
+	// ListenAndServeTLS with empty strings = use the cert from TLSConfig
+	if err := server.ListenAndServeTLS("", ""); err != nil {
 		log.Fatal("Server error:", err)
 	}
 }

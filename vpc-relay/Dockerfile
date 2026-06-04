@@ -22,6 +22,7 @@ RUN mkdir -p /app/data
 
 VOLUME ["/app/data"]
 
+# Port 5150: GAFAM VPC HTTPS relay (self-signed TLS)
 EXPOSE 5150
 
 ENTRYPOINT ["/app/vpc-relay"]

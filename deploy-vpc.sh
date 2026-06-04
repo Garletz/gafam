@@ -41,11 +41,12 @@ echo "[*] Starting GAFAM VPC services..."
 docker rm -f gafam-api 2>/dev/null || true
 
 # Run the new container
+# Port 5150: GAFAM HTTPS relay (self-signed TLS, TCP-Socket-compatible, no Cloudflare port restriction)
 docker run -d \
   --name gafam-api \
   --restart always \
-  -p 8080:8080 \
-  -e PORT="8080" \
+  -p 5150:5150 \
+  -e PORT="5150" \
   -e JWT_SECRET="${JWT_SECRET}" \
   ghcr.io/garletz/gafam:latest
 
@@ -53,6 +54,6 @@ echo ""
 echo "=========================================="
 echo "✅ GAFAM VPC successfully deployed!"
 echo "=========================================="
-echo "🌐 API is running on port 8080"
+echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
 echo "=========================================="
