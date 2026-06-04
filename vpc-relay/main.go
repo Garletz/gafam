@@ -29,6 +29,11 @@ func initDB() {
 		log.Fatal("Failed to open database:", err)
 	}
 
+	// Enable WAL mode to prevent "database is locked" errors during concurrent read/writes
+	if _, err := db.Exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;`); err != nil {
+		log.Println("Warning: Failed to enable WAL mode:", err)
+	}
+
 	// Create tables if they don't exist
 	createDevicesTable := `
 	CREATE TABLE IF NOT EXISTS gafam_devices (

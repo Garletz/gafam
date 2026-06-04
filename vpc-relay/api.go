@@ -452,7 +452,7 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		var status string
 		err := db.QueryRow(`SELECT status FROM gafam_sessions WHERE session_token = ? AND status = 'confirmed'`, token).Scan(&status)
 		if err != nil {
-			http.Error(w, "Invalid or expired session", http.StatusForbidden)
+			http.Error(w, "Invalid or expired session: "+err.Error(), http.StatusForbidden)
 			return
 		}
 
