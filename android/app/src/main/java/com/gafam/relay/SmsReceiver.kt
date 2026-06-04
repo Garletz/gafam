@@ -79,8 +79,29 @@ class SmsReceiver : BroadcastReceiver() {
                     put("timestamp", System.currentTimeMillis())
                 }
 
+                val plaintext = jsonBody.toString().toByteArray(Charsets.UTF_8)
+                
+                // Derive key using SHA-256
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val keyBytes = digest.digest(jwtSecret.toByteArray(Charsets.UTF_8))
+                val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
+
+                // Encrypt using AES/GCM/NoPadding
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                val iv = ByteArray(12)
+                java.security.SecureRandom().nextBytes(iv)
+                val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
+                cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
+                
+                val ciphertext = cipher.doFinal(plaintext)
+                
+                val encryptedPayload = JSONObject().apply {
+                    put("encrypted_data", android.util.Base64.encodeToString(ciphertext, android.util.Base64.NO_WRAP))
+                    put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
+                }
+
                 connection.outputStream.use { os ->
-                    val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
+                    val input = encryptedPayload.toString().toByteArray(Charsets.UTF_8)
                     os.write(input, 0, input.size)
                 }
 

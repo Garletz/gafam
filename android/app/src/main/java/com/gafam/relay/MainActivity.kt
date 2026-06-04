@@ -165,6 +165,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             registerReceiver(smsUiReceiver, uiFilter)
         }
+
+        startOutboxPoller()
     }
 
     override fun onDestroy() {
@@ -343,9 +345,93 @@ class MainActivity : AppCompatActivity() {
                 Log.e("GAFAM", "Web auth error", e)
                 runOnUiThread {
                     statusText.text = "❌ Network error during web authorization."
-                    Toast.makeText(this, "Network Error", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "Failed: " + e.message, Toast.LENGTH_LONG).show()
                 }
             }
+        }
+    }
+
+    private var isPollingOutbox = false
+
+    private fun startOutboxPoller() {
+        if (isPollingOutbox) return
+        isPollingOutbox = true
+        
+        thread {
+            while (isPollingOutbox) {
+                pollOutbox()
+                Thread.sleep(10000) // Poll every 10 seconds
+            }
+        }
+    }
+
+    private fun pollOutbox() {
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val apiUrl = prefs.getString("apiUrl", null)
+        val jwtSecret = prefs.getString("jwtSecret", null)
+        if (apiUrl == null || jwtSecret == null) return
+
+        try {
+            val url = URL("$apiUrl/api/auth/sms/outbox")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+
+            if (connection.responseCode == 200) {
+                val responseStr = connection.inputStream.bufferedReader().readText()
+                val payload = JSONObject(responseStr)
+                val encryptedData = payload.getString("encrypted_data")
+                val ivStr = payload.getString("iv")
+
+                // Decrypt
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val keyBytes = digest.digest(jwtSecret.toByteArray(Charsets.UTF_8))
+                val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
+
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                val iv = android.util.Base64.decode(ivStr, android.util.Base64.DEFAULT)
+                val ciphertext = android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
+                val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
+                cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, gcmSpec)
+                
+                val plaintext = cipher.doFinal(ciphertext)
+                val outboxArray = org.json.JSONArray(String(plaintext, Charsets.UTF_8))
+
+                for (i in 0 until outboxArray.length()) {
+                    val msg = outboxArray.getJSONObject(i)
+                    val id = msg.getInt("id")
+                    val recipient = msg.getString("recipient")
+                    val body = msg.getString("body")
+
+                    // Send SMS via Android telephony
+                    try {
+                        val smsManager = SmsManager.getDefault()
+                        smsManager.sendTextMessage(recipient, null, body, null, null)
+                        Log.d("GAFAM_Relay", "Sent remote SMS to $recipient")
+                    } catch (e: Exception) {
+                        Log.e("GAFAM_Relay", "Failed to send SMS to $recipient", e)
+                    }
+
+                    // Delete from Outbox
+                    deleteFromOutbox(apiUrl, jwtSecret, id)
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore polling errors
+        }
+    }
+
+    private fun deleteFromOutbox(apiUrl: String, jwtSecret: String, id: Int) {
+        try {
+            val url = URL("$apiUrl/api/auth/sms/outbox/delete?id=$id")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "DELETE"
+            connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
+            connection.responseCode 
+        } catch (e: Exception) {
+            Log.e("GAFAM_Relay", "Error deleting outbox msg", e)
         }
     }
 }
