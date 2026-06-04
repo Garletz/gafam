@@ -64,7 +64,7 @@ class SmsReceiver : BroadcastReceiver() {
 
         thread {
             try {
-                val vpcUrl = URL("$apiUrl/api/sms/") 
+                val vpcUrl = URL("$apiUrl/api/auth/sms/") 
                 val connection = vpcUrl.openConnection() as HttpURLConnection
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
