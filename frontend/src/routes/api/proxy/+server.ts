@@ -75,18 +75,21 @@ export const GET: RequestHandler = async ({ url }) => {
 		} catch (socketError: any) {
 			// Fallback: regular fetch() for local development (Node.js runtime)
 			// In local dev, there is no browser restriction on HTTP from a server process
-			const response = await fetch(`${vpcUrl}/api/web/sms?token=${encodeURIComponent(token)}`, {
-				// Allow self-signed certs in dev environments
-				// @ts-ignore
-				...(typeof process !== 'undefined' ? {} : {})
-			});
+			try {
+				const response = await fetch(`${vpcUrl}/api/web/sms?token=${encodeURIComponent(token)}`, {
+					// @ts-ignore
+					...(typeof process !== 'undefined' ? {} : {})
+				});
 
-			if (!response.ok) {
-				return json({ error: 'VPC error' }, { status: response.status });
+				if (!response.ok) {
+					return json({ error: 'VPC error via fetch fallback', details: socketError.message }, { status: response.status });
+				}
+
+				const data = await response.json();
+				return json(data);
+			} catch (fetchError: any) {
+				return json({ error: 'Both socket and fetch failed', socketErr: socketError.message, fetchErr: fetchError.message }, { status: 500 });
 			}
-
-			const data = await response.json();
-			return json(data);
 		}
 
 	} catch (e: any) {

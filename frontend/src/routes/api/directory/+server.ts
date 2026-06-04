@@ -11,7 +11,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
 		// Get the raw VPC IP from Cloudflare's trusted headers (no nip.io needed)
 		const vpcIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
-		const vpcUrl = `https://${vpcIp}:${port}`;
+		const vpcUrl = `http://${vpcIp}:${port}`;
 
 		if (platform?.env?.DB) {
 			await platform.env.DB.prepare(
