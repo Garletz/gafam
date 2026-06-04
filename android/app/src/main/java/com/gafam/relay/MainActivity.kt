@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Not paired with a VPC yet", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            confirmWebSession(apiUrl, token)
+            generateAndSendChallenge(apiUrl, token)
         }
         layout.addView(authWebBtn)
 
@@ -308,14 +308,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmWebSession(apiUrl: String, token: String) {
-        statusText.text = "🔐 Authorizing Web Login..."
+    private fun generateAndSendChallenge(apiUrl: String, token: String) {
+        val calendar = java.util.Calendar.getInstance()
+        calendar.add(java.util.Calendar.MINUTE, 2 + (Math.random() * 4).toInt())
+        val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+        val minute = calendar.get(java.util.Calendar.MINUTE)
+        val challengeTimeStr = String.format("%02d%02d", hour, minute)
+        val displayTime = String.format("%02d:%02d", hour, minute)
+        
+        val challengeClicks = 1 + (Math.random() * 8).toInt()
+
+        statusText.text = "🔐 Programming Challenge...\nTime: $displayTime\nImpulsions: $challengeClicks"
+
         thread {
             try {
                 val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
                 val phone = prefs.getString("myPhoneNumber", "")
 
-                val url = URL("$apiUrl/api/auth/confirm-session")
+                val url = URL("$apiUrl/api/auth/challenge")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
@@ -324,27 +334,31 @@ class MainActivity : AppCompatActivity() {
 
                 val payload = JSONObject()
                 payload.put("phone", phone)
+                payload.put("challengeTime", challengeTimeStr)
+                payload.put("challengeClicks", challengeClicks)
 
                 conn.outputStream.write(payload.toString().toByteArray())
 
                 val code = conn.responseCode
-                Log.d("GAFAM", "Web auth confirm response: $code")
                 runOnUiThread {
                     if (code in 200..299) {
-                        statusText.text = "✅ Web Login Authorized!\n\nThe web client is now connected.\n\nRelay Agent is ACTIVE\nWaiting for SMS..."
-                        Toast.makeText(this, "Web Login Authorized!", Toast.LENGTH_LONG).show()
-                    } else if (code == 404) {
-                        statusText.text = "⚠️ No pending web login request.\n\nOpen gafam.cloud first, then press this button."
-                        Toast.makeText(this, "No pending request", Toast.LENGTH_LONG).show()
+                        val alertMessage = "Rendez-vous à $displayTime — $challengeClicks impulsions"
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Challenge Programmé")
+                            .setMessage("Saisissez $displayTime sur gafam.cloud et préparez-vous à cliquer $challengeClicks fois à l'heure pile.")
+                            .setPositiveButton("OK", null)
+                            .show()
+                            
+                        statusText.text = "✅ Challenge Prêt!\n$alertMessage\n\nAttendez l'heure sur le navigateur."
                     } else {
-                        statusText.text = "❌ Failed to authorize web login."
-                        Toast.makeText(this, "Authorization failed", Toast.LENGTH_LONG).show()
+                        statusText.text = "❌ Failed to program challenge. HTTP $code"
+                        Toast.makeText(this@MainActivity, "Failed. Is VPC reachable?", Toast.LENGTH_LONG).show()
                     }
                 }
             } catch (e: Exception) {
-                Log.e("GAFAM", "Web auth error", e)
+                Log.e("GAFAM", "Challenge auth error", e)
                 runOnUiThread {
-                    statusText.text = "❌ Network error during web authorization."
+                    statusText.text = "❌ Network error during challenge creation."
                     Toast.makeText(this@MainActivity, "Failed: " + e.message, Toast.LENGTH_LONG).show()
                 }
             }
@@ -425,7 +439,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun deleteFromOutbox(apiUrl: String, jwtSecret: String, id: Int) {
         try {
-            val url = URL("$apiUrl/api/auth/sms/outbox/delete?id=$id")
+            val url = URL("$apiUrl/api/auth/sms/outbox?id=$id")
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "DELETE"
             connection.setRequestProperty("Authorization", "Bearer $jwtSecret")

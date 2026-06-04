@@ -9,11 +9,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"math/big"
+	mrand "math/rand"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // --- Crypto Helpers ---
@@ -21,6 +25,56 @@ import (
 func deriveKey(secret string) []byte {
 	hash := sha256.Sum256([]byte(secret))
 	return hash[:]
+}
+
+// PBKDF2 implementation (no external dependency needed)
+func pbkdf2Key(password, salt []byte, iterations, keyLen int) []byte {
+	hmacSha256 := func(key, data []byte) []byte {
+		// HMAC-SHA256
+		blockSize := 64
+		if len(key) > blockSize {
+			h := sha256.Sum256(key)
+			key = h[:]
+		}
+		if len(key) < blockSize {
+			key = append(key, make([]byte, blockSize-len(key))...)
+		}
+		ipad := make([]byte, blockSize)
+		opad := make([]byte, blockSize)
+		for i := 0; i < blockSize; i++ {
+			ipad[i] = key[i] ^ 0x36
+			opad[i] = key[i] ^ 0x5c
+		}
+		inner := sha256.Sum256(append(ipad, data...))
+		outer := sha256.Sum256(append(opad, inner[:]...))
+		return outer[:]
+	}
+
+	numBlocks := (keyLen + 31) / 32
+	dk := make([]byte, 0, numBlocks*32)
+
+	for block := 1; block <= numBlocks; block++ {
+		// U1 = PRF(Password, Salt || INT_32_BE(i))
+		saltBlock := make([]byte, len(salt)+4)
+		copy(saltBlock, salt)
+		saltBlock[len(salt)+0] = byte(block >> 24)
+		saltBlock[len(salt)+1] = byte(block >> 16)
+		saltBlock[len(salt)+2] = byte(block >> 8)
+		saltBlock[len(salt)+3] = byte(block)
+
+		u := hmacSha256(password, saltBlock)
+		result := make([]byte, 32)
+		copy(result, u)
+
+		for i := 1; i < iterations; i++ {
+			u = hmacSha256(password, u)
+			for j := 0; j < 32; j++ {
+				result[j] ^= u[j]
+			}
+		}
+		dk = append(dk, result...)
+	}
+	return dk[:keyLen]
 }
 
 func encryptAESGCM(key []byte, plaintext []byte) (string, string, error) {
@@ -328,7 +382,7 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// --- Web Client Auth Handlers (Handshake Simultané) ---
+// --- Legacy Web Client Auth Handlers (kept for backward compat) ---
 
 func requestSessionHandler(w http.ResponseWriter, r *http.Request) {
 	var params struct {
@@ -354,8 +408,22 @@ func requestSessionHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// getPublicIP fetches the VPC's external IPv4 address
+func getPublicIP() string {
+	resp, err := http.Get("https://api.ipify.org")
+	if err != nil {
+		return "127.0.0.1"
+	}
+	defer resp.Body.Close()
+	ip, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "127.0.0.1"
+	}
+	return string(ip)
+}
+
 func confirmSessionHandler(w http.ResponseWriter, r *http.Request) {
-	// Called by the APK when user presses "Authorize Web Login"
+	// Called by the APK when user presses "Authorize Web Login" (LEGACY)
 	
 	var req struct {
 		Phone string `json:"phone"`
@@ -385,7 +453,7 @@ func confirmSessionHandler(w http.ResponseWriter, r *http.Request) {
 		port = "5150"
 	}
 
-	// Announce asynchronously to Cloudflare Directory
+	// Announce asynchronously to Cloudflare Directory (legacy flow)
 	go func() {
 		payload := map[string]string{
 			"phone":         req.Phone,
@@ -407,6 +475,151 @@ func confirmSessionHandler(w http.ResponseWriter, r *http.Request) {
 		"session_id": sessionID,
 	})
 }
+
+// ============================================================
+// === RENDEZ-VOUS SYNCHRONE MÉCANIQUE (Manifest 12) ===
+// ============================================================
+
+// challengeAuthHandler is called by the APK when the user programs a challenge.
+// It receives the challenge parameters, encrypts the VPC info, and deposits the
+// encrypted "safe" on Cloudflare.
+func challengeAuthHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Phone          string `json:"phone"`
+		ChallengeTime  string `json:"challengeTime"`   // e.g. "1836"
+		ChallengeClicks int   `json:"challengeClicks"`  // e.g. 4
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Phone == "" || req.ChallengeTime == "" || req.ChallengeClicks < 1 || req.ChallengeClicks > 8 {
+		http.Error(w, "Invalid challenge parameters", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Generate a unique session token
+	sessionID := generateToken(32)
+	sessionToken := generateToken(64)
+
+	_, err := db.Exec(`INSERT INTO gafam_sessions (session_id, phone, status, session_token, created_at, device_confirmed_at) VALUES (?, ?, 'confirmed', ?, datetime('now'), datetime('now'))`,
+		sessionID, req.Phone, sessionToken)
+	if err != nil {
+		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Build the safe payload
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5150"
+	}
+	publicIP := getPublicIP()
+
+	safePayload := map[string]string{
+		"sessionToken": sessionToken,
+		"vpcUrl":       fmt.Sprintf("http://%s:%s", publicIP, port),
+	}
+	safeJSON, _ := json.Marshal(safePayload)
+
+	// 3. Derive AES key via PBKDF2 from "ChallengeTime-ChallengeClicks"
+	passphrase := fmt.Sprintf("%s-%d", req.ChallengeTime, req.ChallengeClicks)
+	salt := make([]byte, 16)
+	rand.Read(salt)
+
+	aesKey := pbkdf2Key([]byte(passphrase), salt, 500000, 32)
+
+	// 4. Encrypt the safe with AES-256-GCM
+	encryptedSafe, ivBase64, err := encryptAESGCM(aesKey, safeJSON)
+	if err != nil {
+		http.Error(w, "Encryption failed", http.StatusInternalServerError)
+		return
+	}
+
+	saltBase64 := base64.StdEncoding.EncodeToString(salt)
+
+	// 5. Deposit the encrypted safe on Cloudflare
+	go depositSafeOnCloudflare(req.Phone, encryptedSafe, saltBase64, ivBase64, req.ChallengeTime)
+
+	log.Printf("Challenge created for %s: time=%s clicks=%d", req.Phone, req.ChallengeTime, req.ChallengeClicks)
+
+	sendJSON(w, http.StatusOK, map[string]string{
+		"status":         "challenge_created",
+		"challengeTime":  req.ChallengeTime,
+	})
+}
+
+// depositSafeOnCloudflare sends the encrypted safe to the Cloudflare directory
+func depositSafeOnCloudflare(phone, encryptedSafe, salt, iv, accessTime string) {
+	payload := map[string]string{
+		"phone":          phone,
+		"encrypted_safe": encryptedSafe,
+		"salt":           salt,
+		"iv":             iv,
+		"access_time":    accessTime,
+	}
+	jsonData, _ := json.Marshal(payload)
+	resp, err := http.Post("https://gafam.cloud/api/directory", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Println("Error depositing safe on Cloudflare:", err)
+	} else {
+		defer resp.Body.Close()
+		log.Printf("Safe deposited on Cloudflare for %s at time %s, response: %d", phone, accessTime, resp.StatusCode)
+	}
+}
+
+// startHoneypotGenerator launches a background goroutine that periodically deposits
+// fake safes on Cloudflare to mask the real challenge deposits (OPSEC).
+func startHoneypotGenerator() {
+	go func() {
+		for {
+			// Random interval between 10 and 40 minutes
+			delay := time.Duration(10+mrand.Intn(30)) * time.Minute
+			time.Sleep(delay)
+
+			// Get a phone number from the database (if any devices are registered)
+			var phone string
+			err := db.QueryRow("SELECT phone FROM gafam_sessions ORDER BY created_at DESC LIMIT 1").Scan(&phone)
+			if err != nil || phone == "" {
+				continue // No sessions yet, skip this cycle
+			}
+
+			// Generate a fake challenge
+			fakeHour := mrand.Intn(24)
+			fakeMinute := mrand.Intn(60)
+			fakeTime := fmt.Sprintf("%02d%02d", fakeHour, fakeMinute)
+			fakeClicks := 1 + mrand.Intn(8)
+
+			// Generate a fake safe with a credible fake IPv4 and fake token
+			fakeIP := fmt.Sprintf("%d.%d.%d.%d", 1+mrand.Intn(223), mrand.Intn(256), mrand.Intn(256), mrand.Intn(256))
+			fakePort := "5150"
+			fakeSafe := map[string]string{
+				"sessionToken": generateToken(64),
+				"vpcUrl":       fmt.Sprintf("http://%s:%s", fakeIP, fakePort),
+			}
+			fakeJSON, _ := json.Marshal(fakeSafe)
+
+			// Encrypt with PBKDF2 (same algorithm as real safes)
+			passphrase := fmt.Sprintf("%s-%d", fakeTime, fakeClicks)
+			salt := make([]byte, 16)
+			rand.Read(salt)
+			aesKey := pbkdf2Key([]byte(passphrase), salt, 500000, 32)
+
+			encryptedSafe, ivBase64, err := encryptAESGCM(aesKey, fakeJSON)
+			if err != nil {
+				continue
+			}
+
+			saltBase64 := base64.StdEncoding.EncodeToString(salt)
+
+			depositSafeOnCloudflare(phone, encryptedSafe, saltBase64, ivBase64, fakeTime)
+			log.Printf("Honeypot deposited for %s: fakeTime=%s fakeClicks=%d", phone, fakeTime, fakeClicks)
+		}
+	}()
+}
+
+// ============================================================
 
 func checkSessionHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.URL.Query().Get("session_id")
@@ -450,7 +663,7 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		var status string
-		err := db.QueryRow(`SELECT status FROM gafam_sessions WHERE session_token = ? AND status = 'confirmed'`, token).Scan(&status)
+		err := db.QueryRow(`SELECT status FROM gafam_sessions WHERE session_token = ? AND status = 'confirmed' AND device_confirmed_at > datetime('now', '-30 minutes')`, token).Scan(&status)
 		if err != nil {
 			http.Error(w, "Invalid or expired session: "+err.Error(), http.StatusForbidden)
 			return

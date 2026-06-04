@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	mrand "math/rand"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -153,10 +155,13 @@ func main() {
 	mux.HandleFunc("GET /api/auth/sms/outbox", authMiddleware(getOutboxHandler))
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
 	
-	// Auth Routes for Web Client handshake
+	// Auth Routes for Web Client handshake (legacy)
 	mux.HandleFunc("POST /api/auth/request-session", requestSessionHandler)
 	mux.HandleFunc("POST /api/auth/confirm-session", authMiddleware(confirmSessionHandler))
 	mux.HandleFunc("GET /api/auth/check-session", checkSessionHandler)
+
+	// Rendez-vous Synchrone Mécanique (Manifest 12)
+	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
 
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
@@ -171,6 +176,11 @@ func main() {
 		Addr:      "0.0.0.0:" + port,
 		Handler:   corsMiddleware(mux),
 	}
+
+	// Start OPSEC Honeypot generator (Manifest 12)
+	mrand.Seed(time.Now().UnixNano())
+	startHoneypotGenerator()
+	log.Println("Honeypot generator started (OPSEC)")
 
 	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTP)", port)
 

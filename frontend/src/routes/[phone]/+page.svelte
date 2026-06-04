@@ -9,12 +9,24 @@
   let phone = $derived(page.params.phone);
 
   // Connection state
-  let state = $state<'waiting' | 'connected'>('waiting');
+  let state = $state<'setup' | 'waiting' | 'challenge' | 'connected'>('setup');
+  
+  // Challenge variables
+  let inputTime = $state(''); // User inputs "18:36" or "1836"
+  let challengeTimeStr = $state(''); // Normalized to "1836"
+  let encryptedSafe = $state('');
+  let safeSalt = $state('');
+  let safeIv = $state('');
+  let timeRemaining = $state(0);
+  let challengeRemaining = $state(30);
+  let challengeClicks = $state(0);
+
   let sessionToken = $state(data.sessionToken || '');
   let vpcUrl = $state(data.savedVpcUrl || '');
   let certFingerprint = $state(data.certFingerprint || '');
   let smsList = $state<any[]>([]);
   let pollInterval: ReturnType<typeof setInterval>;
+  let countdownInterval: ReturnType<typeof setInterval>;
   let statusMsg = $state('');
   
   // Sending SMS state
@@ -23,6 +35,30 @@
   let outboxStatus = $state('');
 
   // Web Crypto API Helpers
+  async function derivePBKDF2Key(passphrase: string, saltBase64: string) {
+    const enc = new TextEncoder();
+    const keyMaterial = await window.crypto.subtle.importKey(
+      "raw",
+      enc.encode(passphrase),
+      { name: "PBKDF2" },
+      false,
+      ["deriveKey"]
+    );
+    const salt = base64ToArrayBuffer(saltBase64);
+    return window.crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: new Uint8Array(salt),
+        iterations: 500000,
+        hash: "SHA-256"
+      },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+
   async function deriveKey(secret: string) {
     const enc = new TextEncoder();
     const hashBuffer = await window.crypto.subtle.digest('SHA-256', enc.encode(secret));
@@ -83,7 +119,6 @@
   }
 
   onMount(() => {
-    // 1. Check if we have a saved session in localStorage
     const saved = localStorage.getItem(`gafam_auth_${phone}`);
     if (saved) {
       try {
@@ -96,53 +131,138 @@
       } catch(e) {}
     }
 
-    // 2. If server provided new data (before it was consumed), we use it and save it
-    if (data.savedVpcUrl && data.sessionToken) {
-      vpcUrl = data.savedVpcUrl;
-      sessionToken = data.sessionToken;
-      certFingerprint = data.certFingerprint || '';
-      localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken, certFingerprint }));
-    }
-
-    // 3. Decide what to do
     if (vpcUrl && sessionToken) {
       state = 'connected';
       loadSms();
+      pollInterval = setInterval(loadSms, 5000);
     } else {
-      // Start polling Cloudflare directory for VPC IP
-      startPollingDirectory();
+      state = 'setup';
     }
 
     return () => {
       if (pollInterval) clearInterval(pollInterval);
+      if (countdownInterval) clearInterval(countdownInterval);
     };
   });
 
-  function startPollingDirectory() {
-    statusMsg = 'Waiting for device confirmation...';
-    
-    pollInterval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/directory?phone=${phone}`);
-        if (res.ok) {
-          const result = await res.json();
-          if (result.success && result.vpcUrl && result.sessionToken) {
-            clearInterval(pollInterval);
-            vpcUrl = result.vpcUrl;
-            sessionToken = result.sessionToken;
-            certFingerprint = result.certFingerprint || '';
-            localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken, certFingerprint }));
-            state = 'connected';
-            statusMsg = '';
-            loadSms();
-          }
+  async function startChallengeFlow(e: Event) {
+    e.preventDefault();
+    if (!inputTime) return;
+
+    // Normalize time (e.g. "18:36" -> "1836")
+    challengeTimeStr = inputTime.replace(/[^0-9]/g, '');
+    if (challengeTimeStr.length !== 4) {
+      statusMsg = 'Please enter time as HH:MM or HHMM';
+      return;
+    }
+
+    statusMsg = 'Contacting Cloudflare Directory...';
+    try {
+      const res = await fetch(`/api/directory?phone=${phone}&time=${challengeTimeStr}`);
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success) {
+          encryptedSafe = result.encrypted_safe;
+          safeSalt = result.salt;
+          safeIv = result.iv;
+          statusMsg = '';
+          startWaitingForTime();
+        } else {
+           statusMsg = 'Challenge time incorrect or safe already consumed.';
         }
-      } catch (e) {
-        // Just retry silently
+      } else if (res.status === 429) {
+        statusMsg = 'Rate limit exceeded. Too many wrong attempts. Try again later.';
+      } else {
+        statusMsg = 'No matching challenge found. Did you type the correct time?';
       }
-    }, 2000);
+    } catch (e: any) {
+      statusMsg = 'Network error contacting Cloudflare.';
+    }
   }
 
+  function startWaitingForTime() {
+    state = 'waiting';
+    updateCountdown();
+    countdownInterval = setInterval(updateCountdown, 1000);
+  }
+
+  function updateCountdown() {
+    const now = new Date();
+    const targetHour = parseInt(challengeTimeStr.substring(0, 2), 10);
+    const targetMin = parseInt(challengeTimeStr.substring(2, 4), 10);
+    
+    const targetTime = new Date();
+    targetTime.setHours(targetHour, targetMin, 0, 0);
+
+    const diff = Math.floor((targetTime.getTime() - now.getTime()) / 1000);
+
+    if (diff <= 0) {
+      // Time has arrived
+      clearInterval(countdownInterval);
+      startActiveChallenge();
+    } else {
+      timeRemaining = diff;
+    }
+  }
+
+  function startActiveChallenge() {
+    state = 'challenge';
+    challengeClicks = 0;
+    challengeRemaining = 30;
+
+    countdownInterval = setInterval(() => {
+      challengeRemaining -= 1;
+      if (challengeRemaining <= 0) {
+        clearInterval(countdownInterval);
+        processChallenge();
+      }
+    }, 1000);
+  }
+
+  function registerClick() {
+    if (state === 'challenge') {
+      challengeClicks += 1;
+    }
+  }
+
+  async function processChallenge() {
+    statusMsg = 'Deciphering safe... (this will take a moment)';
+    
+    // We wait a tiny bit so the UI updates
+    setTimeout(async () => {
+      try {
+        const passphrase = `${challengeTimeStr}-${challengeClicks}`;
+        const aesKey = await derivePBKDF2Key(passphrase, safeSalt);
+        
+        const ivBuffer = base64ToArrayBuffer(safeIv);
+        const ciphertext = base64ToArrayBuffer(encryptedSafe);
+        const decrypted = await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: new Uint8Array(ivBuffer) },
+          aesKey,
+          ciphertext
+        );
+        
+        const plaintext = new TextDecoder().decode(decrypted);
+        const safeData = JSON.parse(plaintext);
+        
+        if (safeData.vpcUrl && safeData.sessionToken) {
+          vpcUrl = safeData.vpcUrl;
+          sessionToken = safeData.sessionToken;
+          localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken, certFingerprint }));
+          
+          state = 'connected';
+          statusMsg = '';
+          loadSms();
+          pollInterval = setInterval(loadSms, 5000);
+        } else {
+          throw new Error('Invalid safe contents');
+        }
+      } catch (err) {
+        state = 'setup';
+        statusMsg = 'Challenge failed. Wrong clicks or honeypot (fake safe).';
+      }
+    }, 50);
+  }
 
   async function loadSms() {
     try {
@@ -153,25 +273,22 @@
         if (payload.error) {
            statusMsg = 'VPC returned an error: ' + payload.error;
         } else if (payload.encrypted_data && payload.iv) {
-           // Decrypt the payload
            try {
              const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
              smsList = JSON.parse(plaintext);
-             statusMsg = ''; // clear error
+             statusMsg = '';
            } catch (decErr: any) {
              statusMsg = 'Decryption failed: ' + decErr.message;
            }
         } else {
-           // Fallback if not encrypted (during migration)
            smsList = payload;
            statusMsg = '';
         }
       } else if (res.status === 403) {
-        // Session expired or invalid
-        state = 'waiting';
+        if (pollInterval) clearInterval(pollInterval);
+        state = 'setup';
         sessionToken = '';
         vpcUrl = '';
-        startPollingDirectory();
         statusMsg = 'Session expired. Please reauthorize from your phone.';
       } else {
         const errorData = await res.json().catch(() => ({}));
@@ -212,13 +329,12 @@
   }
 
   function logout() {
-    state = 'waiting';
+    state = 'setup';
     sessionToken = '';
     vpcUrl = '';
     certFingerprint = '';
     smsList = [];
     localStorage.removeItem(`gafam_auth_${phone}`);
-    startPollingDirectory();
   }
 
   function formatTime(ts: number) {
@@ -244,17 +360,52 @@
   </header>
 
   <div class="relay-content">
-    {#if state === 'waiting'}
-      <!-- WAITING FOR DEVICE CONFIRMATION -->
+    {#if state === 'setup'}
+      <!-- SETUP CHALLENGE -->
       <div class="login-card">
-        <h2 class="login-card__title">Waiting for Device</h2>
-        <p class="login-card__desc">Press <strong>"Authorize Web Login"</strong> on your GAFAM Relay app now.</p>
+        <h2 class="login-card__title">Authorization Required</h2>
+        <p class="login-card__desc">Press <strong>"Authorize Web Login"</strong> on your phone and enter the challenge time below.</p>
+
+        <form class="login-card__field" onsubmit={startChallengeFlow}>
+          <label>Challenge Time</label>
+          <input type="text" placeholder="e.g. 18:36" bind:value={inputTime} required />
+          <button type="submit" class="login-card__btn" style="width:100%; margin-top:16px;">Next</button>
+        </form>
+
+        {#if statusMsg}
+          <p class="login-card__status">{statusMsg}</p>
+        {/if}
+      </div>
+
+    {:else if state === 'waiting'}
+      <!-- WAITING FOR TARGET TIME -->
+      <div class="login-card">
+        <h2 class="login-card__title">Safe Retrieved</h2>
+        <p class="login-card__desc">Waiting for {challengeTimeStr.substring(0,2)}:{challengeTimeStr.substring(2,4)} to open the safe.</p>
+
+        <div class="countdown-display">
+          {timeRemaining}s
+        </div>
 
         <div class="waiting-dots">
           <span></span><span></span><span></span>
         </div>
+      </div>
 
-        <p class="login-card__status">{statusMsg}</p>
+    {:else if state === 'challenge'}
+      <!-- ACTIVE CHALLENGE (CLICKS) -->
+      <div class="login-card challenge-card">
+        <h2 class="login-card__title">Challenge Active</h2>
+        <p class="login-card__desc">Click the button below the exact number of times shown on your phone.</p>
+
+        <div class="challenge-timer">Time left: {challengeRemaining}s</div>
+        
+        <button class="challenge-btn" onclick={registerClick}>
+          <div class="btn-pulse"></div>
+          IMPULSE
+        </button>
+        
+        <div class="challenge-counter">Registered impulses: {challengeClicks}</div>
       </div>
 
     {:else}
@@ -269,7 +420,6 @@
           <div class="error-banner">{statusMsg}</div>
         {/if}
 
-        <!-- New SMS Form -->
         <form class="outbox-form" onsubmit={sendSms}>
           <div class="outbox-form__inputs">
             <input type="text" placeholder="Recipient Number (e.g. 0611223344)" bind:value={outboxRecipient} required />
@@ -376,11 +526,6 @@
     gap: 16px;
   }
 
-  .login-card__icon {
-    font-size: 48px;
-    margin-bottom: 8px;
-  }
-
   .login-card__title {
     font-size: 24px;
     font-weight: 700;
@@ -435,26 +580,13 @@
     font-weight: 700;
     letter-spacing: 0.5px;
     transition: all var(--transition);
-    margin-top: 8px;
     overflow: hidden;
+    cursor: pointer;
   }
 
   .login-card__btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 30px var(--accent-glow);
-  }
-
-  .btn-pulse {
-    position: absolute;
-    inset: 0;
-    border-radius: 60px;
-    border: 2px solid rgba(255,255,255,0.3);
-    animation: pulse-ring 2s ease-out infinite;
-  }
-
-  @keyframes pulse-ring {
-    0% { transform: scale(1); opacity: 1; }
-    100% { transform: scale(1.15); opacity: 0; }
   }
 
   .login-card__status {
@@ -463,14 +595,13 @@
     margin-top: 8px;
   }
 
-  /* Waiting animation */
-  .waiting-pulse {
-    animation: bounce 1.5s ease-in-out infinite;
-  }
-
-  @keyframes bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+  /* Waiting state */
+  .countdown-display {
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin: 20px 0;
   }
 
   .waiting-dots {
@@ -482,7 +613,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--text-muted);
     animation: dot-pulse 1.4s ease-in-out infinite;
   }
 
@@ -492,6 +623,62 @@
   @keyframes dot-pulse {
     0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
     40% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Challenge state */
+  .challenge-card {
+    border-color: var(--accent);
+    box-shadow: 0 0 40px var(--accent-glow);
+  }
+
+  .challenge-timer {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--danger);
+    margin: 10px 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .challenge-btn {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 2px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 10px 30px var(--accent-glow);
+    transition: transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .challenge-btn:active {
+    transform: scale(0.95);
+  }
+
+  .btn-pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.4);
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.3); opacity: 0; }
+  }
+
+  .challenge-counter {
+    font-size: 18px;
+    font-weight: 500;
+    margin-top: 20px;
   }
 
   /* Dashboard */
@@ -507,7 +694,7 @@
     font-weight: 700;
   }
 
-  .dashboard__refresh {
+  .btn-refresh {
     padding: 8px 20px;
     border-radius: var(--radius-sm);
     background: var(--bg-card);
@@ -515,9 +702,10 @@
     color: var(--text-secondary);
     font-size: 13px;
     transition: all var(--transition);
+    cursor: pointer;
   }
 
-  .dashboard__refresh:hover {
+  .btn-refresh:hover {
     border-color: var(--accent);
     color: var(--accent-light);
   }
@@ -574,13 +762,6 @@
     color: var(--text-muted);
   }
 
-  @media (max-width: 480px) {
-    .relay-header { padding: 16px 20px; }
-    .relay-content { padding: 24px 16px; }
-    .login-card { padding: 32px 24px; }
-    .outbox-form { flex-direction: column; }
-  }
-
   .outbox-form {
     display: flex;
     gap: 12px;
@@ -614,6 +795,8 @@
     border-radius: 8px;
     font-weight: 600;
     transition: background 0.2s;
+    border: none;
+    cursor: pointer;
   }
   
   .btn-send:hover {
@@ -625,5 +808,15 @@
     color: var(--accent);
     margin-bottom: 24px;
     text-align: center;
+  }
+
+  .error-banner {
+    background: rgba(255,59,48,0.1);
+    color: var(--danger);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    border: 1px solid rgba(255,59,48,0.2);
   }
 </style>
