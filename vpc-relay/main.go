@@ -69,6 +69,17 @@ func initDB() {
 		log.Fatal("Failed to create gafam_sessions table:", err)
 	}
 
+	createOutboxTable := `
+	CREATE TABLE IF NOT EXISTS gafam_outbox (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		recipient TEXT,
+		body TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createOutboxTable); err != nil {
+		log.Fatal("Failed to create gafam_outbox table:", err)
+	}
+
 	log.Println("Database initialized successfully.")
 }
 
@@ -133,9 +144,10 @@ func main() {
 
 	// Protected Routes (Bearer token from APK)
 	mux.HandleFunc("POST /api/gafam/pair-device", authMiddleware(pairDeviceHandler))
-	mux.HandleFunc("POST /api/sms/", authMiddleware(smsHandler))
-	mux.HandleFunc("GET /api/sms/", authMiddleware(getSmsHandler))
-
+	mux.HandleFunc("POST /api/auth/sms/", authMiddleware(smsHandler))
+	mux.HandleFunc("GET /api/auth/sms/outbox", authMiddleware(getOutboxHandler))
+	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
+	
 	// Auth Routes for Web Client handshake
 	mux.HandleFunc("POST /api/auth/request-session", requestSessionHandler)
 	mux.HandleFunc("POST /api/auth/confirm-session", authMiddleware(confirmSessionHandler))
@@ -143,6 +155,7 @@ func main() {
 
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
+	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {

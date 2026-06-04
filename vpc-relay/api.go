@@ -2,14 +2,179 @@ package main
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"math/big"
 	"net/http"
 	"os"
 	"strings"
 )
+
+// --- Crypto Helpers ---
+
+func deriveKey(secret string) []byte {
+	hash := sha256.Sum256([]byte(secret))
+	return hash[:]
+}
+
+func encryptAESGCM(key []byte, plaintext []byte) (string, string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", "", err
+	}
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", "", err
+	}
+	iv := make([]byte, aesgcm.NonceSize())
+	if _, err := rand.Read(iv); err != nil {
+		return "", "", err
+	}
+	ciphertext := aesgcm.Seal(nil, iv, plaintext, nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), base64.StdEncoding.EncodeToString(iv), nil
+}
+
+func decryptAESGCM(key []byte, encryptedBase64 string, ivBase64 string) ([]byte, error) {
+	ciphertext, err := base64.StdEncoding.DecodeString(encryptedBase64)
+	if err != nil {
+		return nil, err
+	}
+	iv, err := base64.StdEncoding.DecodeString(ivBase64)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	if len(iv) != aesgcm.NonceSize() {
+		return nil, errors.New("invalid IV length")
+	}
+	return aesgcm.Open(nil, iv, ciphertext, nil)
+}
+
+// --- Outbox Handlers ---
+
+type OutboxParams struct {
+	Recipient string `json:"recipient"`
+	Body      string `json:"body"`
+}
+
+func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
+	var payload EncryptedPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token = parts[1]
+			}
+		}
+	}
+
+	key := deriveKey(token)
+	plaintext, err := decryptAESGCM(key, payload.EncryptedData, payload.IV)
+	if err != nil {
+		http.Error(w, "Decryption failed", http.StatusForbidden)
+		return
+	}
+
+	var params OutboxParams
+	if err := json.Unmarshal(plaintext, &params); err != nil {
+		http.Error(w, "Invalid decrypted JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	stmt := `INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`
+	res, err := db.Exec(stmt, params.Recipient, params.Body)
+	if err != nil {
+		http.Error(w, "Failed to save to outbox", http.StatusInternalServerError)
+		return
+	}
+
+	id, _ := res.LastInsertId()
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "queued",
+		"id":     id,
+	})
+}
+
+func getOutboxHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT id, recipient, body, created_at FROM gafam_outbox ORDER BY created_at ASC")
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var outboxList []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var recipient, body, createdAt string
+		if err := rows.Scan(&id, &recipient, &body, &createdAt); err == nil {
+			outboxList = append(outboxList, map[string]interface{}{
+				"id":         id,
+				"recipient":  recipient,
+				"body":       body,
+				"created_at": createdAt,
+			})
+		}
+	}
+
+	if outboxList == nil {
+		outboxList = []map[string]interface{}{}
+	}
+
+	jsonData, err := json.Marshal(outboxList)
+	if err != nil {
+		http.Error(w, "Failed to marshal JSON", http.StatusInternalServerError)
+		return
+	}
+
+	key := deriveKey(string(jwtSecret))
+	encryptedBase64, ivBase64, err := encryptAESGCM(key, jsonData)
+	if err != nil {
+		http.Error(w, "Encryption failed", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, EncryptedPayload{
+		EncryptedData: encryptedBase64,
+		IV:            ivBase64,
+	})
+}
+
+func deleteOutboxHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Exec("DELETE FROM gafam_outbox WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, "Failed to delete from outbox", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
 
 // Handlers
 
@@ -66,10 +231,28 @@ type SmsParams struct {
 	Timestamp *int64  `json:"timestamp"`
 }
 
+type EncryptedPayload struct {
+	EncryptedData string `json:"encrypted_data"`
+	IV            string `json:"iv"`
+}
+
 func smsHandler(w http.ResponseWriter, r *http.Request) {
-	var params SmsParams
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
+	var payload EncryptedPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	key := deriveKey(string(jwtSecret))
+	plaintext, err := decryptAESGCM(key, payload.EncryptedData, payload.IV)
+	if err != nil {
+		http.Error(w, "Decryption failed", http.StatusForbidden)
+		return
+	}
+
+	var params SmsParams
+	if err := json.Unmarshal(plaintext, &params); err != nil {
+		http.Error(w, "Invalid decrypted JSON payload", http.StatusBadRequest)
 		return
 	}
 
@@ -115,7 +298,34 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 		smsList = []map[string]interface{}{}
 	}
 
-	sendJSON(w, http.StatusOK, smsList)
+	jsonData, err := json.Marshal(smsList)
+	if err != nil {
+		http.Error(w, "Failed to marshal JSON", http.StatusInternalServerError)
+		return
+	}
+
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token = parts[1]
+			}
+		}
+	}
+
+	key := deriveKey(token)
+	encryptedBase64, ivBase64, err := encryptAESGCM(key, jsonData)
+	if err != nil {
+		http.Error(w, "Encryption failed", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, EncryptedPayload{
+		EncryptedData: encryptedBase64,
+		IV:            ivBase64,
+	})
 }
 
 // --- Web Client Auth Handlers (Handshake Simultané) ---
