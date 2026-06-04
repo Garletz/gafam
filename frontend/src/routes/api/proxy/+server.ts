@@ -21,7 +21,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		// In local dev (Node.js): falls back to regular fetch()
 		try {
 			// @ts-ignore — cloudflare:sockets is Cloudflare Workers runtime only
-			const { connect } = await import('cloudflare:sockets');
+			const { connect } = await import(/* @vite-ignore */ 'cloudflare:sockets');
 
 			const socket = connect(`${host}:${port}`);
 			const writer = socket.writable.getWriter();
