@@ -96,7 +96,7 @@ async fn start_do_oauth(app: AppHandle) -> Result<String, String> {
     let (ip, jwt_secret) = create_droplet(&token).await.map_err(|e| e.to_string())?;
 
     let response_json = serde_json::json!({
-        "url": format!("http://{}:8080", ip),
+        "url": format!("https://{}:5150", ip),
         "token": jwt_secret
     });
 
@@ -186,8 +186,11 @@ echo "GAFAM VPC DEPLOYED" > /root/gafam_status.log
 
 #[tauri::command]
 async fn ping_vpc(url: String) -> Result<bool, String> {
+    // Accept self-signed TLS certificates — the VPC uses a self-generated ECDSA cert.
+    // Identity is verified via the cert fingerprint stored in Cloudflare D1, not the CA chain.
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
+        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| e.to_string())?;
 
