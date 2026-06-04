@@ -23,7 +23,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			// @ts-ignore — cloudflare:sockets is Cloudflare Workers runtime only
 			const { connect } = await import('cloudflare:sockets');
 
-			const socket = connect(`${host}:${port}`, { secureTransport: 'on' });
+			const socket = connect(`${host}:${port}`);
 			const writer = socket.writable.getWriter();
 			const encoder = new TextEncoder();
 

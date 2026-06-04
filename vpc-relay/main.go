@@ -27,51 +27,6 @@ var jwtSecret []byte
 
 // CertFingerprint is the SHA-256 fingerprint of the self-signed TLS certificate.
 // It is announced to the Cloudflare directory so the Worker can verify the VPC identity.
-var CertFingerprint string
-
-func generateSelfSignedCert() (tls.Certificate, error) {
-	// Generate ECDSA private key
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	// Certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject: pkix.Name{
-			Organization: []string{"GAFAM Relay VPC"},
-			CommonName:   "gafam-vpc",
-		},
-		NotBefore:             time.Now().Add(-1 * time.Minute),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	// Self-sign the certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	// Compute SHA-256 fingerprint of the raw DER bytes
-	fingerprint := sha256.Sum256(certDER)
-	CertFingerprint = "sha256:" + hex.EncodeToString(fingerprint[:])
-	log.Printf("TLS Certificate fingerprint: %s", CertFingerprint)
-
-	// Encode to PEM
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyBytes, err := x509.MarshalECPrivateKey(privateKey)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
-
-	return tls.X509KeyPair(certPEM, keyPEM)
-}
-
 func initDB() {
 	var err error
 	// Database path
@@ -178,11 +133,7 @@ func main() {
 	}
 	jwtSecret = []byte(secret)
 
-	// Generate self-signed TLS certificate at startup
-	cert, err := generateSelfSignedCert()
-	if err != nil {
-		log.Fatal("Failed to generate TLS certificate:", err)
-	}
+	// TLS removed to allow Cloudflare Workers TCP Socket to connect
 
 	initDB()
 
@@ -209,22 +160,14 @@ func main() {
 		port = "5150"
 	}
 
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
-
 	server := &http.Server{
 		Addr:      "0.0.0.0:" + port,
 		Handler:   corsMiddleware(mux),
-		TLSConfig: tlsConfig,
 	}
 
-	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTPS, self-signed TLS)", port)
-	log.Printf("Fingerprint: %s", CertFingerprint)
+	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTP)", port)
 
-	// ListenAndServeTLS with empty strings = use the cert from TLSConfig
-	if err := server.ListenAndServeTLS("", ""); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal("Server error:", err)
 	}
 }

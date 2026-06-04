@@ -51,9 +51,11 @@
   }
 
   function deleteServer(id: string) {
-    if (confirm("Are you sure you want to remove this server? This will not destroy the droplet on DigitalOcean.")) {
-      savedServers = savedServers.filter(s => s.id !== id);
-      saveServers();
+    // Note: confirm() is blocked in Tauri WebViews, so we delete directly.
+    savedServers = savedServers.filter(s => s.id !== id);
+    saveServers();
+    if (activeServer?.id === id) {
+      activeServer = null;
       currentView = 'dashboard';
     }
   }

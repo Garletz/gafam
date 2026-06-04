@@ -178,10 +178,9 @@ func confirmSessionHandler(w http.ResponseWriter, r *http.Request) {
 	// Announce asynchronously to Cloudflare Directory
 	go func() {
 		payload := map[string]string{
-			"phone":            req.Phone,
-			"session_token":    sessionToken,
-			"port":             port,
-			"cert_fingerprint": CertFingerprint,
+			"phone":         req.Phone,
+			"session_token": sessionToken,
+			"port":          port,
 		}
 		jsonData, _ := json.Marshal(payload)
 		resp, err := http.Post("https://gafam.cloud/api/directory", "application/json", bytes.NewBuffer(jsonData))
