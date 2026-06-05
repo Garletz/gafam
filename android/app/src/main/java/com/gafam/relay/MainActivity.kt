@@ -204,6 +204,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         startOutboxPoller()
+
+        // Sync contacts on start if enabled
+        val apiUrl = prefs.getString("apiUrl", null)
+        val jwtSecret = prefs.getString("jwtSecret", null)
+        if (apiUrl != null && jwtSecret != null) {
+            syncContacts(apiUrl, jwtSecret)
+        }
     }
 
     override fun onDestroy() {
@@ -422,7 +429,7 @@ class MainActivity : AppCompatActivity() {
         thread {
             while (isPollingOutbox) {
                 pollOutbox()
-                Thread.sleep(10000) // Poll every 10 seconds
+                Thread.sleep(1000) // Poll every 1 second
             }
         }
     }

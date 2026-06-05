@@ -213,6 +213,8 @@ func main() {
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
 	mux.HandleFunc("GET /api/web/contacts", sessionMiddleware(getContactsHandler))
 	mux.HandleFunc("GET /api/web/network-nodes", sessionMiddleware(getNetworkNodesHandler))
+	
+	mux.HandleFunc("GET /api/gafam/contacts", authMiddleware(getContactsHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {
