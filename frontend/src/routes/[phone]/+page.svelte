@@ -339,12 +339,27 @@
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
       const res = await fetch(`/api/proxy/contacts?${proxyParams.toString()}`);
       if (res.ok) {
-        const list = await res.json();
-        const map: Record<string, string> = {};
-        for (const c of list) {
-          map[c.phone_number] = c.display_name;
+        const payload = await res.json();
+        if (payload.encrypted_data && payload.iv) {
+          try {
+            const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+            const list = JSON.parse(plaintext);
+            const map: Record<string, string> = {};
+            for (const c of list) {
+              map[c.phone_number] = c.display_name;
+            }
+            contacts = map;
+          } catch (e) {
+            console.error("Failed to decrypt contacts", e);
+          }
+        } else if (Array.isArray(payload)) {
+          // Fallback if not yet encrypted (e.g. before VPC restart)
+          const map: Record<string, string> = {};
+          for (const c of payload) {
+            map[c.phone_number] = c.display_name;
+          }
+          contacts = map;
         }
-        contacts = map;
       }
     } catch(e) {}
   }
@@ -420,8 +435,14 @@
       const res = await fetch(`/api/proxy/settings?${proxyParams.toString()}`);
       if (res.ok) {
         const payload = await res.json();
-        if (payload.contacts_sync_enabled !== undefined) {
-          syncContacts = payload.contacts_sync_enabled === "true";
+        if (payload.encrypted_data && payload.iv) {
+          try {
+            const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+            const settingsObj = JSON.parse(plaintext);
+            if (settingsObj.contacts_sync_enabled !== undefined) {
+              syncContacts = settingsObj.contacts_sync_enabled === "true";
+            }
+          } catch(e) {}
         }
       }
     } catch (e) {}
@@ -430,10 +451,13 @@
   async function toggleContactSync() {
     try {
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const plaintext = JSON.stringify({ key: 'contacts_sync_enabled', value: syncContacts ? "true" : "false" });
+      const encryptedPayload = await encryptAESGCM(plaintext, sessionToken);
+
       await fetch(`/api/proxy/settings?${proxyParams.toString()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'contacts_sync_enabled', value: syncContacts ? "true" : "false" })
+        body: JSON.stringify(encryptedPayload)
       });
     } catch (e) {}
   }
