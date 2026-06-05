@@ -26,6 +26,7 @@
   let certFingerprint = $state(data.certFingerprint || '');
   let smsList = $state<any[]>([]);
   let contacts = $state<Record<string, string>>({});
+  let sidebarTab = $state<'chats' | 'contacts'>('chats');
   let syncContacts = $state(true);
   let selectedSender = $state<string | null>(null);
   let pollInterval: ReturnType<typeof setInterval>;
@@ -220,6 +221,27 @@
     if (state === 'challenge') {
       challengeClicks += 1;
     }
+  }
+
+  function getContactName(sender: string) {
+    if (contacts[sender]) return contacts[sender];
+    if (!sender) return 'Unknown';
+    
+    const normSender = sender.replace(/\D/g, '');
+    if (normSender.length < 6) return sender;
+    
+    const suffixLen = Math.min(normSender.length, 9);
+    const senderSuffix = normSender.slice(-suffixLen);
+    
+    for (const [phone, name] of Object.entries(contacts)) {
+      const normContact = phone.replace(/\D/g, '');
+      if (normContact.endsWith(senderSuffix)) {
+        if (normContact.length >= suffixLen) {
+          return name;
+        }
+      }
+    }
+    return sender;
   }
 
   async function processChallenge() {
@@ -482,7 +504,10 @@
         <!-- SIDEBAR -->
         <aside class="sidebar">
           <div class="sidebar__header">
-            <h2>Chats</h2>
+            <div class="sidebar__tabs">
+              <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
+              <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
+            </div>
             <div class="sidebar__actions">
               <label class="toggle-sync" title="Sync Contacts with Android">
                 <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
@@ -491,15 +516,27 @@
             </div>
           </div>
           <div class="sidebar__list">
-            {#each Object.keys(conversations()) as sender}
-              <button class="chat-item {selectedSender === sender ? 'active' : ''}" onclick={() => selectedSender = sender}>
-                <div class="chat-item__avatar">{ (contacts[sender] || sender).charAt(0).toUpperCase() }</div>
-                <div class="chat-item__info">
-                  <div class="chat-item__name">{contacts[sender] || sender}</div>
-                  <div class="chat-item__preview">{conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...</div>
-                </div>
-              </button>
-            {/each}
+            {#if sidebarTab === 'chats'}
+              {#each Object.keys(conversations()) as sender}
+                <button class="chat-item {selectedSender === sender ? 'active' : ''}" onclick={() => selectedSender = sender}>
+                  <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
+                  <div class="chat-item__info">
+                    <div class="chat-item__name">{getContactName(sender)}</div>
+                    <div class="chat-item__preview">{conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...</div>
+                  </div>
+                </button>
+              {/each}
+            {:else}
+              {#each Object.entries(contacts) as [cPhone, cName]}
+                <button class="chat-item" onclick={() => { selectedSender = cPhone; sidebarTab = 'chats'; }}>
+                  <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
+                  <div class="chat-item__info">
+                    <div class="chat-item__name">{cName}</div>
+                    <div class="chat-item__preview contact-phone">{cPhone}</div>
+                  </div>
+                </button>
+              {/each}
+            {/if}
           </div>
         </aside>
 
@@ -507,10 +544,10 @@
         <main class="chat-main">
           {#if selectedSender}
             <div class="chat-main__header">
-              <h3>{contacts[selectedSender] || selectedSender}</h3>
+              <h3>{getContactName(selectedSender)}</h3>
             </div>
             <div class="chat-main__messages">
-              {#each conversations()[selectedSender] as sms}
+              {#each (conversations()[selectedSender] || []) as sms}
                 <div class="msg">
                   <div class="msg__bubble">{sms.body}</div>
                   <div class="msg__time">{formatTime(sms.timestamp)}</div>
@@ -598,14 +635,36 @@
     flex-direction: column;
   }
   .sidebar__header {
-    padding: 20px;
+    padding: 16px;
     border-bottom: 1px solid #dfe1e5;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 12px;
   }
-  .sidebar__header h2 { margin: 0; font-size: 18px; color: #202124; }
-  
+  .sidebar__tabs {
+    display: flex;
+    gap: 8px;
+  }
+  .tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 600;
+    color: #5f6368;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active {
+    color: #1a73e8;
+    border-bottom-color: #1a73e8;
+  }
+  .sidebar__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
   .toggle-sync {
     display: flex;
     align-items: center;
