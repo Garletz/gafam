@@ -210,9 +210,8 @@ echo "GAFAM VPC DEPLOYED" > /root/gafam_status.log
 
 #[tauri::command]
 async fn ping_vpc(url: String) -> Result<bool, String> {
-    // The VPC is now using plain HTTP because Cloudflare Workers TCP sockets
-    // do not support bypassing invalid certificate errors.
     let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
         .timeout(std::time::Duration::from_secs(3))
         .build()
         .map_err(|e| e.to_string())?;

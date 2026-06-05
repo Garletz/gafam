@@ -311,22 +311,35 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stmt := `INSERT INTO gafam_sms (sender, body, timestamp) VALUES (?, ?, ?)`
-	res, err := db.Exec(stmt, params.Sender, params.Body, params.Timestamp)
+	// Anti-Spam: Check if sender is a verified contact
+	var isVerified int
+	err = db.QueryRow("SELECT is_verified FROM gafam_contacts WHERE phone_number = ?", params.Sender).Scan(&isVerified)
+	
+	status := "purgatory"
+	if err == nil && isVerified == 1 {
+		status = "inbox"
+	}
+
+	stmt := `INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`
+	res, err := db.Exec(stmt, params.Sender, params.Body, params.Timestamp, status)
 	if err != nil {
 		http.Error(w, "Failed to save SMS", http.StatusInternalServerError)
 		return
 	}
 
+	// Rolling Window: Keep max 50,000 SMS
+	db.Exec(`DELETE FROM gafam_sms WHERE id NOT IN (SELECT id FROM gafam_sms ORDER BY id DESC LIMIT 50000)`)
+
 	id, _ := res.LastInsertId()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "saved",
 		"id":     id,
+		"spam_status": status,
 	})
 }
 
 func getSmsHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, sender, body, timestamp, created_at FROM gafam_sms ORDER BY timestamp DESC")
+	rows, err := db.Query("SELECT id, sender, body, timestamp, created_at, status FROM gafam_sms ORDER BY timestamp DESC")
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -336,15 +349,16 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 	var smsList []map[string]interface{}
 	for rows.Next() {
 		var id int
-		var sender, body, createdAt string
+		var sender, body, createdAt, status string
 		var timestamp int64
-		if err := rows.Scan(&id, &sender, &body, &timestamp, &createdAt); err == nil {
+		if err := rows.Scan(&id, &sender, &body, &timestamp, &createdAt, &status); err == nil {
 			smsList = append(smsList, map[string]interface{}{
 				"id":         id,
 				"sender":     sender,
 				"body":       body,
 				"timestamp":  timestamp,
 				"created_at": createdAt,
+				"status":     status,
 			})
 		}
 	}
@@ -720,4 +734,119 @@ func generateToken(length int) string {
 		b[i] = charset[n.Int64()]
 	}
 	return string(b)
+}
+
+// --- NEW HANDLERS (Phase 1) ---
+
+type ContactPayload struct {
+	Phone       string `json:"phone_number"`
+	DisplayName string `json:"display_name"`
+	IsVerified  int    `json:"is_verified"`
+}
+
+func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
+	var contacts []ContactPayload
+	if err := json.NewDecoder(r.Body).Decode(&contacts); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO gafam_contacts (phone_number, display_name, is_verified) 
+		VALUES (?, ?, ?) 
+		ON CONFLICT(phone_number) DO UPDATE SET display_name=excluded.display_name, is_verified=excluded.is_verified
+	`)
+	if err != nil {
+		tx.Rollback()
+		http.Error(w, "DB prepare error", http.StatusInternalServerError)
+		return
+	}
+	defer stmt.Close()
+
+	for _, c := range contacts {
+		_, err := stmt.Exec(c.Phone, c.DisplayName, c.IsVerified)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "DB insert error", http.StatusInternalServerError)
+			return
+		}
+	}
+	tx.Commit()
+
+	sendJSON(w, http.StatusOK, map[string]string{"status": "contacts_synced"})
+}
+
+func getContactsHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT phone_number, display_name, is_verified FROM gafam_contacts")
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var contacts []map[string]interface{}
+	for rows.Next() {
+		var phone, name string
+		var isVerified int
+		if err := rows.Scan(&phone, &name, &isVerified); err == nil {
+			contacts = append(contacts, map[string]interface{}{
+				"phone_number": phone,
+				"display_name": name,
+				"is_verified":  isVerified,
+			})
+		}
+	}
+	if contacts == nil {
+		contacts = []map[string]interface{}{}
+	}
+	sendJSON(w, http.StatusOK, contacts)
+}
+
+func getNetworkNodesHandler(w http.ResponseWriter, r *http.Request) {
+	nodes := map[string]interface{}{
+		"vpc": map[string]string{"status": "online"},
+		"devices": []map[string]interface{}{},
+		"web_clients": []map[string]interface{}{},
+	}
+
+	// Devices
+	devRows, _ := db.Query("SELECT device_name, is_primary FROM gafam_devices")
+	if devRows != nil {
+		defer devRows.Close()
+		for devRows.Next() {
+			var name string
+			var primary int
+			if devRows.Scan(&name, &primary) == nil {
+				nodes["devices"] = append(nodes["devices"].([]map[string]interface{}), map[string]interface{}{
+					"name": name,
+					"is_primary": primary == 1,
+				})
+			}
+		}
+	}
+
+	// Web Clients
+	wcRows, _ := db.Query("SELECT device_name, os_signature, ip_address, last_seen FROM gafam_web_clients")
+	if wcRows != nil {
+		defer wcRows.Close()
+		for wcRows.Next() {
+			var name, osSig, ip, lastSeen string
+			if wcRows.Scan(&name, &osSig, &ip, &lastSeen) == nil {
+				nodes["web_clients"] = append(nodes["web_clients"].([]map[string]interface{}), map[string]interface{}{
+					"device_name": name,
+					"os_signature": osSig,
+					"ip_address": ip,
+					"last_seen": lastSeen,
+				})
+			}
+		}
+	}
+
+	sendJSON(w, http.StatusOK, nodes)
 }

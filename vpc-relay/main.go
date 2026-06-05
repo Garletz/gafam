@@ -55,11 +55,15 @@ func initDB() {
 		sender TEXT,
 		body TEXT,
 		timestamp INTEGER,
+		status TEXT DEFAULT 'inbox',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	if _, err := db.Exec(createSmsTable); err != nil {
 		log.Fatal("Failed to create gafam_sms table:", err)
 	}
+
+	// Try to add status column if upgrading an existing DB
+	db.Exec("ALTER TABLE gafam_sms ADD COLUMN status TEXT DEFAULT 'inbox';")
 
 	createSessionsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_sessions (
@@ -86,6 +90,32 @@ func initDB() {
 	);`
 	if _, err := db.Exec(createOutboxTable); err != nil {
 		log.Fatal("Failed to create gafam_outbox table:", err)
+	}
+
+	createContactsTable := `
+	CREATE TABLE IF NOT EXISTS gafam_contacts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		phone_number TEXT UNIQUE,
+		display_name TEXT,
+		is_verified INTEGER DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createContactsTable); err != nil {
+		log.Fatal("Failed to create gafam_contacts table:", err)
+	}
+
+	createWebClientsTable := `
+	CREATE TABLE IF NOT EXISTS gafam_web_clients (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		session_id TEXT UNIQUE,
+		device_name TEXT,
+		os_signature TEXT,
+		ip_address TEXT,
+		last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createWebClientsTable); err != nil {
+		log.Fatal("Failed to create gafam_web_clients table:", err)
 	}
 
 	log.Println("Database initialized successfully.")
@@ -155,6 +185,7 @@ func main() {
 	mux.HandleFunc("POST /api/auth/sms/", authMiddleware(smsHandler))
 	mux.HandleFunc("GET /api/auth/sms/outbox", authMiddleware(getOutboxHandler))
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
+	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))
 	
 	// Auth Routes for Web Client handshake (legacy)
 	mux.HandleFunc("POST /api/auth/request-session", requestSessionHandler)
@@ -168,6 +199,8 @@ func main() {
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
+	mux.HandleFunc("GET /api/web/contacts", sessionMiddleware(getContactsHandler))
+	mux.HandleFunc("GET /api/web/network-nodes", sessionMiddleware(getNetworkNodesHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {

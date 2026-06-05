@@ -10,6 +10,7 @@
     name: string;
     url: string;
     token: string;
+    certFingerprint: string;
     createdAt: number;
   }
 
@@ -18,6 +19,7 @@
   
   let generatedScript = $state('sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/TonRepo/GAFAM/main/deploy-vpc.sh)"');
   let jwtToken = $state("");
+  let certFingerprint = $state("");
   let vpcUrl = $state("");
   let doConnecting = $state(false);
   let loadingText = $state("");
@@ -37,12 +39,13 @@
     localStorage.setItem('gafam_servers', JSON.stringify(savedServers));
   }
 
-  function addServerToList(name: string, url: string, token: string) {
+  function addServerToList(name: string, url: string, token: string, certFingerprint: string) {
     const newServer: SavedServer = {
       id: crypto.randomUUID(),
       name,
       url,
       token,
+      certFingerprint,
       createdAt: Date.now()
     };
     savedServers = [...savedServers, newServer];
@@ -64,6 +67,7 @@
     activeServer = server;
     vpcUrl = server.url;
     jwtToken = server.token;
+    certFingerprint = server.certFingerprint;
     currentView = 'paired';
     renderQR();
   }
@@ -103,6 +107,7 @@
       
       vpcUrl = data.url; 
       jwtToken = data.token;
+      certFingerprint = data.cert_fingerprint;
       
       loadingText = "Droplet created! Waiting for VPC API to become ready (can take up to 5 minutes)...";
       stepIndex = steps.length;
@@ -129,7 +134,7 @@
       
       alert(get(t)('alerts.auth_success') + " " + data.url);
       
-      const newServer = addServerToList(`DigitalOcean VPC (${new Date().toLocaleDateString()})`, data.url, data.token);
+      const newServer = addServerToList(`DigitalOcean VPC (${new Date().toLocaleDateString()})`, data.url, data.token, data.cert_fingerprint);
       
       doConnecting = false;
       showServerDetails(newServer);
@@ -144,11 +149,11 @@
   function handleManualConnect() {
     try {
       const config = JSON.parse(jwtToken);
-      if (config.apiUrl && config.jwtSecret) {
-        const newServer = addServerToList(`Manual Server (${new Date().toLocaleDateString()})`, config.apiUrl, config.jwtSecret);
+      if (config.apiUrl && config.jwtSecret && config.certFingerprint) {
+        const newServer = addServerToList(`Manual Server (${new Date().toLocaleDateString()})`, config.apiUrl, config.jwtSecret, config.certFingerprint);
         showServerDetails(newServer);
       } else {
-        alert("Invalid JSON format. Expected apiUrl and jwtSecret.");
+        alert("Invalid JSON format. Expected apiUrl, jwtSecret, certFingerprint.");
       }
     } catch(e) {
       alert("Invalid JSON data.");
@@ -157,8 +162,8 @@
 
   function renderQR() {
     setTimeout(() => {
-        if (canvas && vpcUrl && jwtToken) {
-            const data = JSON.stringify({ url: vpcUrl, token: jwtToken });
+        if (canvas && vpcUrl && jwtToken && certFingerprint) {
+            const data = JSON.stringify({ url: vpcUrl, token: jwtToken, cert_fingerprint: certFingerprint });
             new QRious({
               element: canvas,
               value: data,

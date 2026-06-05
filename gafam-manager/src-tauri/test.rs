@@ -1,6 +1,7 @@
-use rcgen::generate_simple_self_signed;
-fn main() {
-    let subject_alt_names = vec!["wikipedia.org".to_string()];
-    let cert = generate_simple_self_signed(subject_alt_names).unwrap();
-    println!("{:?}", cert);
+use reqwest;
+#[tokio::main]
+async fn main() {
+    let client = reqwest::Client::builder().danger_accept_invalid_certs(true).build().unwrap();
+    let res = client.get("https://google.com").send().await.unwrap();
+    println!("Status: {}", res.status());
 }
