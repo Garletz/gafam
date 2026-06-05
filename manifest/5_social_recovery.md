@@ -26,3 +26,16 @@ Imaginez que vous êtes chez Alice (votre amie, qui est une de vos Gardiennes de
 - **Liberté matérielle totale** : Vous pouvez voyager léger, sans aucun appareil électronique (ni smartphone, ni boîtier), et quand même accéder à vos messages de n'importe où dans le monde, à condition de rencontrer un de vos nœuds de confiance.
 - **Sécurité anti-hacker** : C'est une authentification à deux facteurs "Biologique et Sociale". Un hacker à l'autre bout du monde ne pourra jamais pirater ou simuler la validation physique asynchrone de vos amis.
 - **Résilience (Perte/Vol)** : Si votre domicile brûle avec votre *Hardware Relay* à l'intérieur, vos amis peuvent valider l'association d'un tout nouveau boîtier matériel à votre VPC. C'est le niveau ultime de sécurité décentralisée.
+
+## Feature Supplémentaire : Le "Ping Recovery" (via un numéro de confiance classique)
+
+En plus des Gardiens équipés de GAFAM, vous pouvez définir un **"Numéro de Recovery"** classique dans votre VPC (souvent un proche). Ce proche **n'a pas besoin** d'utiliser le réseau GAFAM, il lui suffit d'avoir un téléphone standard capable d'envoyer des SMS.
+
+**Le Mécanisme :**
+1. Vous êtes à distance, sans votre téléphone ni votre boîtier matériel. Votre ami est avec vous avec son téléphone normal.
+2. Vous lui demandez d'envoyer un mot-clé par SMS (par exemple le code par défaut `num.gafam.cloud`) à votre propre numéro de téléphone (votre téléphone relais resté chez vous).
+3. Votre téléphone relais (à la maison) reçoit ce SMS. L'APK Android intercepte le message, analyse l'expéditeur et détecte qu'il s'agit de votre Numéro de Recovery autorisé.
+4. En tâche de fond, l'APK demande à votre VPC de générer un coffre valide (avec l'heure et les impulsions requises).
+5. L'APK répond alors automatiquement au téléphone de votre ami avec un SMS contenant les accès d'urgence : *"Code généré : Heure XX:XX, Impulsions X"*.
+6. Votre proche reçoit ce SMS. Il vous le montre.
+7. Vous vous connectez sur votre espace en ligne (`votre-numero.gafam.cloud`), vous rentrez le code (Heure + Impulsions) que votre ami vient de recevoir, et vous accédez à votre compte !
