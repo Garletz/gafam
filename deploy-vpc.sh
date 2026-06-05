@@ -49,6 +49,7 @@ docker run -d \
   -p 5150:5150 \
   -p 5151:5151 \
   -v /root/vpc-relay:/app/certs \
+  -v /root/gafam_data:/app/data \
   -e PORT="5150" \
   -e TLS_PORT="5151" \
   -e TLS_CERT="/app/certs/cert.pem" \
@@ -56,10 +57,23 @@ docker run -d \
   -e JWT_SECRET="${JWT_SECRET}" \
   ghcr.io/garletz/gafam:latest
 
+# 6. Auto-Update System (Watchtower)
+echo "[*] Setting up Watchtower for automatic updates..."
+docker rm -f watchtower 2>/dev/null || true
+docker run -d \
+  --name watchtower \
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  containrrr/watchtower \
+  --cleanup \
+  --interval 300 \
+  gafam-api
+
 echo ""
 echo "=========================================="
 echo "✅ GAFAM VPC successfully deployed!"
 echo "=========================================="
 echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
+echo "🔄 Auto-updates enabled: VPC will update automatically within 5 minutes of a new GitHub release."
 echo "=========================================="
