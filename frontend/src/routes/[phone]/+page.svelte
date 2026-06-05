@@ -9,8 +9,7 @@
   let phone = $derived(page.params.phone);
 
   // Connection state
-  let state = $state<'setup' | 'waiting' | 'challenge' | 'connected'>('setup');
-  
+  let appState: 'setup' | 'waiting' | 'challenge' | 'connected' | 'error' = $state('setup');
   // Challenge variables
   let inputTime = $state(''); // User inputs "18:36" or "1836"
   let challengeTimeStr = $state(''); // Normalized to "1836"
@@ -21,15 +20,15 @@
   let challengeRemaining = $state(30);
   let challengeClicks = $state(0);
 
-  let sessionToken = $state(data.sessionToken || '');
-  let vpcUrl = $state(data.savedVpcUrl || '');
-  let certFingerprint = $state(data.certFingerprint || '');
-  let smsList = $state<any[]>([]);
-  let contacts = $state<Record<string, string>>({});
-  let sidebarTab = $state<'chats' | 'contacts'>('chats');
-  let contactSearchQuery = $state('');
-  let syncContacts = $state(true);
-  let selectedSender = $state<string | null>(null);
+  let sessionToken: string = $state((data as any).sessionToken || '');
+  let vpcUrl: string = $state((data as any).savedVpcUrl || '');
+  let certFingerprint: string = $state((data as any).certFingerprint || '');
+  let smsList: any[] = $state([]);
+  let contacts: Record<string, string> = $state({});
+  let sidebarTab: 'chats' | 'contacts' = $state('chats');
+  let contactSearchQuery: string = $state('');
+  let syncContacts: boolean = $state(true);
+  let selectedSender: string | null = $state(null);
   let pollInterval: ReturnType<typeof setInterval>;
   let countdownInterval: ReturnType<typeof setInterval>;
   let statusMsg = $state('');
@@ -151,11 +150,11 @@
     }
 
     if (vpcUrl && sessionToken) {
-      state = 'connected';
+      appState = 'connected' | 'error';
       loadSms();
       pollInterval = setInterval(loadSms, 5000);
     } else {
-      state = 'setup';
+      appState = 'setup';
     }
 
     return () => {
@@ -180,7 +179,7 @@
   }
 
   function startWaitingForTime() {
-    state = 'waiting';
+    appState = 'waiting';
     updateCountdown();
     countdownInterval = setInterval(updateCountdown, 1000);
   }
@@ -205,7 +204,7 @@
   }
 
   function startActiveChallenge() {
-    state = 'challenge';
+    appState = 'challenge';
     challengeClicks = 0;
     challengeRemaining = 30;
 
@@ -219,7 +218,7 @@
   }
 
   function registerClick() {
-    if (state === 'challenge') {
+    if (appState === 'challenge') {
       challengeClicks += 1;
     }
   }
@@ -250,13 +249,14 @@
     
     // We wait a tiny bit so the UI updates
     setTimeout(async () => {
+      let lockedDownCorrectTime: boolean | undefined = undefined;
       try {
         const res = await fetch(`/api/directory?phone=${phone}&time=${challengeTimeStr}`);
         
         if (res.status === 429) {
-           state = 'error';
+           appState = 'error';
            try {
-             const errData = await res.json();
+             const errData: any = await res.json();
              statusMsg = errData.error || 'Rate limit exceeded. Try again later.';
            } catch(e) {
              statusMsg = 'Rate limit exceeded. Try again later.';
@@ -264,9 +264,9 @@
            return;
         }
 
-        const result = await res.json();
+        const result: any = await res.json();
         if (!result.success) {
-           state = 'error';
+           appState = 'error';
            statusMsg = 'Decryption failed (bad time or clicks).';
            return;
         }
@@ -274,7 +274,7 @@
         encryptedSafe = result.encrypted_safe;
         safeSalt = result.salt;
         safeIv = result.iv;
-        const lockedDownCorrectTime = result.locked_down_correct_time;
+        lockedDownCorrectTime = result.locked_down_correct_time;
 
         const passphrase = `${challengeTimeStr}-${challengeClicks}`;
         const aesKey = await derivePBKDF2Key(passphrase, safeSalt);
@@ -297,7 +297,7 @@
           document.cookie = `gafam_auth_${phone}=${encodeURIComponent(authData)}; domain=${getRootDomain()}; path=/; max-age=31536000`;
           window.dispatchEvent(new Event('gafam-auth-changed'));
           
-          state = 'connected';
+          appState = 'connected' | 'error';
           statusMsg = '';
           loadSms();
           loadContacts();
@@ -311,7 +311,7 @@
           throw new Error('Invalid safe contents');
         }
       } catch (err) {
-        state = 'setup';
+        appState = 'setup';
         if (typeof lockedDownCorrectTime !== 'undefined' && lockedDownCorrectTime === true) {
             statusMsg = 'SECURITY ALERT: Massive brute-force detected. Safe locked down. Please wait 24h or use a different phone number.';
         } else {
@@ -361,7 +361,7 @@
     const entries = Object.entries(contacts);
     if (!contactSearchQuery) return entries;
     const q = contactSearchQuery.toLowerCase();
-    return entries.filter(([cPhone, cName]) => 
+    return entries.filter(([cPhone, cName]: [string, string]) => 
       cName.toLowerCase().includes(q) || cPhone.includes(q)
     );
   });
@@ -371,7 +371,7 @@
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
       const res = await fetch(`/api/proxy/contacts?${proxyParams.toString()}`);
       if (res.ok) {
-        const payload = await res.json();
+        const payload: any = await res.json();
         if (payload.encrypted_data && payload.iv) {
           try {
             const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
@@ -402,7 +402,7 @@
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
       const res = await fetch(`/api/proxy?${proxyParams.toString()}`);
       if (res.ok) {
-        const payload = await res.json();
+        const payload: any = await res.json();
         if (payload.error) {
            statusMsg = 'VPC returned an error: ' + payload.error;
         } else if (payload.encrypted_data && payload.iv) {
@@ -419,12 +419,12 @@
         }
       } else if (res.status === 403) {
         if (pollInterval) clearInterval(pollInterval);
-        state = 'setup';
+        appState = 'setup';
         sessionToken = '';
         vpcUrl = '';
         statusMsg = 'Session expired. Please reauthorize from your phone.';
       } else {
-        const errorData = await res.json().catch(() => ({}));
+        const errorData: any = await res.json().catch(() => ({}));
         statusMsg = errorData.error ? `Proxy error: ${errorData.error}` : `HTTP Error ${res.status}`;
       }
     } catch (e: any) {
@@ -474,7 +474,7 @@
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken });
       const res = await fetch(`/api/proxy/settings?${proxyParams.toString()}`);
       if (res.ok) {
-        const payload = await res.json();
+        const payload: any = await res.json();
         if (payload.encrypted_data && payload.iv) {
           try {
             const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
@@ -515,7 +515,7 @@
 
 <main class="relay-page">
   <div class="relay-content">
-    {#if state === 'setup'}
+    {#if appState === 'setup'}
       <!-- SETUP CHALLENGE -->
       <div class="login-card">
         <h2 class="login-card__title">Authorization Required</h2>
@@ -532,7 +532,7 @@
         {/if}
       </div>
 
-    {:else if state === 'waiting'}
+    {:else if appState === 'waiting'}
       <!-- WAITING FOR TARGET TIME -->
       <div class="login-card">
         <h2 class="login-card__title">Safe Retrieved</h2>
@@ -547,7 +547,7 @@
         </div>
       </div>
 
-    {:else if state === 'challenge'}
+    {:else if appState === 'challenge'}
       <!-- ACTIVE CHALLENGE (CLICKS) -->
       <div class="login-card challenge-card">
         <h2 class="login-card__title">Challenge Active</h2>
