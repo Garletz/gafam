@@ -444,7 +444,7 @@
 
         <form class="login-card__field" onsubmit={startChallengeFlow}>
           <label>Challenge Time</label>
-          <input type="time" bind:value={inputTime} required />
+          <input type="text" placeholder="e.g. 18:36" bind:value={inputTime} required />
           <button type="submit" class="login-card__btn">Next</button>
         </form>
 
@@ -472,12 +472,11 @@
       <!-- ACTIVE CHALLENGE (CLICKS) -->
       <div class="login-card challenge-card">
         <h2 class="login-card__title">Challenge Active</h2>
-        <p class="login-card__desc">Click the button below the <strong>exact number of times</strong> shown on your physical relay device.</p>
+        <p class="login-card__desc">Click the button below the exact number of times shown on your phone.</p>
 
         <div class="challenge-timer">Time left: {challengeRemaining}s</div>
         
         <button class="challenge-btn" onclick={registerClick}>
-          <div class="btn-pulse"></div>
           IMPULSE
         </button>
         
@@ -599,42 +598,26 @@
     padding: 20px;
   }
   .login-card {
-    background: #111;
-    padding: 48px 40px;
-    border-radius: 16px;
-    border: 1px solid #333;
+    background: #ffffff;
+    padding: 40px;
+    border-radius: 12px;
+    border: 1px solid #dfe1e5;
     text-align: center;
     width: 100%;
     max-width: 400px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.2);
-    color: white;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
   }
-  .login-card__title { margin: 0 0 10px; font-size: 24px; color: white; font-weight: 700; }
-  .login-card__desc { color: #888; font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
-  .login-card__field label { display: block; text-align: left; margin-bottom: 8px; color: #888; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; }
-  .login-card__field input { width: 100%; box-sizing: border-box; padding: 14px 18px; background: #222; border: 1px solid #444; color: white; border-radius: 8px; margin-bottom: 16px; font-size: 16px; font-variant-numeric: tabular-nums; }
-  .login-card__field input:focus { border-color: #ff3b30; outline: none; box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.2); }
-  .login-card__btn { width: 100%; padding: 16px; margin-top: 16px; background: white; color: black; font-weight: bold; border: none; border-radius: 60px; cursor: pointer; transition: all 0.2s; font-size: 16px; }
-  .login-card__btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,255,255,0.2); }
-  .login-card__status { color: #ff3b30; margin-top: 16px; font-size: 13px; font-weight: 500; }
-  
-  .countdown-display { font-size: 48px; font-weight: 900; color: #ff3b30; font-variant-numeric: tabular-nums; margin: 20px 0; }
-  .waiting-dots { display: flex; gap: 8px; justify-content: center; }
-  .waiting-dots span { width: 10px; height: 10px; border-radius: 50%; background: #666; animation: dot-pulse 1.4s ease-in-out infinite; }
-  .waiting-dots span:nth-child(2) { animation-delay: 0.2s; }
-  .waiting-dots span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes dot-pulse { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
-  
-  .challenge-card { border-color: #ff3b30; box-shadow: 0 0 40px rgba(255, 59, 48, 0.15); }
-  .challenge-timer { font-size: 20px; font-weight: 600; color: #ff3b30; margin: 10px 0; font-variant-numeric: tabular-nums; }
+  .login-card__title { margin: 0 0 10px; font-size: 20px; color: #202124; }
+  .login-card__desc { color: #5f6368; font-size: 14px; margin-bottom: 24px; }
+  .login-card__field label { display: block; text-align: left; margin-bottom: 8px; color: #5f6368; font-size: 12px; text-transform: uppercase; }
+  .login-card__field input { width: 100%; box-sizing: border-box; padding: 12px; background: #f1f3f4; border: 1px solid #dfe1e5; color: #202124; border-radius: 6px; margin-bottom: 16px; }
+  .login-card__btn { width: 100%; padding: 12px; background: #202124; color: white; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+  .login-card__status { color: #d93025; margin-top: 16px; font-size: 13px; }
   
   .challenge-btn {
-    position: relative;
-    width: 200px; height: 200px; border-radius: 50%; background: #ff3b30; color: white; font-size: 24px; font-weight: 900; letter-spacing: 2px; border: none; cursor: pointer; margin: 30px auto; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(255, 59, 48, 0.3); transition: transform 0.1s;
+    width: 150px; height: 150px; border-radius: 50%; background: #f1f3f4; color: #202124; font-size: 18px; border: 1px solid #dfe1e5; cursor: pointer; margin: 20px auto; display: block; box-shadow: 0 4px 10px rgba(0,0,0,0.05);
   }
-  .challenge-btn:active { transform: scale(0.95); }
-  .btn-pulse { position: absolute; inset: 0; border-radius: 50%; border: 4px solid rgba(255, 255, 255, 0.4); animation: pulse-ring 2s ease-out infinite; }
-  @keyframes pulse-ring { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
+  .challenge-btn:active { background: #e8eaed; transform: scale(0.95); }
   .challenge-counter { font-size: 18px; font-weight: 500; margin-top: 20px; }
   
   .messenger-ui {
