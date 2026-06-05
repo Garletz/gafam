@@ -745,9 +745,22 @@ type ContactPayload struct {
 }
 
 func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
-	var contacts []ContactPayload
-	if err := json.NewDecoder(r.Body).Decode(&contacts); err != nil {
+	var payload EncryptedPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	key := deriveKey(string(jwtSecret))
+	plaintext, err := decryptAESGCM(key, payload.EncryptedData, payload.IV)
+	if err != nil {
+		http.Error(w, "Decryption failed", http.StatusForbidden)
+		return
+	}
+
+	var contacts []ContactPayload
+	if err := json.Unmarshal(plaintext, &contacts); err != nil {
+		http.Error(w, "Invalid decrypted JSON payload", http.StatusBadRequest)
 		return
 	}
 
@@ -803,7 +816,35 @@ func getContactsHandler(w http.ResponseWriter, r *http.Request) {
 	if contacts == nil {
 		contacts = []map[string]interface{}{}
 	}
-	sendJSON(w, http.StatusOK, contacts)
+
+	jsonData, err := json.Marshal(contacts)
+	if err != nil {
+		http.Error(w, "Failed to marshal JSON", http.StatusInternalServerError)
+		return
+	}
+
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token = parts[1]
+			}
+		}
+	}
+
+	key := deriveKey(token)
+	encryptedBase64, ivBase64, err := encryptAESGCM(key, jsonData)
+	if err != nil {
+		http.Error(w, "Encryption failed", http.StatusInternalServerError)
+		return
+	}
+
+	sendJSON(w, http.StatusOK, EncryptedPayload{
+		EncryptedData: encryptedBase64,
+		IV:            ivBase64,
+	})
 }
 
 func getNetworkNodesHandler(w http.ResponseWriter, r *http.Request) {
@@ -865,31 +906,81 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 				settings[key] = val
 			}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(settings)
+		token := r.URL.Query().Get("token")
+		if token == "" {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader != "" {
+				parts := strings.Split(authHeader, " ")
+				if len(parts) == 2 && parts[0] == "Bearer" {
+					token = parts[1]
+				}
+			}
+		}
+
+		key := deriveKey(token)
+		jsonData, err := json.Marshal(settings)
+		if err != nil {
+			http.Error(w, "JSON error", http.StatusInternalServerError)
+			return
+		}
+
+		encryptedBase64, ivBase64, err := encryptAESGCM(key, jsonData)
+		if err != nil {
+			http.Error(w, "Encryption error", http.StatusInternalServerError)
+			return
+		}
+
+		sendJSON(w, http.StatusOK, EncryptedPayload{
+			EncryptedData: encryptedBase64,
+			IV:            ivBase64,
+		})
 		return
 	}
 
 	if r.Method == http.MethodPost {
-		var payload struct {
-			Key   string `json:"key"`
-			Value string `json:"value"`
-		}
+		var payload EncryptedPayload
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, "Invalid body", http.StatusBadRequest)
 			return
 		}
 
-		if payload.Key == "" {
+		token := r.URL.Query().Get("token")
+		if token == "" {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader != "" {
+				parts := strings.Split(authHeader, " ")
+				if len(parts) == 2 && parts[0] == "Bearer" {
+					token = parts[1]
+				}
+			}
+		}
+
+		key := deriveKey(token)
+		plaintext, err := decryptAESGCM(key, payload.EncryptedData, payload.IV)
+		if err != nil {
+			http.Error(w, "Decryption failed", http.StatusForbidden)
+			return
+		}
+
+		var setting struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(plaintext, &setting); err != nil {
+			http.Error(w, "Invalid decrypted JSON", http.StatusBadRequest)
+			return
+		}
+
+		if setting.Key == "" {
 			http.Error(w, "Missing key", http.StatusBadRequest)
 			return
 		}
 
-		_, err := db.Exec(`
+		_, err = db.Exec(`
 			INSERT INTO gafam_settings (key, value) 
 			VALUES (?, ?) 
 			ON CONFLICT(key) DO UPDATE SET value=excluded.value
-		`, payload.Key, payload.Value)
+		`, setting.Key, setting.Value)
 		
 		if err != nil {
 			http.Error(w, "DB error", http.StatusInternalServerError)
