@@ -758,9 +758,9 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO gafam_contacts (phone_number, display_name, is_verified) 
-		VALUES (?, ?, ?) 
-		ON CONFLICT(phone_number) DO UPDATE SET display_name=excluded.display_name, is_verified=excluded.is_verified
+		INSERT INTO gafam_contacts (phone_number, display_name) 
+		VALUES (?, ?) 
+		ON CONFLICT(phone_number) DO UPDATE SET display_name=excluded.display_name
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -770,7 +770,7 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 	defer stmt.Close()
 
 	for _, c := range contacts {
-		_, err := stmt.Exec(c.Phone, c.DisplayName, c.IsVerified)
+		_, err := stmt.Exec(c.Phone, c.DisplayName)
 		if err != nil {
 			tx.Rollback()
 			http.Error(w, "DB insert error", http.StatusInternalServerError)
@@ -783,7 +783,7 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getContactsHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT phone_number, display_name, is_verified FROM gafam_contacts")
+	rows, err := db.Query("SELECT phone_number, display_name FROM gafam_contacts")
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
@@ -793,12 +793,10 @@ func getContactsHandler(w http.ResponseWriter, r *http.Request) {
 	var contacts []map[string]interface{}
 	for rows.Next() {
 		var phone, name string
-		var isVerified int
-		if err := rows.Scan(&phone, &name, &isVerified); err == nil {
+		if err := rows.Scan(&phone, &name); err == nil {
 			contacts = append(contacts, map[string]interface{}{
 				"phone_number": phone,
 				"display_name": name,
-				"is_verified":  isVerified,
 			})
 		}
 	}
