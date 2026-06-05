@@ -14,11 +14,11 @@
 < Access-Control-Allow-Credentials: true
 < Access-Control-Allow-Headers: Content-Type, Authorization
 < Access-Control-Allow-Methods: GET, POST, OPTIONS
+< Content-Length: 15
 < Content-Type: application/json
-< Date: Fri, 05 Jun 2026 16:55:25 GMT
-< Content-Length: 16
+< Date: Fri, 05 Jun 2026 17:22:53 GMT
 < 
-{ [16 bytes data]
-100    16  100    16    0     0  13179      0 --:--:-- --:--:-- --:--:-- 16000
+{ [15 bytes data]
+100    15  100    15    0     0  10541      0 --:--:-- --:--:-- --:--:-- 15000
 * Connection #0 to host localhost left intact
 {"status":"ok"}
