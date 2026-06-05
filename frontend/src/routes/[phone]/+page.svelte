@@ -259,6 +259,7 @@
           vpcUrl = safeData.vpcUrl;
           sessionToken = safeData.sessionToken;
           localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken, certFingerprint }));
+          window.dispatchEvent(new Event('gafam-auth-changed'));
           
           state = 'connected';
           statusMsg = '';
@@ -427,31 +428,6 @@
 </svelte:head>
 
 <main class="relay-page">
-  <header class="relay-header">
-    <a href="/" class="relay-header__logo">
-      <span class="logo-g">GAFAM</span>
-    </a>
-    
-    <div class="relay-header__spacer"></div>
-
-    {#if state === 'connected'}
-      <div class="profile-menu-container">
-        <button class="profile-avatar" onclick={() => isProfileMenuOpen = !isProfileMenuOpen}>
-          {phone.charAt(phone.length - 1)}
-        </button>
-        
-        {#if isProfileMenuOpen}
-          <div class="profile-dropdown">
-            <div class="profile-dropdown__id">{phone}</div>
-            <button class="profile-dropdown__logout" onclick={logout}>Sign out</button>
-          </div>
-        {/if}
-      </div>
-    {:else}
-      <div class="relay-header__phone">{phone}</div>
-    {/if}
-  </header>
-
   <div class="relay-content">
     {#if state === 'setup'}
       <!-- SETUP CHALLENGE -->
@@ -569,97 +545,9 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   .relay-page {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-  .relay-header {
-    display: flex;
-    align-items: center;
-    padding: 12px 24px;
-    background: #ffffff;
-    border-bottom: 1px solid #dfe1e5;
-    position: relative;
-  }
-  .relay-header__logo {
-    font-size: 22px;
-    font-weight: 500;
-    text-decoration: none;
-    color: #202124;
-    letter-spacing: -0.5px;
-  }
-  .logo-g { color: #202124; }
-  
-  .relay-header__spacer {
     flex: 1;
-  }
-  
-  .relay-header__phone {
-    color: #5f6368;
-    font-size: 14px;
-    letter-spacing: 1px;
-  }
-  
-  .profile-menu-container {
-    position: relative;
-  }
-  
-  .profile-avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: #1a73e8;
-    color: white;
-    font-size: 16px;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: box-shadow 0.2s;
-  }
-  .profile-avatar:hover {
-    box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
-  }
-  
-  .profile-dropdown {
-    position: absolute;
-    top: 48px;
-    right: 0;
-    background: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    border: 1px solid #dfe1e5;
-    width: 240px;
-    padding: 16px;
-    z-index: 100;
     display: flex;
     flex-direction: column;
-    align-items: center;
-  }
-  .profile-dropdown__id {
-    font-size: 14px;
-    color: #202124;
-    font-weight: 500;
-    margin-bottom: 16px;
-    word-break: break-all;
-    text-align: center;
-  }
-  .profile-dropdown__logout {
-    width: 100%;
-    padding: 10px 16px;
-    background: #ffffff;
-    border: 1px solid #dfe1e5;
-    color: #3c4043;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: background 0.2s;
-  }
-  .profile-dropdown__logout:hover {
-    background: #f8f9fa;
   }
   .relay-content {
     flex: 1;
