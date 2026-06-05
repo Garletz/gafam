@@ -27,6 +27,7 @@
   let smsList = $state<any[]>([]);
   let contacts = $state<Record<string, string>>({});
   let sidebarTab = $state<'chats' | 'contacts'>('chats');
+  let contactSearchQuery = $state('');
   let syncContacts = $state(true);
   let selectedSender = $state<string | null>(null);
   let pollInterval: ReturnType<typeof setInterval>;
@@ -321,17 +322,48 @@
   }
 
   
+  let optimisticSms = $state<any[]>([]);
+
   let conversations = $derived(() => {
     const groups: Record<string, any[]> = {};
+    
     for (const sms of smsList) {
       if (!groups[sms.sender]) groups[sms.sender] = [];
       groups[sms.sender].push(sms);
     }
-    // Sort each group by timestamp ascending
+    
+    if (selectedSender && !groups[selectedSender]) {
+      groups[selectedSender] = [];
+    }
+    
+    const now = Date.now();
+    for (const opt of optimisticSms) {
+      if (!groups[opt.sender]) groups[opt.sender] = [];
+      
+      const hasRealMatch = groups[opt.sender].some(real => 
+         real.direction === 'outbound' && 
+         real.body === opt.body && 
+         Math.abs(real.timestamp - opt.timestamp) < 120000
+      );
+      
+      if (!hasRealMatch && (now - opt.timestamp) < 120000) {
+         groups[opt.sender].push(opt);
+      }
+    }
+
     for (const k in groups) {
       groups[k].sort((a,b) => a.timestamp - b.timestamp);
     }
     return groups;
+  });
+
+  let filteredContacts = $derived(() => {
+    const entries = Object.entries(contacts);
+    if (!contactSearchQuery) return entries;
+    const q = contactSearchQuery.toLowerCase();
+    return entries.filter(([cPhone, cName]) => 
+      cName.toLowerCase().includes(q) || cPhone.includes(q)
+    );
   });
 
   async function loadContacts() {
@@ -404,9 +436,22 @@
     e.preventDefault();
     if (!outboxRecipient || !outboxBody) return;
     
-    outboxStatus = 'Encrypting & Sending...';
+    const body = outboxBody;
+    const recipient = outboxRecipient;
+    outboxBody = ''; // Clear input immediately
+    
+    // Add optimistic message
+    const optMsg = {
+      sender: recipient,
+      direction: 'outbound',
+      body: body,
+      timestamp: Date.now(),
+      status: 'sending'
+    };
+    optimisticSms = [...optimisticSms, optMsg];
+    
     try {
-      const plaintext = JSON.stringify({ recipient: outboxRecipient, body: outboxBody });
+      const plaintext = JSON.stringify({ recipient, body });
       const encryptedPayload = await encryptAESGCM(plaintext, sessionToken);
       
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
@@ -416,12 +461,7 @@
         body: JSON.stringify(encryptedPayload)
       });
       
-      if (res.ok) {
-        outboxStatus = 'Sent to VPC Outbox! (Waiting for Android relay)';
-        outboxBody = '';
-        outboxRecipient = '';
-        setTimeout(() => outboxStatus = '', 3000);
-      } else {
+      if (!res.ok) {
         outboxStatus = 'Failed to send: HTTP ' + res.status;
       }
     } catch (err: any) {
@@ -533,6 +573,11 @@
               <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
             </div>
             <div class="sidebar__actions">
+              {#if sidebarTab === 'contacts'}
+                <div class="contact-search">
+                  <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
+                </div>
+              {/if}
               <label class="toggle-sync" title="Sync Contacts with Android">
                 <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
                 <span>Sync Contacts</span>
@@ -546,12 +591,18 @@
                   <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
                   <div class="chat-item__info">
                     <div class="chat-item__name">{getContactName(sender)}</div>
-                    <div class="chat-item__preview">{conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...</div>
+                    <div class="chat-item__preview">
+                      {#if conversations()[sender].length > 0}
+                        {conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...
+                      {:else}
+                        New conversation
+                      {/if}
+                    </div>
                   </div>
                 </button>
               {/each}
             {:else}
-              {#each Object.entries(contacts) as [cPhone, cName]}
+              {#each filteredContacts() as [cPhone, cName]}
                 <button class="chat-item" onclick={() => { selectedSender = cPhone; sidebarTab = 'chats'; }}>
                   <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
                   <div class="chat-item__info">
@@ -572,9 +623,12 @@
             </div>
             <div class="chat-main__messages">
               {#each (conversations()[selectedSender] || []) as sms}
-                <div class="msg">
+                <div class="msg {sms.direction === 'outbound' ? 'msg--out' : 'msg--in'} {sms.status === 'sending' ? 'msg--sending' : ''}">
                   <div class="msg__bubble">{sms.body}</div>
-                  <div class="msg__time">{formatTime(sms.timestamp)}</div>
+                  <div class="msg__time">
+                     {formatTime(sms.timestamp)}
+                     {#if sms.status === 'sending'} <span>(Sending...)</span>{/if}
+                  </div>
                 </div>
               {/each}
             </div>
@@ -681,14 +735,29 @@
     border-bottom: 2px solid transparent;
   }
   .tab.active {
-    color: #1a73e8;
-    border-bottom-color: #1a73e8;
+    color: #202124;
+    border-bottom-color: #202124;
   }
   .sidebar__actions {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     justify-content: flex-end;
+    gap: 12px;
   }
+  .contact-search { width: 100%; }
+  .contact-search input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    border-radius: 20px;
+    border: 1px solid #dfe1e5;
+    background: #f1f3f4;
+    font-size: 13px;
+    outline: none;
+  }
+  .contact-search input:focus { border-color: #bdc1c6; }
+  
   .toggle-sync {
     display: flex;
     align-items: center;
@@ -703,7 +772,17 @@
     cursor: pointer;
   }
 
-  .sidebar__list { flex: 1; overflow-y: auto; }
+  .sidebar__list {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #bdc1c6 transparent;
+  }
+  .sidebar__list::-webkit-scrollbar { width: 6px; }
+  .sidebar__list::-webkit-scrollbar-track { background: transparent; }
+  .sidebar__list::-webkit-scrollbar-thumb { background-color: #bdc1c6; border-radius: 10px; }
+  .sidebar__list::-webkit-scrollbar-thumb:hover { background-color: #80868b; }
+  
   .chat-item {
     display: flex;
     padding: 15px 20px;
@@ -716,6 +795,8 @@
     gap: 12px;
     align-items: center;
     color: #202124;
+    content-visibility: auto;
+    contain-intrinsic-size: 71px;
   }
   .chat-item:hover, .chat-item.active { background: #e8eaed; }
   .chat-item__avatar {
@@ -745,9 +826,14 @@
     flex-direction: column;
     gap: 16px;
   }
-  .msg { align-self: flex-start; max-width: 70%; }
-  .msg__bubble { background: #f1f3f4; color: #202124; padding: 12px 16px; border-radius: 16px; border-bottom-left-radius: 4px; font-size: 15px; line-height: 1.4; }
-  .msg__time { font-size: 11px; color: #80868b; margin-top: 4px; margin-left: 4px; }
+  .msg { max-width: 70%; display: flex; flex-direction: column; }
+  .msg--in { align-self: flex-start; }
+  .msg--in .msg__bubble { background: #f1f3f4; color: #202124; padding: 12px 16px; border-radius: 16px; border-bottom-left-radius: 4px; font-size: 15px; line-height: 1.4; }
+  .msg--in .msg__time { font-size: 11px; color: #80868b; margin-top: 4px; margin-left: 4px; }
+  .msg--out { align-self: flex-end; }
+  .msg--out .msg__bubble { background: #202124; color: #ffffff; padding: 12px 16px; border-radius: 16px; border-bottom-right-radius: 4px; font-size: 15px; line-height: 1.4; }
+  .msg--out .msg__time { font-size: 11px; color: #80868b; margin-top: 4px; margin-right: 4px; text-align: right; }
+  .msg--sending { opacity: 0.6; }
   
   .chat-main__input {
     padding: 20px;
