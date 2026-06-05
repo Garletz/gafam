@@ -7,6 +7,7 @@ import (
 	mrand "math/rand"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -258,7 +259,13 @@ func main() {
 
 // Helpers
 func sendJSON(w http.ResponseWriter, status int, data interface{}) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, "Failed to marshal JSON", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(jsonData)))
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	w.Write(jsonData)
 }
