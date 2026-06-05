@@ -850,3 +850,58 @@ func getNetworkNodesHandler(w http.ResponseWriter, r *http.Request) {
 
 	sendJSON(w, http.StatusOK, nodes)
 }
+
+func handleSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		rows, err := db.Query("SELECT key, value FROM gafam_settings")
+		if err != nil {
+			http.Error(w, "DB error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		settings := make(map[string]string)
+		for rows.Next() {
+			var key, val string
+			if err := rows.Scan(&key, &val); err == nil {
+				settings[key] = val
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(settings)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		var payload struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid body", http.StatusBadRequest)
+			return
+		}
+
+		if payload.Key == "" {
+			http.Error(w, "Missing key", http.StatusBadRequest)
+			return
+		}
+
+		_, err := db.Exec(`
+			INSERT INTO gafam_settings (key, value) 
+			VALUES (?, ?) 
+			ON CONFLICT(key) DO UPDATE SET value=excluded.value
+		`, payload.Key, payload.Value)
+		
+		if err != nil {
+			http.Error(w, "DB error", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}

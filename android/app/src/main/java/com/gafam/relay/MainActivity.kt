@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
 
     private var vfyReceiver: BroadcastReceiver? = null
     private var smsUiReceiver: BroadcastReceiver? = null
+    private var syncSwitchRef: android.widget.Switch? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,12 +53,16 @@ class MainActivity : AppCompatActivity() {
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
         layout.setPadding(32, 32, 32, 32)
+        layout.setBackgroundColor(android.graphics.Color.BLACK)
         
         statusText = TextView(this)
         statusText.textSize = 18f
+        statusText.setTextColor(android.graphics.Color.WHITE)
         layout.addView(statusText)
 
         val scanBtn = Button(this)
+        scanBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
+        scanBtn.setTextColor(android.graphics.Color.WHITE)
         scanBtn.text = "Scan VPC QR Code"
         scanBtn.setOnClickListener {
             val options = ScanOptions()
@@ -71,6 +76,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(scanBtn)
         
         val defaultSmsBtn = Button(this)
+        defaultSmsBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
+        defaultSmsBtn.setTextColor(android.graphics.Color.WHITE)
         defaultSmsBtn.text = "Set as Default SMS App"
         defaultSmsBtn.setOnClickListener {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -88,6 +95,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(defaultSmsBtn)
 
         val authWebBtn = Button(this)
+        authWebBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
+        authWebBtn.setTextColor(android.graphics.Color.WHITE)
         authWebBtn.text = "Authorize Web Login"
         authWebBtn.setOnClickListener {
             val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
@@ -102,6 +111,8 @@ class MainActivity : AppCompatActivity() {
         layout.addView(authWebBtn)
 
         val testSmsBtn = Button(this)
+        testSmsBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
+        testSmsBtn.setTextColor(android.graphics.Color.WHITE)
         testSmsBtn.text = "Send Test SMS to Myself"
         testSmsBtn.setOnClickListener {
             val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
@@ -124,11 +135,34 @@ class MainActivity : AppCompatActivity() {
         val smsLogTitle = TextView(this)
         smsLogTitle.text = "\nRecent Intercepted SMS:"
         smsLogTitle.textSize = 16f
+        smsLogTitle.setTextColor(android.graphics.Color.WHITE)
         smsLogTitle.setTypeface(null, android.graphics.Typeface.BOLD)
         layout.addView(smsLogTitle)
 
+        val syncContactsSwitch = android.widget.Switch(this)
+        syncContactsSwitch.text = "Sync Contacts with VPC"
+        syncContactsSwitch.setTextColor(android.graphics.Color.WHITE)
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        syncContactsSwitch.isChecked = prefs.getBoolean("contacts_sync_enabled", true)
+        syncContactsSwitch.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean("contacts_sync_enabled", isChecked).apply()
+            updateVpcSettings("contacts_sync_enabled", if (isChecked) "true" else "false")
+            if (isChecked) {
+                val apiUrl = prefs.getString("apiUrl", null)
+                val jwtSecret = prefs.getString("jwtSecret", null)
+                if (apiUrl != null && jwtSecret != null) {
+                    syncContacts(apiUrl, jwtSecret)
+                }
+            }
+        }
+        layout.addView(syncContactsSwitch)
+
+        // Store a reference to update it from the poller
+        syncSwitchRef = syncContactsSwitch
+
         smsLogText = TextView(this)
         smsLogText.textSize = 13f
+        smsLogText.setTextColor(android.graphics.Color.LTGRAY)
         smsLogText.text = "No SMS intercepted yet."
         layout.addView(smsLogText)
         
@@ -136,15 +170,16 @@ class MainActivity : AppCompatActivity() {
         updateStatus()
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) 
+            != PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) 
             != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.INTERNET, Manifest.permission.CAMERA),
+                arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.INTERNET, Manifest.permission.CAMERA, Manifest.permission.READ_CONTACTS),
                 101
             )
         }
 
-        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         if (prefs.getString("myPhoneNumber", null) == null) {
             promptForPhoneNumber()
         }
@@ -409,6 +444,32 @@ class MainActivity : AppCompatActivity() {
                 .build()
 
             val response = client.newCall(request).execute()
+
+            // Also poll settings
+            val settingsReq = Request.Builder()
+                .url(ApiClient.getSpoofedUrl(apiUrl, "/api/settings"))
+                .get()
+                .addHeader("Authorization", "Bearer $jwtSecret")
+                .build()
+            
+            try {
+                val setRes = client.newCall(settingsReq).execute()
+                if (setRes.isSuccessful) {
+                    val setStr = setRes.body?.string() ?: "{}"
+                    val setJson = JSONObject(setStr)
+                    if (setJson.has("contacts_sync_enabled")) {
+                        val isEnabled = setJson.getString("contacts_sync_enabled") == "true"
+                        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+                        if (prefs.getBoolean("contacts_sync_enabled", true) != isEnabled) {
+                            prefs.edit().putBoolean("contacts_sync_enabled", isEnabled).apply()
+                            runOnUiThread {
+                                syncSwitchRef?.isChecked = isEnabled
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {}
+
             if (response.isSuccessful) {
                 val responseStr = response.body?.string() ?: return
                 val payload = JSONObject(responseStr)
@@ -467,6 +528,88 @@ class MainActivity : AppCompatActivity() {
             client.newCall(request).execute()
         } catch (e: Exception) {
             Log.e("GAFAM_Relay", "Error deleting outbox msg", e)
+        }
+    }
+
+    private fun updateVpcSettings(key: String, value: String) {
+        thread {
+            try {
+                val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+                val apiUrl = prefs.getString("apiUrl", null)
+                val jwtSecret = prefs.getString("jwtSecret", null)
+                if (apiUrl == null || jwtSecret == null) return@thread
+
+                val client = ApiClient.getClient(this) ?: return@thread
+                val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/settings")
+                
+                val payload = JSONObject()
+                payload.put("key", key)
+                payload.put("value", value)
+
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url(spoofedUrl)
+                    .post(body)
+                    .addHeader("Authorization", "Bearer $jwtSecret")
+                    .build()
+                
+                client.newCall(request).execute()
+            } catch (e: Exception) {
+                Log.e("GAFAM_Relay", "Error updating VPC settings", e)
+            }
+        }
+    }
+
+    private fun syncContacts(apiUrl: String, jwtSecret: String) {
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("contacts_sync_enabled", true)) {
+            Log.d("GAFAM_Relay", "Contact sync disabled, skipping.")
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return
+
+        thread {
+            try {
+                val contacts = org.json.JSONArray()
+                val cursor = contentResolver.query(
+                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    null, null, null, null
+                )
+                
+                cursor?.use {
+                    val nameIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                    val phoneIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    
+                    while (it.moveToNext()) {
+                        val name = it.getString(nameIdx) ?: "Unknown"
+                        val phone = it.getString(phoneIdx)?.replace(" ", "") ?: ""
+                        if (phone.isNotEmpty()) {
+                            val contactObj = JSONObject().apply {
+                                put("phone_number", phone)
+                                put("display_name", name)
+                                put("is_verified", 1) // Default local contacts to verified friends
+                            }
+                            contacts.put(contactObj)
+                        }
+                    }
+                }
+
+                val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/gafam/contacts")
+                val client = ApiClient.getClient(this) ?: return@thread
+                
+                val requestBody = contacts.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url(spoofedUrl)
+                    .post(requestBody)
+                    .addHeader("Authorization", "Bearer $jwtSecret")
+                    .build()
+                
+                client.newCall(request).execute()
+                Log.d("GAFAM_Relay", "Contacts synced successfully")
+            } catch (e: Exception) {
+                Log.e("GAFAM_Relay", "Failed to sync contacts", e)
+            }
         }
     }
 }

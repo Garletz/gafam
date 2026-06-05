@@ -118,6 +118,15 @@ func initDB() {
 		log.Fatal("Failed to create gafam_web_clients table:", err)
 	}
 
+	createSettingsTable := `
+	CREATE TABLE IF NOT EXISTS gafam_settings (
+		key TEXT PRIMARY KEY,
+		value TEXT
+	);`
+	if _, err := db.Exec(createSettingsTable); err != nil {
+		log.Fatal("Failed to create gafam_settings table:", err)
+	}
+
 	log.Println("Database initialized successfully.")
 }
 
@@ -195,6 +204,9 @@ func main() {
 	// Rendez-vous Synchrone Mécanique (Manifest 12)
 	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
 	mux.HandleFunc("DELETE /api/auth/logout", logoutHandler)
+
+	// Settings API (protected by authMiddleware)
+	mux.HandleFunc("POST /api/settings", authMiddleware(handleSettings))
 
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
