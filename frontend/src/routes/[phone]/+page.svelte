@@ -123,8 +123,20 @@
     };
   }
 
+  function getRootDomain() {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname.includes('gafam.cloud')) return '.gafam.cloud';
+      return hostname;
+    }
+    return '';
+  }
+
   onMount(() => {
-    const saved = localStorage.getItem(`gafam_auth_${phone}`);
+    let saved = null;
+    const match = document.cookie.match(new RegExp('(^| )' + `gafam_auth_${phone}` + '=([^;]+)'));
+    if (match) saved = decodeURIComponent(match[2]);
+    
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -258,7 +270,8 @@
         if (safeData.vpcUrl && safeData.sessionToken) {
           vpcUrl = safeData.vpcUrl;
           sessionToken = safeData.sessionToken;
-          localStorage.setItem(`gafam_auth_${phone}`, JSON.stringify({ vpcUrl, sessionToken, certFingerprint }));
+          const authData = JSON.stringify({ vpcUrl, sessionToken, certFingerprint });
+          document.cookie = `gafam_auth_${phone}=${encodeURIComponent(authData)}; domain=${getRootDomain()}; path=/; max-age=31536000`;
           window.dispatchEvent(new Event('gafam-auth-changed'));
           
           state = 'connected';
@@ -403,20 +416,7 @@
     } catch (e) {}
   }
 
-  async function logout() {
-    if (vpcUrl && sessionToken) {
-      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
-      // Fire and forget
-      fetch(`/api/proxy?${proxyParams.toString()}`, { method: 'DELETE' }).catch(() => {});
-    }
-
-    state = 'setup';
-    sessionToken = '';
-    vpcUrl = '';
-    certFingerprint = '';
-    smsList = [];
-    localStorage.removeItem(`gafam_auth_${phone}`);
-  }
+  // (logout function was moved to layout)
 
   function formatTime(ts: number) {
     return new Date(ts).toLocaleString();

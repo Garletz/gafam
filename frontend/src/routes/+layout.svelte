@@ -10,14 +10,36 @@
 
   function loadAccounts() {
     const accounts: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('gafam_auth_')) {
-        const phone = key.replace('gafam_auth_', '');
-        accounts.push(phone);
+    if (typeof document !== 'undefined') {
+      const cookies = document.cookie.split(';');
+      for (const cookie of cookies) {
+        const trimmed = cookie.trim();
+        if (trimmed.startsWith('gafam_auth_')) {
+          const phone = trimmed.split('=')[0].replace('gafam_auth_', '');
+          if (!accounts.includes(phone)) {
+            accounts.push(phone);
+          }
+        }
       }
     }
     connectedAccounts = accounts;
+  }
+
+  function getRootDomain() {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname.includes('gafam.cloud')) return '.gafam.cloud';
+      return hostname;
+    }
+    return '';
+  }
+
+  function getHomeUrl() {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      if (hostname.includes('gafam.cloud')) return 'https://gafam.cloud';
+    }
+    return '/';
   }
 
   onMount(() => {
@@ -32,26 +54,27 @@
 
   async function logoutAccount(phone: string) {
     try {
-      const authData = JSON.parse(localStorage.getItem(`gafam_auth_${phone}`) || '{}');
+      const match = document.cookie.match(new RegExp('(^| )' + `gafam_auth_${phone}` + '=([^;]+)'));
+      const authData = match ? JSON.parse(decodeURIComponent(match[2])) : {};
       if (authData.vpcUrl && authData.sessionToken) {
         const proxyParams = new URLSearchParams({ vpcUrl: authData.vpcUrl, token: authData.sessionToken, certFingerprint: authData.certFingerprint || '' });
         fetch(`/api/proxy?${proxyParams.toString()}`, { method: 'DELETE' }).catch(() => {});
       }
     } catch(e) {}
 
-    localStorage.removeItem(`gafam_auth_${phone}`);
+    document.cookie = `gafam_auth_${phone}=; domain=${getRootDomain()}; path=/; max-age=0`;
     loadAccounts();
     window.dispatchEvent(new Event('gafam-auth-changed'));
     
     if ($page.url.pathname === `/${phone}`) {
-      window.location.href = '/';
+      window.location.href = getHomeUrl();
     }
   }
 </script>
 
 <div class="app-container">
   <header class="global-header">
-    <a href="/" class="global-header__logo">
+    <a href={getHomeUrl()} class="global-header__logo">
       GAFAM
     </a>
     
@@ -69,10 +92,10 @@
             <div class="account-dropdown__empty">0 accounts</div>
           {:else}
             <div class="account-list">
-              {#each connectedAccounts as phone}
+              {#each connectedAccounts as p}
                 <div class="account-item">
-                  <a href={`/${phone}`} class="account-item__phone" onclick={() => isMenuOpen = false}>{phone}</a>
-                  <button class="account-item__logout" onclick={() => logoutAccount(phone)}>Sign out</button>
+                  <a href={getHomeUrl() === '/' ? `/${p}` : `https://${p}.gafam.cloud`} class="account-item__phone" onclick={() => isMenuOpen = false}>{p}</a>
+                  <button class="account-item__logout" onclick={() => logoutAccount(p)}>Sign out</button>
                 </div>
               {/each}
             </div>
