@@ -32,10 +32,12 @@
   let countdownInterval: ReturnType<typeof setInterval>;
   let statusMsg = $state('');
   
-  // Sending SMS state
   let outboxRecipient = $state('');
   let outboxBody = $state('');
   let outboxStatus = $state('');
+  
+  // Profile menu state
+  let isProfileMenuOpen = $state(false);
 
   // Web Crypto API Helpers
   async function derivePBKDF2Key(passphrase: string, saltBase64: string) {
@@ -427,11 +429,26 @@
 <main class="relay-page">
   <header class="relay-header">
     <a href="/" class="relay-header__logo">
-      <span class="logo-g">G</span><span class="logo-rest">AFAM</span>
+      <span class="logo-g">GAFAM</span>
     </a>
-    <div class="relay-header__phone">{phone}</div>
+    
+    <div class="relay-header__spacer"></div>
+
     {#if state === 'connected'}
-      <button class="relay-header__logout" onclick={logout}>Logout</button>
+      <div class="profile-menu-container">
+        <button class="profile-avatar" onclick={() => isProfileMenuOpen = !isProfileMenuOpen}>
+          {phone.charAt(phone.length - 1)}
+        </button>
+        
+        {#if isProfileMenuOpen}
+          <div class="profile-dropdown">
+            <div class="profile-dropdown__id">{phone}</div>
+            <button class="profile-dropdown__logout" onclick={logout}>Sign out</button>
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <div class="relay-header__phone">{phone}</div>
     {/if}
   </header>
 
@@ -559,36 +576,90 @@
   .relay-header {
     display: flex;
     align-items: center;
-    padding: 16px 32px;
+    padding: 12px 24px;
     background: #ffffff;
     border-bottom: 1px solid #dfe1e5;
+    position: relative;
   }
   .relay-header__logo {
-    font-size: 20px;
-    font-weight: bold;
+    font-size: 22px;
+    font-weight: 500;
     text-decoration: none;
     color: #202124;
-    margin-right: 16px;
+    letter-spacing: -0.5px;
   }
   .logo-g { color: #202124; }
-  .logo-rest { color: #5f6368; }
-  .relay-header__phone {
+  
+  .relay-header__spacer {
     flex: 1;
+  }
+  
+  .relay-header__phone {
     color: #5f6368;
     font-size: 14px;
     letter-spacing: 1px;
   }
-  .relay-header__logout {
-    padding: 6px 16px;
-    background: transparent;
-    border: 1px solid #dfe1e5;
-    color: #5f6368;
-    border-radius: 6px;
-    cursor: pointer;
+  
+  .profile-menu-container {
+    position: relative;
   }
-  .relay-header__logout:hover {
-    border-color: #202124;
+  
+  .profile-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #1a73e8;
+    color: white;
+    font-size: 16px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: box-shadow 0.2s;
+  }
+  .profile-avatar:hover {
+    box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+  }
+  
+  .profile-dropdown {
+    position: absolute;
+    top: 48px;
+    right: 0;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: 1px solid #dfe1e5;
+    width: 240px;
+    padding: 16px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .profile-dropdown__id {
+    font-size: 14px;
     color: #202124;
+    font-weight: 500;
+    margin-bottom: 16px;
+    word-break: break-all;
+    text-align: center;
+  }
+  .profile-dropdown__logout {
+    width: 100%;
+    padding: 10px 16px;
+    background: #ffffff;
+    border: 1px solid #dfe1e5;
+    color: #3c4043;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  .profile-dropdown__logout:hover {
+    background: #f8f9fa;
   }
   .relay-content {
     flex: 1;
