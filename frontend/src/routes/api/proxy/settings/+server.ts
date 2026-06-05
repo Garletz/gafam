@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			const encoder = new TextEncoder();
 
 			const httpRequest = [
-				`GET /api/settings HTTP/1.1`,
+				`GET /api/web/settings HTTP/1.1`,
 				`Host: ${host}`,
 				`Authorization: Bearer ${token}`,
 				`Connection: close`,
@@ -90,7 +90,7 @@ export const POST: RequestHandler = async ({ url, request }) => {
 			const encoder = new TextEncoder();
 
 			const httpRequest = [
-				`POST /api/settings HTTP/1.1`,
+				`POST /api/web/settings HTTP/1.1`,
 				`Host: ${host}`,
 				`Authorization: Bearer ${token}`,
 				`Content-Type: application/json`,

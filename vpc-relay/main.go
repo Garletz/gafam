@@ -214,6 +214,8 @@ func main() {
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
 	mux.HandleFunc("GET /api/web/contacts", sessionMiddleware(getContactsHandler))
+	mux.HandleFunc("GET /api/web/settings", sessionMiddleware(handleSettings))
+	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
 	mux.HandleFunc("GET /api/web/network-nodes", sessionMiddleware(getNetworkNodesHandler))
 	
 	mux.HandleFunc("GET /api/gafam/contacts", authMiddleware(getContactsHandler))
