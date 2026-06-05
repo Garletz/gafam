@@ -24,5 +24,6 @@ VOLUME ["/app/data"]
 
 # Port 5150: GAFAM VPC HTTPS relay (self-signed TLS)
 EXPOSE 5150
+EXPOSE 5151
 
-ENTRYPOINT ["/app/vpc-relay"]
+CMD ["/app/vpc-relay"]

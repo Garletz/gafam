@@ -179,14 +179,31 @@ func main() {
 		Handler:   corsMiddleware(mux),
 	}
 
+	tlsPort := os.Getenv("TLS_PORT")
+	tlsCert := os.Getenv("TLS_CERT")
+	tlsKey := os.Getenv("TLS_KEY")
+
 	// Start OPSEC Honeypot generator (Manifest 12)
 	mrand.Seed(time.Now().UnixNano())
 	startHoneypotGenerator()
 	log.Println("Honeypot generator started (OPSEC)")
 
-	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTP)", port)
+	if tlsPort != "" && tlsCert != "" && tlsKey != "" {
+		tlsServer := &http.Server{
+			Addr:    "0.0.0.0:" + tlsPort,
+			Handler: corsMiddleware(mux),
+		}
+		log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTPS SNI Spoofing)", tlsPort)
+		go func() {
+			if err := tlsServer.ListenAndServeTLS(tlsCert, tlsKey); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("TLS Server error: %v", err)
+			}
+		}()
+	}
 
-	if err := server.ListenAndServe(); err != nil {
+	log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTP for Cloudflare)", port)
+
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal("Server error:", err)
 	}
 }

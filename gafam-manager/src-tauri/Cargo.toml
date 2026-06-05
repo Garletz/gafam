@@ -28,4 +28,7 @@ axum = "0.8.9"
 rand = "0.8.5"
 url = "2.5.8"
 tauri-plugin-shell = "2.3.5"
+rcgen = "0.14.8"
+sha2 = "0.11.0"
+hex = "0.4.3"
 

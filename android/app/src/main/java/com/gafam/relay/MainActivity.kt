@@ -15,7 +15,9 @@ import androidx.core.content.ContextCompat
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import org.json.JSONObject
-import java.net.HttpURLConnection
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URL
 import java.util.UUID
 import kotlin.concurrent.thread
@@ -252,6 +254,7 @@ class MainActivity : AppCompatActivity() {
             val json = JSONObject(contents)
             val apiUrl = json.getString("url")
             val jwtSecret = json.getString("token")
+            val certFingerprint = json.getString("cert_fingerprint")
             
             val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
             var deviceId = prefs.getString("deviceId", null)
@@ -260,12 +263,13 @@ class MainActivity : AppCompatActivity() {
                 prefs.edit().putString("deviceId", deviceId).apply()
             }
             
-            pairDevice(apiUrl, jwtSecret, deviceId) { success ->
+            pairDevice(apiUrl, jwtSecret, deviceId, certFingerprint) { success ->
                 runOnUiThread {
                     if (success) {
                         prefs.edit()
                             .putString("apiUrl", apiUrl)
                             .putString("jwtSecret", jwtSecret)
+                            .putString("certFingerprint", certFingerprint)
                             .apply()
                         statusText.text = "🎉 Successfully Paired!\n\nRelay Agent is ACTIVE\n\nConnected to:\n$apiUrl\n\nWaiting for SMS..."
                         Toast.makeText(this, "VPC Connection Secured", Toast.LENGTH_LONG).show()
@@ -282,27 +286,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun pairDevice(apiUrl: String, token: String, deviceId: String, callback: (Boolean) -> Unit) {
+    private fun pairDevice(apiUrl: String, token: String, deviceId: String, certFingerprint: String, callback: (Boolean) -> Unit) {
         thread {
             try {
-                val url = URL("$apiUrl/api/gafam/pair-device")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Authorization", "Bearer $token")
-                conn.doOutput = true
-                
+                // Temporarily save prefs so ApiClient can use them
+                getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("apiUrl", apiUrl)
+                    .putString("certFingerprint", certFingerprint)
+                    .apply()
+
+                val client = ApiClient.getClient(this) ?: throw Exception("Failed to init API Client")
+                val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/gafam/pair-device")
+
                 val payload = JSONObject()
                 payload.put("device_name", "Android Relay")
                 payload.put("device_id", deviceId)
-                
-                conn.outputStream.write(payload.toString().toByteArray())
-                
-                val code = conn.responseCode
-                Log.d("GAFAM", "Pairing response code: $code")
-                callback(code in 200..299)
+
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url(spoofedUrl)
+                    .post(body)
+                    .addHeader("Authorization", "Bearer $token")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                callback(response.isSuccessful)
             } catch (e: Exception) {
-                Log.e("GAFAM", "Pairing Network Error", e)
+                Log.e("GAFAM_Relay", "Pairing error", e)
                 callback(false)
             }
         }
@@ -325,21 +336,23 @@ class MainActivity : AppCompatActivity() {
                 val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
                 val phone = prefs.getString("myPhoneNumber", "")
 
-                val url = URL("$apiUrl/api/auth/challenge")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Authorization", "Bearer $token")
-                conn.doOutput = true
+                val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/challenge")
+                val client = ApiClient.getClient(this@MainActivity) ?: throw Exception("Failed to init API Client")
 
                 val payload = JSONObject()
                 payload.put("phone", phone)
                 payload.put("challengeTime", challengeTimeStr)
                 payload.put("challengeClicks", challengeClicks)
 
-                conn.outputStream.write(payload.toString().toByteArray())
+                val body = payload.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url(spoofedUrl)
+                    .post(body)
+                    .addHeader("Authorization", "Bearer $token")
+                    .build()
 
-                val code = conn.responseCode
+                val response = client.newCall(request).execute()
+                val code = response.code
                 runOnUiThread {
                     if (code in 200..299) {
                         val alertMessage = "Rendez-vous à $displayTime — $challengeClicks impulsions"
@@ -386,15 +399,18 @@ class MainActivity : AppCompatActivity() {
         if (apiUrl == null || jwtSecret == null) return
 
         try {
-            val url = URL("$apiUrl/api/auth/sms/outbox")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
+            val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/outbox")
+            val client = ApiClient.getClient(this) ?: return
 
-            if (connection.responseCode == 200) {
-                val responseStr = connection.inputStream.bufferedReader().readText()
+            val request = Request.Builder()
+                .url(spoofedUrl)
+                .get()
+                .addHeader("Authorization", "Bearer $jwtSecret")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val responseStr = response.body?.string() ?: return
                 val payload = JSONObject(responseStr)
                 val encryptedData = payload.getString("encrypted_data")
                 val ivStr = payload.getString("iv")
@@ -439,11 +455,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun deleteFromOutbox(apiUrl: String, jwtSecret: String, id: Int) {
         try {
-            val url = URL("$apiUrl/api/auth/sms/outbox?id=$id")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "DELETE"
-            connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
-            connection.responseCode 
+            val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/outbox?id=$id")
+            val client = ApiClient.getClient(this) ?: return
+
+            val request = Request.Builder()
+                .url(spoofedUrl)
+                .delete()
+                .addHeader("Authorization", "Bearer $jwtSecret")
+                .build()
+
+            client.newCall(request).execute()
         } catch (e: Exception) {
             Log.e("GAFAM_Relay", "Error deleting outbox msg", e)
         }

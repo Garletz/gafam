@@ -41,12 +41,18 @@ echo "[*] Starting GAFAM VPC services..."
 docker rm -f gafam-api 2>/dev/null || true
 
 # Run the new container
-# Port 5150: GAFAM HTTPS relay (self-signed TLS, TCP-Socket-compatible, no Cloudflare port restriction)
+# Port 5150: HTTP Clair (Cloudflare)
+# Port 5151: HTTPS + SNI Spoofing (Android)
 docker run -d \
   --name gafam-api \
   --restart always \
   -p 5150:5150 \
+  -p 5151:5151 \
+  -v /root/vpc-relay:/app/certs \
   -e PORT="5150" \
+  -e TLS_PORT="5151" \
+  -e TLS_CERT="/app/certs/cert.pem" \
+  -e TLS_KEY="/app/certs/key.pem" \
   -e JWT_SECRET="${JWT_SECRET}" \
   ghcr.io/garletz/gafam:latest
 

@@ -1,4 +1,5 @@
 use tauri::{AppHandle, Manager};
+use sha2::Digest;
 use axum::{routing::{get, post}, Router, response::{Html}, extract::Form};
 use serde::Deserialize;
 use rand::{distributions::Alphanumeric, Rng};
@@ -92,18 +93,19 @@ async fn start_do_oauth(app: AppHandle) -> Result<String, String> {
     // Wait for the token from the HTTP callback
     let token = rx.await.map_err(|_| "Failed to retrieve OAuth token".to_string())?;
     
-    // Create droplet and get its IP
-    let (ip, jwt_secret) = create_droplet(&token).await.map_err(|e| e.to_string())?;
+    // Create droplet and get its IP, JWT secret, and certificate fingerprint
+    let (ip, jwt_secret, cert_fingerprint) = create_droplet(&token).await.map_err(|e| e.to_string())?;
 
     let response_json = serde_json::json!({
-        "url": format!("http://{}:5150", ip),
-        "token": jwt_secret
+        "url": format!("https://{}:5151", ip),
+        "token": jwt_secret,
+        "cert_fingerprint": cert_fingerprint
     });
 
     Ok(response_json.to_string())
 }
 
-async fn create_droplet(token: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
+async fn create_droplet(token: &str) -> Result<(String, String, String), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     
     let jwt_secret: String = rand::thread_rng()
@@ -112,12 +114,34 @@ async fn create_droplet(token: &str) -> Result<(String, String), Box<dyn std::er
         .map(char::from)
         .collect();
 
+    // Generate a self-signed certificate for wikipedia.org
+    let subject_alt_names = vec!["wikipedia.org".to_string()];
+    let cert = rcgen::generate_simple_self_signed(subject_alt_names)?;
+    let cert_pem = cert.cert.pem();
+    let key_pem = cert.signing_key.serialize_pem();
+
+    // Calculate SHA-256 fingerprint of the DER-encoded certificate
+    let cert_der = cert.cert.der();
+    let digest = sha2::Sha256::digest(&cert_der);
+    let mut cert_fingerprint = String::new();
+    for (i, byte) in digest.iter().enumerate() {
+        cert_fingerprint.push_str(&format!("{:02X}", byte));
+        if i < digest.len() - 1 {
+            cert_fingerprint.push(':');
+        }
+    }
+
     let user_data = format!(
         r#"#!/bin/bash
 export JWT_SECRET="{}"
+mkdir -p /root/vpc-relay
+cat << 'EOF_CERT' > /root/vpc-relay/cert.pem
+{}EOF_CERT
+cat << 'EOF_KEY' > /root/vpc-relay/key.pem
+{}EOF_KEY
 curl -sSL https://raw.githubusercontent.com/Garletz/gafam/main/deploy-vpc.sh | bash
 echo "GAFAM VPC DEPLOYED" > /root/gafam_status.log
-"#, jwt_secret
+"#, jwt_secret, cert_pem, key_pem
     );
 
     let payload = serde_json::json!({
@@ -181,7 +205,7 @@ echo "GAFAM VPC DEPLOYED" > /root/gafam_status.log
         return Err("Droplet created but timed out waiting for public IPv4 address".into());
     }
 
-    Ok((ip_address, jwt_secret))
+    Ok((ip_address, jwt_secret, cert_fingerprint))
 }
 
 #[tauri::command]
