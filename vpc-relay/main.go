@@ -197,12 +197,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
 	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))
 	
-	// Auth Routes for Web Client handshake (legacy)
-	mux.HandleFunc("POST /api/auth/request-session", requestSessionHandler)
-	mux.HandleFunc("POST /api/auth/confirm-session", authMiddleware(confirmSessionHandler))
-	mux.HandleFunc("GET /api/auth/check-session", checkSessionHandler)
-
-	// Rendez-vous Synchrone Mécanique (Manifest 12)
+	// Auth Routes for Web Client handshake
 	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
 	mux.HandleFunc("DELETE /api/auth/logout", logoutHandler)
 
@@ -216,7 +211,6 @@ func main() {
 	mux.HandleFunc("GET /api/web/contacts", sessionMiddleware(getContactsHandler))
 	mux.HandleFunc("GET /api/web/settings", sessionMiddleware(handleSettings))
 	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
-	mux.HandleFunc("GET /api/web/network-nodes", sessionMiddleware(getNetworkNodesHandler))
 	
 	mux.HandleFunc("GET /api/gafam/contacts", authMiddleware(getContactsHandler))
 

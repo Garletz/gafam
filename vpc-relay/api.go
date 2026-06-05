@@ -399,29 +399,6 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 
 // --- Legacy Web Client Auth Handlers (kept for backward compat) ---
 
-func requestSessionHandler(w http.ResponseWriter, r *http.Request) {
-	var params struct {
-		Phone string `json:"phone"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil || params.Phone == "" {
-		http.Error(w, "Missing phone", http.StatusBadRequest)
-		return
-	}
-
-	sessionID := generateToken(32)
-
-	stmt := `INSERT INTO gafam_sessions (session_id, phone, status, web_requested_at) VALUES (?, ?, 'pending', datetime('now'))`
-	_, err := db.Exec(stmt, sessionID, params.Phone)
-	if err != nil {
-		http.Error(w, "Failed to create session", http.StatusInternalServerError)
-		return
-	}
-
-	sendJSON(w, http.StatusOK, map[string]string{
-		"session_id": sessionID,
-		"status":     "pending",
-	})
-}
 
 // getPublicIP fetches the VPC's external IPv4 address
 func getPublicIP() string {
@@ -451,59 +428,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func confirmSessionHandler(w http.ResponseWriter, r *http.Request) {
-	// Called by the APK when user presses "Authorize Web Login" (LEGACY)
-	
-	var req struct {
-		Phone string `json:"phone"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
 
-	if req.Phone == "" {
-		http.Error(w, "Phone is required", http.StatusBadRequest)
-		return
-	}
-
-	// For zero-config, we pre-generate a session for the web client
-	sessionID := generateToken(32)
-	sessionToken := generateToken(64)
-
-	_, err := db.Exec(`INSERT INTO gafam_sessions (session_id, phone, status, session_token, created_at, device_confirmed_at) VALUES (?, ?, 'confirmed', ?, datetime('now'), datetime('now'))`, sessionID, req.Phone, sessionToken)
-	if err != nil {
-		http.Error(w, "Failed to confirm session", http.StatusInternalServerError)
-		return
-	}
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "5150"
-	}
-
-	// Announce asynchronously to Cloudflare Directory (legacy flow)
-	go func() {
-		payload := map[string]string{
-			"phone":         req.Phone,
-			"session_token": sessionToken,
-			"port":          port,
-		}
-		jsonData, _ := json.Marshal(payload)
-		resp, err := http.Post("https://gafam.cloud/api/directory", "application/json", bytes.NewBuffer(jsonData))
-		if err != nil {
-			log.Println("Error announcing to Cloudflare:", err)
-		} else {
-			defer resp.Body.Close()
-			log.Println("Announced to Cloudflare, response:", resp.StatusCode)
-		}
-	}()
-
-	sendJSON(w, http.StatusOK, map[string]string{
-		"status":     "confirmed",
-		"session_id": sessionID,
-	})
-}
 
 // ============================================================
 // === RENDEZ-VOUS SYNCHRONE MÉCANIQUE (Manifest 12) ===
@@ -657,28 +582,7 @@ func startHoneypotGenerator() {
 
 // ============================================================
 
-func checkSessionHandler(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.URL.Query().Get("session_id")
-	if sessionID == "" {
-		http.Error(w, "Missing session_id", http.StatusBadRequest)
-		return
-	}
 
-	var status string
-	var sessionToken *string
-	err := db.QueryRow(`SELECT status, session_token FROM gafam_sessions WHERE session_id = ?`, sessionID).Scan(&status, &sessionToken)
-	if err != nil {
-		http.Error(w, "Session not found", http.StatusNotFound)
-		return
-	}
-
-	result := map[string]string{"status": status}
-	if status == "confirmed" && sessionToken != nil {
-		result["session_token"] = *sessionToken
-	}
-
-	sendJSON(w, http.StatusOK, result)
-}
 
 func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -847,48 +751,7 @@ func getContactsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func getNetworkNodesHandler(w http.ResponseWriter, r *http.Request) {
-	nodes := map[string]interface{}{
-		"vpc": map[string]string{"status": "online"},
-		"devices": []map[string]interface{}{},
-		"web_clients": []map[string]interface{}{},
-	}
 
-	// Devices
-	devRows, _ := db.Query("SELECT device_name, is_primary FROM gafam_devices")
-	if devRows != nil {
-		defer devRows.Close()
-		for devRows.Next() {
-			var name string
-			var primary int
-			if devRows.Scan(&name, &primary) == nil {
-				nodes["devices"] = append(nodes["devices"].([]map[string]interface{}), map[string]interface{}{
-					"name": name,
-					"is_primary": primary == 1,
-				})
-			}
-		}
-	}
-
-	// Web Clients
-	wcRows, _ := db.Query("SELECT device_name, os_signature, ip_address, last_seen FROM gafam_web_clients")
-	if wcRows != nil {
-		defer wcRows.Close()
-		for wcRows.Next() {
-			var name, osSig, ip, lastSeen string
-			if wcRows.Scan(&name, &osSig, &ip, &lastSeen) == nil {
-				nodes["web_clients"] = append(nodes["web_clients"].([]map[string]interface{}), map[string]interface{}{
-					"device_name": name,
-					"os_signature": osSig,
-					"ip_address": ip,
-					"last_seen": lastSeen,
-				})
-			}
-		}
-	}
-
-	sendJSON(w, http.StatusOK, nodes)
-}
 
 func handleSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
