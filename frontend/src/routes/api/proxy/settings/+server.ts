@@ -42,18 +42,30 @@ export const GET: RequestHandler = async ({ url }) => {
 			}
 
 			const bodyStart = rawResponse.indexOf('\r\n\r\n');
-			if (bodyStart === -1) return json({ error: 'Malformed response' }, { status: 502 });
+			if (bodyStart === -1) return json({ error: 'Malformed response', raw: rawResponse }, { status: 502 });
 
+			const statusLine = rawResponse.split('\r\n')[0];
+			const statusCode = parseInt(statusLine.split(' ')[1] || '500');
 			const body = rawResponse.slice(bodyStart + 4).trim();
-			return json(JSON.parse(body));
-		} catch (e) {
-			const res = await fetch(`${vpcUrl}/api/settings`, {
-				headers: { 'Authorization': `Bearer ${token}` }
-			});
-			return json(await res.json());
+
+			if (statusCode >= 400) {
+				try {
+					return json(JSON.parse(body), { status: statusCode });
+				} catch {
+					return json({ error: body || 'Upstream error' }, { status: statusCode });
+				}
+			}
+
+			try {
+				return json(JSON.parse(body));
+			} catch {
+				return json({ error: 'Failed to parse JSON', raw: body }, { status: 500 });
+			}
+		} catch (socketError: any) {
+			return json({ error: 'TCP Socket failed', details: socketError.message }, { status: 500 });
 		}
-	} catch (e: any) {
-		return json({ error: e.message }, { status: 500 });
+	} catch (err: any) {
+		return json({ error: err.message }, { status: 500 });
 	}
 };
 
@@ -102,22 +114,29 @@ export const POST: RequestHandler = async ({ url, request }) => {
 			}
 
 			const bodyStart = rawResponse.indexOf('\r\n\r\n');
-			if (bodyStart === -1) return json({ error: 'Malformed response' }, { status: 502 });
+			if (bodyStart === -1) return json({ error: 'Malformed response', raw: rawResponse }, { status: 502 });
 
+			const statusLine = rawResponse.split('\r\n')[0];
+			const statusCode = parseInt(statusLine.split(' ')[1] || '500');
 			const body = rawResponse.slice(bodyStart + 4).trim();
-			return json(JSON.parse(body));
-		} catch (e) {
-			const res = await fetch(`${vpcUrl}/api/settings`, {
-				method: 'POST',
-				headers: {
-					'Authorization': `Bearer ${token}`,
-					'Content-Type': 'application/json'
-				},
-				body: payloadStr
-			});
-			return json(await res.json());
+
+			if (statusCode >= 400) {
+				try {
+					return json(JSON.parse(body), { status: statusCode });
+				} catch {
+					return json({ error: body || 'Upstream error' }, { status: statusCode });
+				}
+			}
+
+			try {
+				return json(JSON.parse(body));
+			} catch {
+				return json({ error: 'Failed to parse JSON', raw: body }, { status: 500 });
+			}
+		} catch (socketError: any) {
+			return json({ error: 'TCP Socket failed', details: socketError.message }, { status: 500 });
 		}
-	} catch (e: any) {
-		return json({ error: e.message }, { status: 500 });
+	} catch (err: any) {
+		return json({ error: err.message }, { status: 500 });
 	}
 };

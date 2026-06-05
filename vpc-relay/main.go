@@ -206,6 +206,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/auth/logout", logoutHandler)
 
 	// Settings API (protected by authMiddleware)
+	mux.HandleFunc("GET /api/settings", authMiddleware(handleSettings))
 	mux.HandleFunc("POST /api/settings", authMiddleware(handleSettings))
 
 	// Session-protected routes for Web Client
