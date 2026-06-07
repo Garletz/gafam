@@ -17,5 +17,9 @@
     "svelte-check": "^4.4.8",
     "typescript": "~6.0.2",
     "vite": "^8.0.12"
+  },
+  "dependencies": {
+    "@xyflow/svelte": "^1.6.0",
+    "svelte-moveable": "^0.45.0"
   }
 }
