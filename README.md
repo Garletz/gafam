@@ -3,7 +3,7 @@
 The goal of GAFAM is to provide a highly secure, private cloud space allowing you to:
 - Receive and manage administrative SMS verification codes without relying on a physical phone.
 - Manage contacts and synchronize data directly to your own personal SQL server.
-- Automatically deploy a fully isolated backend (VPC) on cloud providers like DigitalOcean.
+- Automatically deploy a fully isolated backend (VPC) on cloud providers like your own linux server/cloudron behind your box IPV4 or cloud provider DigitalOcean AWS GCP with a classical VPC ect...
 - Access your data from anywhere via a secure, global 3D command deck.
 
 ## Architecture Overview
