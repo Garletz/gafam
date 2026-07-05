@@ -5,9 +5,8 @@ WORKDIR /app
 # Copy source files FIRST so Go can see the imports
 COPY . .
 
-# Initialize Go module and resolve dependencies
-RUN go mod init github.com/Garletz/gafam/vpc-relay && \
-    go mod tidy && \
+# Download dependencies and build
+RUN go mod download && \
     CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o vpc-relay .
 
 FROM alpine:latest
