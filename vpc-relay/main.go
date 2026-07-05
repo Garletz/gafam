@@ -3,6 +3,7 @@ package main
 // Triggering a clean GitHub Action build
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -245,6 +246,7 @@ func main() {
 		tlsServer := &http.Server{
 			Addr:    "0.0.0.0:" + tlsPort,
 			Handler: corsMiddleware(mux),
+			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)), // Disable HTTP/2
 		}
 		log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTPS SNI Spoofing)", tlsPort)
 		go func() {
