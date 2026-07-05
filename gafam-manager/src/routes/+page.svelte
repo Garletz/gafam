@@ -3,7 +3,7 @@
   import { t } from "svelte-i18n";
   import { get } from "svelte/store";
   import QRious from 'qrious';
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
 
   interface SavedServer {
     id: string;
@@ -25,6 +25,30 @@
   let loadingText = $state("");
   let canvas: HTMLCanvasElement;
   let activeServer: SavedServer | null = $state(null);
+
+  // Scrcpy Bridge State (Manifest 14)
+  interface AdbDevice {
+    serial: string;
+    model: string;
+    state: string;
+  }
+
+  interface BridgeStatus {
+    active: boolean;
+    device: string | null;
+    vpc_connected: boolean;
+    uptime_secs: number;
+    frames_sent: number;
+  }
+
+  let adbDevices = $state<AdbDevice[]>([]);
+  let selectedDevice = $state("");
+  let bridgeStatus = $state<BridgeStatus>({ active: false, device: null, vpc_connected: false, uptime_secs: 0, frames_sent: 0 });
+  let adbScanning = $state(false);
+  let bridgeStarting = $state(false);
+  let wifiAdbIp = $state("");
+  let wifiConnecting = $state(false);
+  let statusInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
     const saved = localStorage.getItem('gafam_servers');
@@ -70,6 +94,96 @@
     certFingerprint = server.certFingerprint;
     currentView = 'paired';
     renderQR();
+    startStatusPolling();
+  }
+
+  // Scrcpy Bridge Functions (Manifest 14)
+
+  function startStatusPolling() {
+    stopStatusPolling();
+    pollBridgeStatus();
+    statusInterval = setInterval(pollBridgeStatus, 3000);
+  }
+
+  function stopStatusPolling() {
+    if (statusInterval) {
+      clearInterval(statusInterval);
+      statusInterval = null;
+    }
+  }
+
+  onDestroy(() => {
+    stopStatusPolling();
+  });
+
+  async function pollBridgeStatus() {
+    try {
+      bridgeStatus = await invoke('scrcpy_get_status');
+    } catch(e) {
+      // Silent fail — bridge may not be available
+    }
+  }
+
+  async function scanAdbDevices() {
+    adbScanning = true;
+    try {
+      adbDevices = await invoke('scrcpy_list_devices');
+      if (adbDevices.length > 0 && !selectedDevice) {
+        selectedDevice = adbDevices[0].serial;
+      }
+    } catch(e) {
+      console.error("ADB scan failed:", e);
+    }
+    adbScanning = false;
+  }
+
+  async function connectWifiAdb() {
+    if (!wifiAdbIp) return;
+    wifiConnecting = true;
+    try {
+      await invoke('scrcpy_connect_wifi', { ip: wifiAdbIp });
+      await scanAdbDevices();
+    } catch(e) {
+      console.error("WiFi ADB failed:", e);
+    }
+    wifiConnecting = false;
+  }
+
+  async function startBridge() {
+    if (!selectedDevice || !activeServer) return;
+    bridgeStarting = true;
+    try {
+      await invoke('scrcpy_start_bridge', {
+        deviceId: selectedDevice,
+        vpcUrl: activeServer.url,
+        jwt: activeServer.token
+      });
+      // Give it a moment to start
+      await new Promise(r => setTimeout(r, 2000));
+      await pollBridgeStatus();
+    } catch(e) {
+      console.error("Bridge start failed:", e);
+    }
+    bridgeStarting = false;
+  }
+
+  async function stopBridge() {
+    try {
+      await invoke('scrcpy_stop_bridge');
+      await new Promise(r => setTimeout(r, 500));
+      await pollBridgeStatus();
+    } catch(e) {
+      console.error("Bridge stop failed:", e);
+    }
+  }
+
+  function formatUptime(secs: number): string {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
   }
 
   function copyScript() {
@@ -282,6 +396,102 @@
       <p style="margin-top: 20px; font-size: 0.9em; opacity: 0.7;">
          VPC URL: <code>{vpcUrl}</code>
       </p>
+
+      <!-- Scrcpy Remote Control Section (Manifest 14) -->
+      <div class="remote-section">
+        <div class="remote-header">
+          <h3>📱 REMOTE CONTROL</h3>
+          {#if bridgeStatus.active}
+            <span class="status-badge active">● Bridge Active</span>
+          {:else}
+            <span class="status-badge inactive">○ Bridge Inactive</span>
+          {/if}
+        </div>
+
+        {#if bridgeStatus.active}
+          <div class="bridge-info">
+            <div class="info-row">
+              <span class="info-label">Device</span>
+              <span class="info-value">{bridgeStatus.device || 'Unknown'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">VPS</span>
+              <span class="info-value" style="color: {bridgeStatus.vpc_connected ? 'var(--success)' : 'var(--danger)'}">
+                {bridgeStatus.vpc_connected ? '● Connected' : '○ Disconnected'}
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Uptime</span>
+              <span class="info-value">{formatUptime(bridgeStatus.uptime_secs)}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Frames Sent</span>
+              <span class="info-value">{bridgeStatus.frames_sent.toLocaleString()}</span>
+            </div>
+          </div>
+
+          <button class="btn-danger" onclick={stopBridge}>
+            ■ Stop Bridge
+          </button>
+        {:else}
+          <!-- ADB Device Selection -->
+          <div class="adb-section">
+            <div class="adb-controls">
+              <button class="btn-secondary" onclick={scanAdbDevices} disabled={adbScanning}>
+                {adbScanning ? '🔍 Scanning...' : '🔌 Scan ADB Devices'}
+              </button>
+            </div>
+
+            {#if adbDevices.length > 0}
+              <div class="device-list">
+                {#each adbDevices as device}
+                  <button 
+                    class="device-item" 
+                    class:selected={selectedDevice === device.serial}
+                    onclick={() => selectedDevice = device.serial}
+                  >
+                    <span class="device-icon">📱</span>
+                    <div class="device-info-compact">
+                      <span class="device-model">{device.model}</span>
+                      <span class="device-serial">{device.serial}</span>
+                    </div>
+                    <span class="device-state" class:online={device.state === 'device'}>
+                      {device.state === 'device' ? '● Online' : '○ ' + device.state}
+                    </span>
+                  </button>
+                {/each}
+              </div>
+
+              <button 
+                class="btn-primary" 
+                onclick={startBridge} 
+                disabled={!selectedDevice || bridgeStarting}
+                style="margin-top: 16px; width: 100%;"
+              >
+                {bridgeStarting ? '⏳ Starting Bridge...' : '▶ Start Scrcpy Bridge'}
+              </button>
+            {:else}
+              <p class="hint-text">
+                Connect your Android via USB or WiFi ADB, then scan for devices.
+              </p>
+            {/if}
+
+            <!-- WiFi ADB -->
+            <div class="wifi-adb">
+              <span class="wifi-label">WiFi ADB:</span>
+              <input 
+                type="text" 
+                bind:value={wifiAdbIp} 
+                placeholder="192.168.1.42" 
+                class="wifi-input"
+              />
+              <button class="btn-secondary btn-small" onclick={connectWifiAdb} disabled={wifiConnecting || !wifiAdbIp}>
+                {wifiConnecting ? '...' : 'Connect'}
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 </main>
@@ -349,5 +559,205 @@
   .server-card:hover .server-arrow {
     transform: translateX(4px);
     color: var(--accent);
+  }
+
+  /* Scrcpy Remote Control Styles (Manifest 14) */
+
+  .remote-section {
+    margin-top: 40px;
+    padding-top: 32px;
+    border-top: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .remote-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .remote-header h3 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-primary);
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .status-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+  }
+
+  .status-badge.active {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+  }
+
+  .status-badge.inactive {
+    color: var(--text-muted);
+    background: rgba(128, 128, 128, 0.1);
+  }
+
+  .bridge-info {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+  }
+
+  .info-row:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .info-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .info-value {
+    font-size: 13px;
+    font-family: monospace;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .btn-danger {
+    width: 100%;
+    padding: 12px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .btn-danger:hover {
+    background: rgba(239, 68, 68, 0.2);
+  }
+
+  .adb-section {
+    margin-top: 8px;
+  }
+
+  .adb-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .device-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: left;
+    transition: all var(--transition);
+  }
+
+  .device-item:hover {
+    border-color: var(--accent);
+  }
+
+  .device-item.selected {
+    border-color: var(--accent);
+    background: rgba(99, 102, 241, 0.05);
+  }
+
+  .device-icon {
+    font-size: 24px;
+  }
+
+  .device-info-compact {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .device-model {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .device-serial {
+    font-size: 11px;
+    font-family: monospace;
+    color: var(--text-muted);
+  }
+
+  .device-state {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .device-state.online {
+    color: #10b981;
+  }
+
+  .hint-text {
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 20px 0;
+    opacity: 0.7;
+  }
+
+  .wifi-adb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .wifi-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .wifi-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: monospace;
+    background: var(--bg-card);
+    color: var(--text-primary);
+  }
+
+  .btn-small {
+    padding: 8px 16px !important;
+    font-size: 12px !important;
   }
 </style>

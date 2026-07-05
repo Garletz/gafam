@@ -571,6 +571,7 @@
             <div class="sidebar__tabs">
               <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
               <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
+              <a href="/{phone}/remote" class="tab remote-tab" title="Remote Control">📱</a>
             </div>
             <div class="sidebar__actions">
               {#if sidebarTab === 'contacts'}
@@ -737,6 +738,17 @@
   .tab.active {
     color: #202124;
     border-bottom-color: #202124;
+  }
+  .remote-tab {
+    text-decoration: none;
+    margin-left: auto;
+    font-size: 18px;
+    padding: 8px 12px;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .remote-tab:hover {
+    opacity: 1;
   }
   .sidebar__actions {
     display: flex;

@@ -8,6 +8,9 @@ use std::sync::Arc;
 use tokio::sync::oneshot;
 use tauri_plugin_opener::OpenerExt;
 
+mod scrcpy_bridge;
+use scrcpy_bridge::{SharedBridgeState, BridgeState};
+
 #[derive(Deserialize)]
 struct OauthCallback {
     params: String,
@@ -222,12 +225,89 @@ async fn ping_vpc(url: String) -> Result<bool, String> {
     }
 }
 
+// ============================================================
+// === SCRCPY BRIDGE TAURI COMMANDS (Manifest 14) ===
+// ============================================================
+
+#[tauri::command]
+async fn scrcpy_list_devices() -> Result<Vec<scrcpy_bridge::AdbDevice>, String> {
+    scrcpy_bridge::list_devices().await
+}
+
+#[tauri::command]
+async fn scrcpy_connect_wifi(ip: String) -> Result<String, String> {
+    scrcpy_bridge::connect_wifi(&ip).await
+}
+
+#[tauri::command]
+async fn scrcpy_start_bridge(
+    device_id: String,
+    vpc_url: String,
+    jwt: String,
+    app: AppHandle,
+) -> Result<(), String> {
+    let state = app.state::<SharedBridgeState>();
+    let state = state.inner().clone();
+
+    // Check if already running
+    {
+        let s = state.read().await;
+        if s.active {
+            return Err("Bridge is already running".to_string());
+        }
+    }
+
+    // Resolve the scrcpy-server.jar path from app resources
+    let resource_path = app.path()
+        .resolve("resources/scrcpy-server.jar", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| format!("Failed to resolve scrcpy-server.jar: {}", e))?;
+
+    let server_jar_path = resource_path.to_string_lossy().to_string();
+
+    // Spawn the bridge in a background task
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = scrcpy_bridge::start_bridge(
+            device_id,
+            vpc_url,
+            jwt,
+            server_jar_path,
+            state_clone,
+        ).await {
+            log::error!("Scrcpy bridge error: {}", e);
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn scrcpy_stop_bridge(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<SharedBridgeState>();
+    scrcpy_bridge::stop_bridge(state.inner().clone()).await
+}
+
+#[tauri::command]
+async fn scrcpy_get_status(app: AppHandle) -> Result<scrcpy_bridge::BridgeStatus, String> {
+    let state = app.state::<SharedBridgeState>();
+    Ok(scrcpy_bridge::get_status(state.inner().clone()).await)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![start_do_oauth, ping_vpc])
+        .manage(Arc::new(tokio::sync::RwLock::new(BridgeState::default())) as SharedBridgeState)
+        .invoke_handler(tauri::generate_handler![
+            start_do_oauth,
+            ping_vpc,
+            scrcpy_list_devices,
+            scrcpy_connect_wifi,
+            scrcpy_start_bridge,
+            scrcpy_stop_bridge,
+            scrcpy_get_status
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

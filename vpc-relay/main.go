@@ -216,6 +216,12 @@ func main() {
 	
 	mux.HandleFunc("GET /api/gafam/contacts", authMiddleware(getContactsHandler))
 
+	// Scrcpy Remote Control WebSocket Routes (Manifest 14)
+	mux.HandleFunc("GET /ws/scrcpy/bridge", authMiddleware(scrcpyBridgeHandler))
+	mux.HandleFunc("GET /ws/scrcpy/view", sessionMiddleware(scrcpyViewerHandler))
+	mux.HandleFunc("GET /ws/scrcpy/shell", sessionMiddleware(scrcpyShellHandler))
+	mux.HandleFunc("GET /api/scrcpy/status", sessionMiddleware(scrcpyStatusHandler))
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "5150"
