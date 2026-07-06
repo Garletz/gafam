@@ -34,10 +34,6 @@ hex = "0.4.3"
 futures-util = "0.3"
 log = "0.4"
 http = "1"
-tokio-rustls = "0.24.0"
-webpki-roots = "0.25.0"
-rustls = { version = "0.21.0", features = ["dangerous_configuration"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
-native-tls = "0.2.18"
 
 

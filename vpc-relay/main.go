@@ -217,10 +217,14 @@ func main() {
 	
 	mux.HandleFunc("GET /api/gafam/contacts", authMiddleware(getContactsHandler))
 
-	// Scrcpy Remote Control WebSocket Routes (Manifest 14)
+	// Scrcpy Remote Control HTTP Streams (Manifest 14)
 	mux.HandleFunc("GET /ws/scrcpy/bridge", authMiddleware(scrcpyBridgeHandler))
-	mux.HandleFunc("GET /ws/scrcpy/view", sessionMiddleware(scrcpyViewerHandler))
-	mux.HandleFunc("GET /ws/scrcpy/shell", sessionMiddleware(scrcpyShellHandler))
+	mux.HandleFunc("GET /api/scrcpy/video_stream", sessionMiddleware(scrcpyVideoStreamHandler))
+	mux.HandleFunc("POST /api/scrcpy/input", sessionMiddleware(scrcpyInputHandler))
+	mux.HandleFunc("OPTIONS /api/scrcpy/input", sessionMiddleware(scrcpyInputHandler))
+	mux.HandleFunc("GET /api/scrcpy/shell_stream", sessionMiddleware(scrcpyShellStreamHandler))
+	mux.HandleFunc("POST /api/scrcpy/shell_input", sessionMiddleware(scrcpyShellInputHandler))
+	mux.HandleFunc("OPTIONS /api/scrcpy/shell_input", sessionMiddleware(scrcpyShellInputHandler))
 	mux.HandleFunc("GET /api/scrcpy/status", sessionMiddleware(scrcpyStatusHandler))
 
 	port := os.Getenv("PORT")

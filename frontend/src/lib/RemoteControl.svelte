@@ -33,59 +33,101 @@
     disconnect();
   });
 
-  function connectToStream() {
+  let streamAbort: AbortController | null = null;
+
+  async function connectToStream() {
     if (!vpcUrl || !sessionToken) {
       error = 'Missing VPC URL or session token';
       return;
     }
 
-    const wsUrl = vpcUrl
-      .replace('https://', 'wss://')
-      .replace('http://', 'ws://');
+    error = '';
+    initDecoder();
+    
+    streamAbort = new AbortController();
 
-    wsVideo = new WebSocket(`${wsUrl}/ws/scrcpy/view?token=${sessionToken}`);
-    wsVideo.binaryType = 'arraybuffer';
+    try {
+      const response = await fetch(`/api/proxy/scrcpy/video_stream?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`, {
+        signal: streamAbort.signal
+      });
 
-    wsVideo.onopen = () => {
-      connected = true;
-      error = '';
-      initDecoder();
-    };
-
-    wsVideo.onmessage = (event) => {
-      const data = new Uint8Array(event.data);
-      if (data.length === 0) return;
-
-      switch (data[0]) {
-        case MSG_TYPE_VIDEO:
-          handleVideoFrame(data.slice(1));
-          break;
-        case MSG_TYPE_DEVICE_INFO:
-          const infoJson = new TextDecoder().decode(data.slice(1));
-          try {
-            deviceInfo = JSON.parse(infoJson);
-            if (deviceInfo && canvas) {
-              canvas.width = deviceInfo.width;
-              canvas.height = deviceInfo.height;
-            }
-          } catch (e) {}
-          break;
+      if (!response.ok) {
+        error = 'Failed to connect: ' + response.status;
+        return;
       }
-    };
+      
+      connected = true;
 
-    wsVideo.onerror = () => {
-      error = 'WebSocket connection error';
-    };
+      // Initial device info might be in headers
+      const deviceHeader = response.headers.get('X-Scrcpy-Device');
+      if (deviceHeader) {
+        try {
+          deviceInfo = JSON.parse(deviceHeader);
+          if (deviceInfo && canvas) {
+            canvas.width = deviceInfo.width;
+            canvas.height = deviceInfo.height;
+          }
+        } catch(e) {}
+      }
 
-    wsVideo.onclose = () => {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        error = 'Streaming not supported by browser';
+        return;
+      }
+
+      let buffer = new Uint8Array(0);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (value) {
+          const newBuffer = new Uint8Array(buffer.length + value.length);
+          newBuffer.set(buffer);
+          newBuffer.set(value, buffer.length);
+          buffer = newBuffer;
+        }
+
+        while (buffer.length >= 4) {
+          const len = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength).getUint32(0, false);
+          if (buffer.length >= 4 + len) {
+            const frame = buffer.slice(4, 4 + len);
+            buffer = buffer.slice(4 + len);
+            
+            if (frame.length > 0) {
+              if (frame[0] === MSG_TYPE_VIDEO) {
+                handleVideoFrame(frame.slice(1));
+              } else if (frame[0] === MSG_TYPE_DEVICE_INFO) {
+                const infoJson = new TextDecoder().decode(frame.slice(1));
+                try {
+                  deviceInfo = JSON.parse(infoJson);
+                  if (deviceInfo && canvas) {
+                    canvas.width = deviceInfo.width;
+                    canvas.height = deviceInfo.height;
+                  }
+                } catch(e) {}
+              }
+            }
+          } else {
+            break;
+          }
+        }
+      }
+      
       connected = false;
-    };
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        error = 'Stream error: ' + e.message;
+        connected = false;
+      }
+    }
   }
 
   function disconnect() {
-    if (wsVideo) {
-      wsVideo.close();
-      wsVideo = null;
+    if (streamAbort) {
+      streamAbort.abort();
+      streamAbort = null;
     }
     if (decoder) {
       try { decoder.close(); } catch(e) {}
@@ -151,13 +193,13 @@
   }
 
   function sendInputEvent(event: any) {
-    if (!wsVideo || wsVideo.readyState !== WebSocket.OPEN) return;
+    if (!connected) return;
     const json = JSON.stringify(event);
-    const jsonBytes = new TextEncoder().encode(json);
-    const msg = new Uint8Array(1 + jsonBytes.length);
-    msg[0] = MSG_TYPE_INPUT;
-    msg.set(jsonBytes, 1);
-    wsVideo.send(msg.buffer);
+    fetch(`/api/proxy/scrcpy/input?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`, {
+      method: 'POST',
+      body: json,
+      headers: { 'Content-Type': 'application/json' }
+    }).catch(() => {}); // Fire and forget
   }
 
   function handleMouseDown(e: MouseEvent) {

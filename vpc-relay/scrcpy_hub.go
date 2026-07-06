@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"sync"
@@ -14,13 +15,13 @@ import (
 // === SCRCPY REMOTE CONTROL HUB (Manifest 14) ===
 // ============================================================
 
-// Message types for the scrcpy WebSocket protocol
+// Message types for the scrcpy protocol
 const (
-	MsgTypeVideo     byte = 0x01 // H.264 NAL unit (binary)
-	MsgTypeInput     byte = 0x02 // Input event (JSON)
+	MsgTypeVideo      byte = 0x01 // H.264 NAL unit (binary)
+	MsgTypeInput      byte = 0x02 // Input event (JSON)
 	MsgTypeDeviceInfo byte = 0x03 // Device metadata (JSON)
-	MsgTypeShell     byte = 0x04 // ADB shell I/O (binary UTF-8)
-	MsgTypeHeartbeat byte = 0x05 // Keepalive ping
+	MsgTypeShell      byte = 0x04 // ADB shell I/O (binary UTF-8)
+	MsgTypeHeartbeat  byte = 0x05 // Keepalive ping
 )
 
 // ScrcpyDeviceInfo holds the Android device metadata sent by the bridge
@@ -31,20 +32,20 @@ type ScrcpyDeviceInfo struct {
 	Rotation int    `json:"rotation"`
 }
 
-// ScrcpyHub manages the single bridge connection and multiple viewer connections
+// ScrcpyHub manages the single bridge connection and multiple viewer connections via HTTP streams
 type ScrcpyHub struct {
-	mu          sync.RWMutex
-	bridge      *websocket.Conn
-	bridgeReady bool
-	deviceInfo  *ScrcpyDeviceInfo
-	viewers     map[*websocket.Conn]bool
-	controller  *websocket.Conn // The viewer currently allowed to send inputs
-	shellBridge *websocket.Conn // Bridge connection for shell I/O
-	shellViewer *websocket.Conn // Viewer connection for shell I/O
+	mu            sync.RWMutex
+	bridgeWriteMu sync.Mutex      // Prevents concurrent writes to the bridge websocket
+	bridge        *websocket.Conn
+	bridgeReady   bool
+	deviceInfo    *ScrcpyDeviceInfo
+	viewers       map[chan []byte]bool
+	shellViewers  map[chan []byte]bool
 }
 
 var scrcpyHub = &ScrcpyHub{
-	viewers: make(map[*websocket.Conn]bool),
+	viewers:      make(map[chan []byte]bool),
+	shellViewers: make(map[chan []byte]bool),
 }
 
 var wsUpgrader = websocket.Upgrader{
@@ -61,7 +62,7 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 func isAllowedOrigin(origin string) bool {
-	allowedSuffixes := []string{".gafam.cloud", "://gafam.cloud", "://localhost:5173", "://localhost:4173"}
+	allowedSuffixes := []string{".gafam.cloud", "://gafam.cloud", "://localhost:5173", "://localhost:4173", "://localhost:1420"}
 	for _, suffix := range allowedSuffixes {
 		if len(origin) >= len(suffix) && origin[len(origin)-len(suffix):] == suffix {
 			return true
@@ -115,7 +116,10 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 			if b == nil {
 				return
 			}
-			if err := b.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+			scrcpyHub.bridgeWriteMu.Lock()
+			err := b.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
+			scrcpyHub.bridgeWriteMu.Unlock()
+			if err != nil {
 				return
 			}
 		}
@@ -166,13 +170,8 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 		case MsgTypeShell:
-			// Shell output from bridge — forward to the shell viewer
-			scrcpyHub.mu.RLock()
-			sv := scrcpyHub.shellViewer
-			scrcpyHub.mu.RUnlock()
-			if sv != nil {
-				sv.WriteMessage(websocket.BinaryMessage, data)
-			}
+			// Shell output from bridge — forward to shell viewers
+			scrcpyHub.broadcastToShellViewers(data)
 
 		case MsgTypeHeartbeat:
 			// Just a keepalive, already handled by read deadline reset
@@ -180,26 +179,40 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// broadcastToViewers sends a message to all connected viewer WebSockets
+// broadcastToViewers sends a message to all connected viewer channels
 func (hub *ScrcpyHub) broadcastToViewers(data []byte) {
 	hub.mu.RLock()
 	defer hub.mu.RUnlock()
 
-	for viewer := range hub.viewers {
-		err := viewer.WriteMessage(websocket.BinaryMessage, data)
-		if err != nil {
-			// Will be cleaned up by the viewer's read loop
-			log.Println("Scrcpy viewer write error:", err)
+	for viewerCh := range hub.viewers {
+		select {
+		case viewerCh <- data:
+		default:
+			// Viewer is too slow or buffer full, drop frame
 		}
 	}
 }
 
-// --- Viewer Handler ---
-// Web browsers connect here to receive H.264 stream and send input events
+// broadcastToShellViewers sends a message to all connected shell viewer channels
+func (hub *ScrcpyHub) broadcastToShellViewers(data []byte) {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
 
-func scrcpyViewerHandler(w http.ResponseWriter, r *http.Request) {
+	for viewerCh := range hub.shellViewers {
+		select {
+		case viewerCh <- data:
+		default:
+		}
+	}
+}
+
+// --- Viewer HTTP Stream Handlers ---
+// Web browsers connect here to receive H.264 stream and send input events via pure HTTP
+
+func scrcpyVideoStreamHandler(w http.ResponseWriter, r *http.Request) {
 	scrcpyHub.mu.RLock()
 	bridgeReady := scrcpyHub.bridgeReady
+	deviceInfo := scrcpyHub.deviceInfo
 	scrcpyHub.mu.RUnlock()
 
 	if !bridgeReady {
@@ -207,96 +220,135 @@ func scrcpyViewerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("Scrcpy viewer upgrade error:", err)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if deviceInfo != nil {
+		infoJSON, _ := json.Marshal(deviceInfo)
+		w.Header().Set("X-Scrcpy-Device", string(infoJSON))
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
+	// Create channel with buffer for 100 frames to absorb network jitter
+	ch := make(chan []byte, 100)
 	scrcpyHub.mu.Lock()
-	scrcpyHub.viewers[conn] = true
-	// First viewer gets controller privileges
-	if scrcpyHub.controller == nil {
-		scrcpyHub.controller = conn
-		log.Println("Scrcpy viewer connected (controller)")
-	} else {
-		log.Println("Scrcpy viewer connected (spectator)")
-	}
-	// Send current device info if available
-	deviceInfo := scrcpyHub.deviceInfo
+	scrcpyHub.viewers[ch] = true
 	scrcpyHub.mu.Unlock()
 
+	log.Println("Scrcpy viewer connected (HTTP stream)")
+
+	defer func() {
+		scrcpyHub.mu.Lock()
+		delete(scrcpyHub.viewers, ch)
+		scrcpyHub.mu.Unlock()
+		log.Println("Scrcpy viewer disconnected (HTTP stream)")
+	}()
+
+	notify := r.Context().Done()
+
+	// Flush headers immediately
+	flusher.Flush()
+
+	// If device info is already present, push it immediately as a frame
 	if deviceInfo != nil {
 		infoJSON, _ := json.Marshal(deviceInfo)
 		msg := make([]byte, 1+len(infoJSON))
 		msg[0] = MsgTypeDeviceInfo
 		copy(msg[1:], infoJSON)
-		conn.WriteMessage(websocket.BinaryMessage, msg)
+		
+		frame := make([]byte, 4+len(msg))
+		frame[0] = byte(len(msg) >> 24)
+		frame[1] = byte(len(msg) >> 16)
+		frame[2] = byte(len(msg) >> 8)
+		frame[3] = byte(len(msg))
+		copy(frame[4:], msg)
+		w.Write(frame)
+		flusher.Flush()
 	}
 
-	defer func() {
-		scrcpyHub.mu.Lock()
-		delete(scrcpyHub.viewers, conn)
-		if scrcpyHub.controller == conn {
-			scrcpyHub.controller = nil
-			// Promote another viewer to controller if any
-			for v := range scrcpyHub.viewers {
-				scrcpyHub.controller = v
-				break
-			}
-		}
-		scrcpyHub.mu.Unlock()
-		conn.Close()
-		log.Println("Scrcpy viewer disconnected")
-	}()
-
-	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		return nil
-	})
-
 	for {
-		_, data, err := conn.ReadMessage()
-		if err != nil {
-			break
-		}
+		select {
+		case <-notify:
+			return
+		case data := <-ch:
+			// Format: [4 bytes uint32 length] [payload]
+			frame := make([]byte, 4+len(data))
+			frame[0] = byte(len(data) >> 24)
+			frame[1] = byte(len(data) >> 16)
+			frame[2] = byte(len(data) >> 8)
+			frame[3] = byte(len(data))
+			copy(frame[4:], data)
 
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-
-		if len(data) == 0 {
-			continue
-		}
-
-		// Only the controller can send input events
-		if data[0] == MsgTypeInput {
-			scrcpyHub.mu.RLock()
-			isController := scrcpyHub.controller == conn
-			bridge := scrcpyHub.bridge
-			scrcpyHub.mu.RUnlock()
-
-			if isController && bridge != nil {
-				bridge.WriteMessage(websocket.BinaryMessage, data)
+			_, err := w.Write(frame)
+			if err != nil {
+				return
 			}
+			flusher.Flush()
 		}
 	}
 }
 
-// --- Shell Handler ---
-// Web browser connects here for an ADB shell terminal
+func scrcpyInputHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "POST")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-func scrcpyShellHandler(w http.ResponseWriter, r *http.Request) {
-	// Check if shell is enabled in settings
-	var shellEnabled string
-	err := db.QueryRow(`SELECT value FROM gafam_settings WHERE key = 'scrcpy_shell_enabled'`).Scan(&shellEnabled)
-	if err != nil || shellEnabled != "true" {
-		http.Error(w, `{"error":"ADB Shell is disabled. Enable it in Settings."}`, http.StatusForbidden)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil || len(body) == 0 {
+		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
 	}
 
 	scrcpyHub.mu.RLock()
+	bridge := scrcpyHub.bridge
+	scrcpyHub.mu.RUnlock()
+
+	if bridge == nil {
+		http.Error(w, "Bridge not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Prepare payload: [MsgTypeInput] [JSON]
+	msg := make([]byte, 1+len(body))
+	msg[0] = MsgTypeInput
+	copy(msg[1:], body)
+
+	scrcpyHub.bridgeWriteMu.Lock()
+	err = bridge.WriteMessage(websocket.BinaryMessage, msg)
+	scrcpyHub.bridgeWriteMu.Unlock()
+
+	if err != nil {
+		http.Error(w, "Write error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// --- Shell HTTP Stream Handlers ---
+
+func scrcpyShellStreamHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	scrcpyHub.mu.RLock()
 	bridgeReady := scrcpyHub.bridgeReady
-	hasShellViewer := scrcpyHub.shellViewer != nil
 	scrcpyHub.mu.RUnlock()
 
 	if !bridgeReady {
@@ -304,60 +356,95 @@ func scrcpyShellHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if hasShellViewer {
-		http.Error(w, `{"error":"A shell session is already active"}`, http.StatusConflict)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
-	conn, err := wsUpgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("Scrcpy shell upgrade error:", err)
-		return
-	}
-
+	ch := make(chan []byte, 100)
 	scrcpyHub.mu.Lock()
-	scrcpyHub.shellViewer = conn
+	scrcpyHub.shellViewers[ch] = true
 	scrcpyHub.mu.Unlock()
 
-	log.Println("Scrcpy shell viewer connected")
+	log.Println("Scrcpy shell connected (HTTP stream)")
 
 	defer func() {
 		scrcpyHub.mu.Lock()
-		scrcpyHub.shellViewer = nil
+		delete(scrcpyHub.shellViewers, ch)
 		scrcpyHub.mu.Unlock()
-		conn.Close()
-		log.Println("Scrcpy shell viewer disconnected")
+		log.Println("Scrcpy shell disconnected (HTTP stream)")
 	}()
 
-	conn.SetReadDeadline(time.Now().Add(120 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(120 * time.Second))
-		return nil
-	})
+	notify := r.Context().Done()
+	flusher.Flush()
 
 	for {
-		_, data, err := conn.ReadMessage()
-		if err != nil {
-			break
-		}
+		select {
+		case <-notify:
+			return
+		case data := <-ch:
+			// Format: [4 bytes uint32 length] [payload]
+			if len(data) > 1 {
+				payload := data[1:] // Strip MsgTypeShell prefix
+				frame := make([]byte, 4+len(payload))
+				frame[0] = byte(len(payload) >> 24)
+				frame[1] = byte(len(payload) >> 16)
+				frame[2] = byte(len(payload) >> 8)
+				frame[3] = byte(len(payload))
+				copy(frame[4:], payload)
 
-		conn.SetReadDeadline(time.Now().Add(120 * time.Second))
-
-		if len(data) == 0 {
-			continue
-		}
-
-		// Forward shell input to bridge
-		if data[0] == MsgTypeShell {
-			scrcpyHub.mu.RLock()
-			bridge := scrcpyHub.bridge
-			scrcpyHub.mu.RUnlock()
-
-			if bridge != nil {
-				bridge.WriteMessage(websocket.BinaryMessage, data)
+				_, err := w.Write(frame)
+				if err != nil {
+					return
+				}
+				flusher.Flush()
 			}
 		}
 	}
+}
+
+func scrcpyShellInputHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "POST")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil || len(body) == 0 {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	scrcpyHub.mu.RLock()
+	bridge := scrcpyHub.bridge
+	scrcpyHub.mu.RUnlock()
+
+	if bridge == nil {
+		http.Error(w, "Bridge not connected", http.StatusServiceUnavailable)
+		return
+	}
+
+	msg := make([]byte, 1+len(body))
+	msg[0] = MsgTypeShell
+	copy(msg[1:], body)
+
+	scrcpyHub.bridgeWriteMu.Lock()
+	err = bridge.WriteMessage(websocket.BinaryMessage, msg)
+	scrcpyHub.bridgeWriteMu.Unlock()
+
+	if err != nil {
+		http.Error(w, "Write error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // --- Status Handler ---
@@ -370,7 +457,7 @@ func scrcpyStatusHandler(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
 		"bridge_connected": scrcpyHub.bridgeReady,
 		"viewer_count":     len(scrcpyHub.viewers),
-		"shell_active":     scrcpyHub.shellViewer != nil,
+		"shell_active":     len(scrcpyHub.shellViewers) > 0,
 	}
 
 	if scrcpyHub.deviceInfo != nil {

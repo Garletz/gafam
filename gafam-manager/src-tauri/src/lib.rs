@@ -264,6 +264,7 @@ async fn scrcpy_start_bridge(
 
     let server_jar_path = resource_path.to_string_lossy().to_string();
 
+
     // Spawn the bridge in a background task
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -272,9 +273,16 @@ async fn scrcpy_start_bridge(
             vpc_url,
             jwt,
             server_jar_path,
-            state_clone,
+            state_clone.clone(),
         ).await {
             log::error!("Scrcpy bridge error: {}", e);
+            eprintln!("[BRIDGE] ❌ FATAL ERROR: {}", e);
+            // Reset state so frontend knows bridge failed
+            let mut s = state_clone.write().await;
+            s.active = false;
+            s.vpc_connected = false;
+            s.device_serial = None;
+            s.shutdown_tx = None;
         }
     });
 

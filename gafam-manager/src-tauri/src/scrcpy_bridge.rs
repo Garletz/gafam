@@ -6,8 +6,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::net::TcpStream;
 use serde::{Deserialize, Serialize};
 use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::{connect_async_tls_with_config, Connector, tungstenite::Message};
-use native_tls::TlsConnector;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 // ============================================================
 // === SCRCPY BRIDGE MODULE (Manifest 14) ===
@@ -21,7 +20,7 @@ const MSG_TYPE_SHELL: u8 = 0x04;
 const _MSG_TYPE_HEARTBEAT: u8 = 0x05;
 
 /// Scrcpy server version to use
-const SCRCPY_SERVER_VERSION: &str = "2.7";
+const SCRCPY_SERVER_VERSION: &str = "1.18";
 
 /// Default local port for scrcpy tunnel
 const SCRCPY_LOCAL_PORT: u16 = 27183;
@@ -205,7 +204,7 @@ async fn launch_scrcpy_server(device_serial: &str) -> Result<tokio::process::Chi
             "-s", device_serial,
             "shell",
             &format!(
-                "CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server {} tunnel_forward=true audio=false control=true video_bit_rate=2000000 max_size=1080 max_fps=30",
+                "CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server {} info 1080 2000000 30 -1 true - true true 0 false false - - false",
                 SCRCPY_SERVER_VERSION
             ),
         ])
@@ -223,12 +222,18 @@ async fn launch_scrcpy_server(device_serial: &str) -> Result<tokio::process::Chi
 
 /// Connect to the scrcpy tunnel and parse the initial device info
 async fn connect_scrcpy_tunnel() -> Result<(TcpStream, String, u16, u16), String> {
-    // Retry connection a few times
-    let mut stream = None;
+    // In scrcpy 1.18 (when control=true), the protocol is:
+    // 1. Connect video socket
+    // 2. Server sends a single dummy byte (0x00)
+    // 3. Client MUST connect a second control socket
+    // 4. Server then sends 64-byte device name + 4-byte video size on video socket
+
+    // Connect Video socket
+    let mut video_stream = None;
     for _ in 0..10 {
         match TcpStream::connect(format!("127.0.0.1:{}", SCRCPY_LOCAL_PORT)).await {
             Ok(s) => {
-                stream = Some(s);
+                video_stream = Some(s);
                 break;
             }
             Err(_) => {
@@ -236,25 +241,35 @@ async fn connect_scrcpy_tunnel() -> Result<(TcpStream, String, u16, u16), String
             }
         }
     }
+    let mut video_stream = video_stream.ok_or("Failed to connect video socket to scrcpy tunnel")?;
 
-    let mut stream = stream.ok_or("Failed to connect to scrcpy tunnel after retries")?;
+    // Read 1 dummy byte
+    let mut dummy = [0u8; 1];
+    video_stream.read_exact(&mut dummy).await.map_err(|e| format!("Failed to read dummy byte: {}", e))?;
 
-    // Read the 64-byte device name header
+    // Connect Control socket
+    let _control_stream = TcpStream::connect(format!("127.0.0.1:{}", SCRCPY_LOCAL_PORT))
+        .await
+        .map_err(|e| format!("Failed to connect control socket: {}", e))?;
+
+    // Now the server will send the 64-byte device name header on the video socket
     let mut device_name_buf = [0u8; 64];
-    stream.read_exact(&mut device_name_buf).await.map_err(|e| format!("Failed to read device name: {}", e))?;
+    video_stream.read_exact(&mut device_name_buf).await.map_err(|e| format!("Failed to read device name: {}", e))?;
     let device_name = String::from_utf8_lossy(&device_name_buf)
         .trim_end_matches('\0')
         .to_string();
 
     // Read width (2 bytes) and height (2 bytes) in big-endian
     let mut size_buf = [0u8; 4];
-    stream.read_exact(&mut size_buf).await.map_err(|e| format!("Failed to read screen size: {}", e))?;
+    video_stream.read_exact(&mut size_buf).await.map_err(|e| format!("Failed to read screen size: {}", e))?;
     let width = u16::from_be_bytes([size_buf[0], size_buf[1]]);
     let height = u16::from_be_bytes([size_buf[2], size_buf[3]]);
 
     log::info!("Scrcpy device: {} ({}x{})", device_name, width, height);
 
-    Ok((stream, device_name, width, height))
+    // We return the video_stream to read H.264 data
+    // In a full implementation we'd also return control_stream to send inputs
+    Ok((video_stream, device_name, width, height))
 }
 
 /// Main bridge function — orchestrates the entire flow
@@ -278,53 +293,66 @@ pub async fn start_bridge(
     }
 
     // Step 1: Push scrcpy-server
+    eprintln!("[BRIDGE] Step 1: Pushing scrcpy-server to {}", device_serial);
     push_server(&device_serial, &server_jar_path).await?;
+    eprintln!("[BRIDGE] Step 1: OK");
 
     // Step 2: Set up ADB forward
+    eprintln!("[BRIDGE] Step 2: Setting up ADB forward");
     setup_forward(&device_serial).await?;
+    eprintln!("[BRIDGE] Step 2: OK");
 
     // Step 3: Launch scrcpy-server on device
+    eprintln!("[BRIDGE] Step 3: Launching scrcpy-server");
     let mut _server_process = launch_scrcpy_server(&device_serial).await?;
+    eprintln!("[BRIDGE] Step 3: OK");
 
     // Step 4: Connect to the scrcpy tunnel
+    eprintln!("[BRIDGE] Step 4: Connecting to scrcpy tunnel on 127.0.0.1:{}", SCRCPY_LOCAL_PORT);
     let (scrcpy_stream, device_name, width, height) = connect_scrcpy_tunnel().await?;
     let (scrcpy_reader, _scrcpy_writer) = tokio::io::split(scrcpy_stream);
     let mut scrcpy_reader = BufReader::with_capacity(64 * 1024, scrcpy_reader);
+    eprintln!("[BRIDGE] Step 4: OK - Device: {} ({}x{})", device_name, width, height);
 
-    // Step 5: Connect WebSocket to VPS
-    let ws_url = format!("{}/ws/scrcpy/bridge", vpc_url.trim_end_matches('/').replace("https://", "wss://").replace("http://", "ws://"));
+    // Step 5: Connect WebSocket to VPS via HTTP (port 5150) to avoid TLS issues
+    // Extract the IP from the HTTPS URL and build a plain ws:// URL on port 5150
+    let ip = vpc_url.trim_end_matches('/')
+        .replace("https://", "")
+        .replace("http://", "");
+    // Remove existing port if present (e.g. :5151)
+    let ip_no_port = if let Some(idx) = ip.rfind(':') {
+        &ip[..idx]
+    } else {
+        &ip
+    };
+    let ws_url = format!("ws://{}:5150/ws/scrcpy/bridge", ip_no_port);
+    eprintln!("[BRIDGE] Step 5: Connecting WebSocket to: {}", ws_url);
+    eprintln!("[BRIDGE] Step 5: JWT token (first 8 chars): {}...", &jwt_secret[..std::cmp::min(8, jwt_secret.len())]);
+
     let request = http::Request::builder()
         .uri(&ws_url)
         .header("Authorization", format!("Bearer {}", jwt_secret))
-        .header("Host", "gafam-bridge")
+        .header("Host", ip_no_port)
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", tokio_tungstenite::tungstenite::handshake::client::generate_key())
         .body(())
         .map_err(|e| {
-            log::error!("Failed to build WS request: {}", e);
+            eprintln!("[BRIDGE] Step 5: FAILED to build request: {}", e);
             format!("Failed to build WS request: {}", e)
         })?;
 
-    let native_tls_connector = TlsConnector::builder()
-        .danger_accept_invalid_certs(true)
-        .danger_accept_invalid_hostnames(true)
-        .build()
-        .map_err(|e| format!("TLS build error: {}", e))?;
-    let connector = Connector::NativeTls(native_tls_connector);
+    eprintln!("[BRIDGE] Step 5: Request built, attempting connect...");
 
-    let (ws_stream, _) = connect_async_tls_with_config(
-        request,
-        None, // config
-        false, // disable_nagle
-        Some(connector)
-    )
-    .await
-    .map_err(|e| {
-        log::error!("Failed to connect WebSocket to VPS: {}", e);
-        format!("Failed to connect WebSocket to VPS: {}", e)
-    })?;
+    let (ws_stream, _) = connect_async(request)
+        .await
+        .map_err(|e| {
+            eprintln!("[BRIDGE] Step 5: FAILED to connect: {}", e);
+            format!("Failed to connect WebSocket to VPS: {}", e)
+        })?;
+
+    eprintln!("[BRIDGE] Step 5: ✅ WebSocket CONNECTED!");
 
     let (mut ws_write, mut ws_read) = ws_stream.split();
 

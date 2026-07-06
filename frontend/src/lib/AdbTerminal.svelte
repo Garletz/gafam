@@ -22,44 +22,75 @@
     disconnect();
   });
 
-  function connect() {
-    const wsUrl = vpcUrl
-      .replace('https://', 'wss://')
-      .replace('http://', 'ws://');
+  let streamAbort: AbortController | null = null;
 
-    ws = new WebSocket(`${wsUrl}/ws/scrcpy/shell?token=${sessionToken}`);
-    ws.binaryType = 'arraybuffer';
+  async function connect() {
+    if (!vpcUrl || !sessionToken) return;
+    
+    streamAbort = new AbortController();
 
-    ws.onopen = () => {
+    try {
+      const response = await fetch(`/api/proxy/scrcpy/shell_stream?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`, {
+        signal: streamAbort.signal
+      });
+
+      if (!response.ok) {
+        error = 'Shell connection error. Is ADB Shell enabled in Settings?';
+        return;
+      }
+
       connected = true;
       error = '';
-      appendOutput('Connected to ADB Shell via VPS');
-      appendOutput('$ ');
-    };
+      appendOutput('Connected to ADB Shell via VPS\n$ ');
 
-    ws.onmessage = (event) => {
-      const data = new Uint8Array(event.data);
-      if (data.length > 1 && data[0] === MSG_TYPE_SHELL) {
-        const text = new TextDecoder().decode(data.slice(1));
-        appendOutput(text);
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      let buffer = new Uint8Array(0);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (value) {
+          const newBuffer = new Uint8Array(buffer.length + value.length);
+          newBuffer.set(buffer);
+          newBuffer.set(value, buffer.length);
+          buffer = newBuffer;
+        }
+
+        while (buffer.length >= 4) {
+          const len = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength).getUint32(0, false);
+          if (buffer.length >= 4 + len) {
+            const frame = buffer.slice(4, 4 + len);
+            buffer = buffer.slice(4 + len);
+            
+            if (frame.length > 0) {
+              const text = new TextDecoder().decode(frame);
+              appendOutput(text);
+            }
+          } else {
+            break;
+          }
+        }
       }
-    };
 
-    ws.onerror = () => {
-      error = 'Shell connection error. Is ADB Shell enabled in Settings?';
-    };
-
-    ws.onclose = () => {
       connected = false;
-      appendOutput('\n[Disconnected]');
-    };
+      appendOutput('\n[Disconnected]\n');
+    } catch (e: any) {
+      if (e.name !== 'AbortError') {
+        error = 'Shell stream error: ' + e.message;
+        connected = false;
+      }
+    }
   }
 
   function disconnect() {
-    if (ws) {
-      ws.close();
-      ws = null;
+    if (streamAbort) {
+      streamAbort.abort();
+      streamAbort = null;
     }
+    connected = false;
   }
 
   function appendOutput(text: string) {
@@ -83,17 +114,17 @@
   }
 
   function sendCommand() {
-    if (!ws || ws.readyState !== WebSocket.OPEN || !inputLine.trim()) return;
+    if (!connected || !inputLine.trim()) return;
     
     const cmd = inputLine.trim();
     appendOutput(cmd + '\n');
     
-    const cmdBytes = new TextEncoder().encode(cmd + '\n');
-    const msg = new Uint8Array(1 + cmdBytes.length);
-    msg[0] = MSG_TYPE_SHELL;
-    msg.set(cmdBytes, 1);
-    ws.send(msg.buffer);
-    
+    fetch(`/api/proxy/scrcpy/shell_input?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`, {
+      method: 'POST',
+      body: cmd + '\n',
+      headers: { 'Content-Type': 'text/plain' }
+    }).catch(() => {});
+
     inputLine = '';
   }
 
