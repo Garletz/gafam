@@ -17,6 +17,7 @@ import (
 	mrand "math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -321,8 +322,31 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Emergency Recovery Check
 	var guardianKeyword string
-	err = db.QueryRow("SELECT keyword FROM trusted_guardians WHERE phone_number = ?", senderStr).Scan(&guardianKeyword)
-	if err == nil && guardianKeyword != "" && strings.Contains(strings.ToLower(bodyStr), strings.ToLower(guardianKeyword)) {
+	
+	sClean := regexp.MustCompile("[^0-9]").ReplaceAllString(senderStr, "")
+	sMatch := sClean
+	if len(sClean) >= 9 {
+		sMatch = sClean[len(sClean)-9:]
+	}
+
+	rows, errGuard := db.Query("SELECT phone_number, keyword FROM trusted_guardians")
+	if errGuard == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var p, k string
+			if err := rows.Scan(&p, &k); err == nil {
+				pClean := regexp.MustCompile("[^0-9]").ReplaceAllString(p, "")
+				pMatch := pClean
+				if len(pClean) >= 9 { pMatch = pClean[len(pClean)-9:] }
+
+				if pMatch != "" && sMatch != "" && pMatch == sMatch {
+					guardianKeyword = k
+					break
+				}
+			}
+		}
+	}
+	if guardianKeyword != "" && strings.Contains(strings.ToLower(bodyStr), strings.ToLower(guardianKeyword)) {
 		log.Printf("EMERGENCY RECOVERY TRIGGERED by %s", senderStr)
 		// Assuming 'phone' is the relay phone. Wait, the relay phone number is not strictly available here except from the db?
 		// Actually, the web login needs the relay's phone number.
@@ -350,10 +374,10 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Anti-Spam: Check if sender is a verified contact
 	var isVerified int
-	err = db.QueryRow("SELECT id FROM gafam_contacts WHERE phone = ?", senderStr).Scan(&isVerified) // Using 'phone' not 'phone_number'
+	errContact := db.QueryRow("SELECT id FROM gafam_contacts WHERE phone LIKE ?", "%"+sMatch).Scan(&isVerified)
 	
 	status := "purgatory"
-	if err == nil {
+	if errContact == nil {
 		status = "inbox"
 	}
 
