@@ -138,7 +138,7 @@
 
 <div class="adb-terminal">
   <div class="term-header">
-    <span class="term-title">🖥️ ADB Shell</span>
+    <span class="term-title">ADB Shell</span>
     {#if connected}
       <span class="term-status connected">● Connected</span>
     {:else}
@@ -176,7 +176,6 @@
     background: #ffffff;
     overflow: hidden;
     height: 100%;
-    min-height: 200px;
   }
 
   .term-header {

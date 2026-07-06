@@ -515,60 +515,40 @@
   <title>{phone} — GAFAM Relay</title>
 </svelte:head>
 
-<div class="page-layout {appState === 'connected' ? 'is-connected' : ''}">
-  <main class="relay-page">
-    <div class="relay-content">
+<div class="dashboard-wrapper">
+  
+  <div class="messenger-container {appState === 'connected' ? 'is-connected' : ''}">
     {#if appState === 'setup'}
-      <!-- SETUP CHALLENGE -->
       <div class="login-card">
         <h2 class="login-card__title">Authorization Required</h2>
         <p class="login-card__desc">Press <strong>"Authorize Web Login"</strong> on your phone and enter the challenge time below.</p>
-
         <form class="login-card__field" onsubmit={startChallengeFlow}>
           <label>Challenge Time</label>
           <input type="text" placeholder="e.g. 18:36" bind:value={inputTime} required />
           <button type="submit" class="login-card__btn">Next</button>
         </form>
-
-        {#if statusMsg}
-          <p class="login-card__status">{statusMsg}</p>
-        {/if}
+        {#if statusMsg}<p class="login-card__status">{statusMsg}</p>{/if}
       </div>
 
     {:else if appState === 'waiting'}
-      <!-- WAITING FOR TARGET TIME -->
       <div class="login-card">
         <h2 class="login-card__title">Safe Retrieved</h2>
         <p class="login-card__desc">Waiting for {challengeTimeStr.substring(0,2)}:{challengeTimeStr.substring(2,4)} to open the safe.</p>
-
-        <div class="countdown-display">
-          {timeRemaining}s
-        </div>
-
-        <div class="waiting-dots">
-          <span></span><span></span><span></span>
-        </div>
+        <div class="countdown-display">{timeRemaining}s</div>
+        <div class="waiting-dots"><span></span><span></span><span></span></div>
       </div>
 
     {:else if appState === 'challenge'}
-      <!-- ACTIVE CHALLENGE (CLICKS) -->
       <div class="login-card challenge-card">
         <h2 class="login-card__title">Challenge Active</h2>
         <p class="login-card__desc">Click the button below the exact number of times shown on your phone.</p>
-
         <div class="challenge-timer">Time left: {challengeRemaining}s</div>
-        
-        <button class="challenge-btn" onclick={registerClick}>
-          IMPULSE
-        </button>
-        
+        <button class="challenge-btn" onclick={registerClick}>IMPULSE</button>
         <div class="challenge-counter">Registered impulses: {challengeClicks}</div>
       </div>
 
     {:else}
-      <!-- CONNECTED: NEW MESSENGER UI -->
       <div class="messenger-ui">
-        <!-- SIDEBAR -->
         <aside class="sidebar">
           <div class="sidebar__header">
             <div class="sidebar__tabs">
@@ -618,7 +598,6 @@
           </div>
         </aside>
 
-        <!-- MAIN CHAT -->
         <main class="chat-main">
           {#if selectedSender}
             <div class="chat-main__header">
@@ -640,9 +619,7 @@
                 <input type="text" placeholder="Send a message..." bind:value={outboxBody} required />
                 <button type="submit" class="btn-send" onclick={() => outboxRecipient = selectedSender!}>Send</button>
               </form>
-              {#if outboxStatus}
-                <div class="outbox-status">{outboxStatus}</div>
-              {/if}
+              {#if outboxStatus}<div class="outbox-status">{outboxStatus}</div>{/if}
             </div>
           {:else}
             <div class="chat-main__empty">
@@ -652,20 +629,19 @@
         </main>
       </div>
     {/if}
-    </div>
-  </main>
+  </div>
 
   {#if vpcUrl && sessionToken}
-  <!-- REMOTE CONTROL PANEL -->
-  <aside class="remote-panel">
-    <div class="remote-phone-container">
-      <RemoteControl {sessionToken} {vpcUrl} certFingerprint={certFingerprint} />
-    </div>
-    <div class="remote-adb-container">
-      <AdbTerminal {sessionToken} {vpcUrl} certFingerprint={certFingerprint} />
-    </div>
-  </aside>
+    <aside class="remote-panel">
+      <div class="remote-phone-container">
+        <RemoteControl {sessionToken} {vpcUrl} certFingerprint={certFingerprint} />
+      </div>
+      <div class="remote-adb-container">
+        <AdbTerminal {sessionToken} {vpcUrl} certFingerprint={certFingerprint} />
+      </div>
+    </aside>
   {/if}
+
 </div>
 
 <style>
@@ -675,44 +651,30 @@
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-  .page-layout {
+  .dashboard-wrapper {
     display: flex;
     justify-content: center;
+    gap: 24px;
     width: 100%;
-    max-width: 1200px;
-    height: 80vh;
+    max-width: 1400px;
+    height: 85vh;
     margin: 40px auto;
-    border: 1px solid #dfe1e5;
-    border-radius: 12px;
-    overflow: hidden;
-    background: #ffffff;
+    padding: 0 24px;
   }
-  .is-connected {
-    max-width: 100%;
-    height: 100vh;
-    margin: 0;
-    border: none;
-    border-radius: 0;
-  }
-  .main-content {
+
+  .messenger-container {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: #ffffff;
+    border: 1px solid #dfe1e5;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
   }
-  .container {
-    width: 100%;
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 40px 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    height: 100%;
-  }
-  .container--full {
-    max-width: 100%;
-    padding: 0;
+
+  .messenger-container.is-connected {
+    max-width: 800px;
   }
   .top-bar {
     width: 100%;
@@ -805,7 +767,9 @@
   
   .remote-panel {
     background: #ffffff;
-    border-left: 1px solid #dfe1e5;
+    border: 1px solid #dfe1e5;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
     display: flex;
     flex-direction: column;
     width: 380px;
@@ -813,7 +777,7 @@
   }
   
   .remote-phone-container {
-    flex: 2;
+    flex: 1;
     border-bottom: 1px solid #dfe1e5;
     overflow: hidden;
     position: relative;
@@ -821,7 +785,8 @@
   }
 
   .remote-adb-container {
-    flex: 1;
+    height: 180px;
+    flex: none;
     overflow: hidden;
     background: #ffffff;
   }

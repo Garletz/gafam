@@ -509,17 +509,20 @@ pub async fn start_bridge(
     });
 
     // Wait for shutdown signal or task completion
-    tokio::select! {
+    let exit_result = tokio::select! {
         _ = shutdown_rx.recv() => {
             log::info!("Bridge shutdown requested");
+            Ok(())
         }
         _ = video_task => {
-            log::info!("Video stream ended");
+            log::info!("Video stream ended unexpectedly");
+            Err("Video stream ended unexpectedly".to_string())
         }
         _ = input_task => {
-            log::info!("Input stream ended");
+            log::info!("Input stream ended unexpectedly");
+            Err("Input stream ended unexpectedly".to_string())
         }
-    }
+    };
 
     // Cleanup
     {
@@ -544,7 +547,7 @@ pub async fn start_bridge(
         .await;
 
     log::info!("Bridge stopped");
-    Ok(())
+    exit_result
 }
 
 /// Stop the running bridge

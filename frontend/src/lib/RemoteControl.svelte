@@ -121,7 +121,7 @@
       // Auto-reconnect if dropped
       if (!streamAbort) {
         setTimeout(() => {
-          if (vpcUrl && sessionToken && browser && !connected) connectStream();
+          if (vpcUrl && sessionToken && !connected) connectToStream();
         }, 2000);
       }
     } catch (e: any) {
@@ -130,7 +130,7 @@
         connected = false;
         // Auto-reconnect on error
         setTimeout(() => {
-          if (vpcUrl && sessionToken && browser && !connected) connectStream();
+          if (vpcUrl && sessionToken && !connected) connectToStream();
         }, 2000);
       }
     }
@@ -285,11 +285,36 @@
     sendInputEvent({ type: 'scroll', x, y, dx: e.deltaX, dy: -e.deltaY });
   }
 
-  // Android navigation buttons
-  function sendBack() { sendInputEvent({ type: 'key', action: 'press', keycode: 4 }); }
-  function sendHome() { sendInputEvent({ type: 'key', action: 'press', keycode: 3 }); }
-  function sendRecent() { sendInputEvent({ type: 'key', action: 'press', keycode: 187 }); }
-  function sendPower() { sendInputEvent({ type: 'key', action: 'press', keycode: 26 }); }
+  function sendAdbCommand(cmd: string) {
+    if (!vpcUrl || !sessionToken) return;
+    fetch(`/api/proxy/scrcpy/shell_input?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`, {
+      method: 'POST',
+      body: cmd + '\n',
+      headers: { 'Content-Type': 'application/octet-stream' }
+    }).catch(() => {});
+  }
+
+  // Android navigation buttons via ADB
+  function sendBack() { sendAdbCommand('input keyevent 4'); }
+  function sendHome() { sendAdbCommand('input keyevent 3'); }
+  function sendRecent() { sendAdbCommand('input keyevent 187'); }
+  function sendPower() { sendAdbCommand('input keyevent 26'); }
+  function sendVolUp() { sendAdbCommand('input keyevent 24'); }
+  function sendVolDown() { sendAdbCommand('input keyevent 25'); }
+  function sendMute() { sendAdbCommand('input keyevent 164'); }
+  function restartVideo() { sendAdbCommand('pkill -f scrcpy'); }
+
+  function unlockScreen() {
+    const pin = prompt('Enter Android PIN to unlock:');
+    if (pin) {
+      // Swipe up to reveal PIN pad, wait 500ms, then enter PIN
+      sendAdbCommand('input swipe 500 2000 500 500');
+      setTimeout(() => {
+        sendAdbCommand(`input text ${pin}`);
+        setTimeout(() => sendAdbCommand('input keyevent 66'), 200);
+      }, 500);
+    }
+  }
 
   function mapKeyCode(code: string): number {
     const map: Record<string, number> = {
@@ -322,16 +347,16 @@
   {/if}
 
   {#if !connected && !error}
-    <div class="rc-connecting">
+    <div class="rc-loading-overlay">
       <div class="rc-spinner"></div>
-      <p>Connecting to Android stream...</p>
+      <span>Connecting to Android stream...</span>
     </div>
   {/if}
 
   <div class="rc-toolbar">
     <div class="rc-toolbar-left">
       {#if deviceInfo}
-        <span class="rc-device-name">Device: {deviceInfo.name}</span>
+        <span class="rc-device-name">{deviceInfo.name}</span>
         <span class="rc-resolution">{deviceInfo.width}×{deviceInfo.height}</span>
       {/if}
       {#if connected}
@@ -342,7 +367,11 @@
       <button class="rc-btn" onclick={sendBack} title="Back">◀</button>
       <button class="rc-btn" onclick={sendHome} title="Home">●</button>
       <button class="rc-btn" onclick={sendRecent} title="Recent">■</button>
-      <button class="rc-btn" onclick={sendPower} title="Power">⏻</button>
+      <button class="rc-btn" onclick={sendPower} title="Power/Sleep">⏻</button>
+      <button class="rc-btn" onclick={sendVolUp} title="Vol +">🔊+</button>
+      <button class="rc-btn" onclick={sendVolDown} title="Vol -">🔊-</button>
+      <button class="rc-btn" onclick={unlockScreen} title="Unlock Screen (PIN)">🔓</button>
+      <button class="rc-btn" onclick={restartVideo} title="Restart Stream (Fix frozen video)">🔄</button>
       <button class="rc-btn" onclick={toggleFullscreen} title="Fullscreen">⛶</button>
     </div>
   </div>
@@ -388,15 +417,17 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 16px;
+    padding: 8px 12px;
     background: #ffffff;
     border-bottom: 1px solid #e5e5e5;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .rc-toolbar-left, .rc-toolbar-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
   }
 
   .rc-device-name {
@@ -433,10 +464,10 @@
     background: transparent;
     border: 1px solid #ccc;
     color: #000;
-    padding: 6px 12px;
+    padding: 4px 8px;
     border-radius: 0;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 12px;
     transition: all 0.2s;
     font-family: 'Courier New', Courier, monospace;
   }
@@ -526,25 +557,7 @@
     color: #000;
   }
 
-  .rc-connecting {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    color: #888;
-    font-family: 'Courier New', Courier, monospace;
-  }
 
-  .rc-spinner {
-    width: 32px;
-    height: 32px;
-    border: 2px solid #333;
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 16px;
-  }
 
   @keyframes spin {
     to { transform: rotate(360deg); }
