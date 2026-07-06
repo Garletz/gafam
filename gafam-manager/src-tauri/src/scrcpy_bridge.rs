@@ -1,6 +1,6 @@
 use std::process::Stdio;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::{mpsc, RwLock};
 use tokio::net::TcpStream;
@@ -18,6 +18,15 @@ const MSG_TYPE_INPUT: u8 = 0x02;
 const MSG_TYPE_DEVICE_INFO: u8 = 0x03;
 const MSG_TYPE_SHELL: u8 = 0x04;
 const _MSG_TYPE_HEARTBEAT: u8 = 0x05;
+
+#[derive(Deserialize)]
+struct InputEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    action: String,
+    x: u32,
+    y: u32,
+}
 
 /// Scrcpy server version to use
 const SCRCPY_SERVER_VERSION: &str = "1.18";
@@ -204,7 +213,7 @@ async fn launch_scrcpy_server(device_serial: &str) -> Result<tokio::process::Chi
             "-s", device_serial,
             "shell",
             &format!(
-                "CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server {} info 1080 2000000 30 -1 true - true true 0 false false - - false",
+                "CLASSPATH=/data/local/tmp/scrcpy-server.jar app_process / com.genymobile.scrcpy.Server {} info 1080 2000000 30 -1 true - true true 0 false false i-frame-interval=2 - false",
                 SCRCPY_SERVER_VERSION
             ),
         ])
@@ -221,7 +230,7 @@ async fn launch_scrcpy_server(device_serial: &str) -> Result<tokio::process::Chi
 }
 
 /// Connect to the scrcpy tunnel and parse the initial device info
-async fn connect_scrcpy_tunnel() -> Result<(TcpStream, String, u16, u16), String> {
+async fn connect_scrcpy_tunnel() -> Result<(TcpStream, TcpStream, String, u16, u16), String> {
     // In scrcpy 1.18 (when control=true), the protocol is:
     // 1. Connect video socket
     // 2. Server sends a single dummy byte (0x00)
@@ -248,7 +257,7 @@ async fn connect_scrcpy_tunnel() -> Result<(TcpStream, String, u16, u16), String
     video_stream.read_exact(&mut dummy).await.map_err(|e| format!("Failed to read dummy byte: {}", e))?;
 
     // Connect Control socket
-    let _control_stream = TcpStream::connect(format!("127.0.0.1:{}", SCRCPY_LOCAL_PORT))
+    let control_stream = TcpStream::connect(format!("127.0.0.1:{}", SCRCPY_LOCAL_PORT))
         .await
         .map_err(|e| format!("Failed to connect control socket: {}", e))?;
 
@@ -267,9 +276,8 @@ async fn connect_scrcpy_tunnel() -> Result<(TcpStream, String, u16, u16), String
 
     log::info!("Scrcpy device: {} ({}x{})", device_name, width, height);
 
-    // We return the video_stream to read H.264 data
-    // In a full implementation we'd also return control_stream to send inputs
-    Ok((video_stream, device_name, width, height))
+    // We return the video_stream to read H.264 data and control_stream to send inputs
+    Ok((video_stream, control_stream, device_name, width, height))
 }
 
 /// Main bridge function — orchestrates the entire flow
@@ -309,10 +317,13 @@ pub async fn start_bridge(
 
     // Step 4: Connect to the scrcpy tunnel
     eprintln!("[BRIDGE] Step 4: Connecting to scrcpy tunnel on 127.0.0.1:{}", SCRCPY_LOCAL_PORT);
-    let (scrcpy_stream, device_name, width, height) = connect_scrcpy_tunnel().await?;
-    let (scrcpy_reader, _scrcpy_writer) = tokio::io::split(scrcpy_stream);
-    let mut scrcpy_reader = BufReader::with_capacity(64 * 1024, scrcpy_reader);
-    eprintln!("[BRIDGE] Step 4: OK - Device: {} ({}x{})", device_name, width, height);
+    let (mut scrcpy_reader, control_stream, device_name, width, height) = match connect_scrcpy_tunnel().await {
+        Ok(t) => {
+            eprintln!("[BRIDGE] Step 4: OK - Device: {} ({}x{})", t.2, t.3, t.4);
+            t
+        }
+        Err(e) => return Err(e),
+    };
 
     // Step 5: Connect WebSocket to VPS via HTTP (port 5150) to avoid TLS issues
     // Extract the IP from the HTTPS URL and build a plain ws:// URL on port 5150
@@ -352,7 +363,7 @@ pub async fn start_bridge(
             format!("Failed to connect WebSocket to VPS: {}", e)
         })?;
 
-    eprintln!("[BRIDGE] Step 5: ✅ WebSocket CONNECTED!");
+    eprintln!("[BRIDGE] Step 5: WebSocket CONNECTED!");
 
     let (mut ws_write, mut ws_read) = ws_stream.split();
 
@@ -426,6 +437,13 @@ pub async fn start_bridge(
     // Task: Read input events from VPS and inject via scrcpy control
     let ws_tx_input = ws_tx.clone();
     let device_serial_clone = device_serial.to_string();
+    
+    // We need width and height to correctly send the touch event
+    let screen_width = width;
+    let screen_height = height;
+
+    let mut control_writer = control_stream; // We use control_stream for writing inputs
+
     let input_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = ws_read.next().await {
             match msg {
@@ -435,10 +453,29 @@ pub async fn start_bridge(
                     }
                     match data[0] {
                         MSG_TYPE_INPUT => {
-                            // TODO: Parse input event JSON and inject via scrcpy control socket
-                            // For now, log the event
-                            if let Ok(event) = serde_json::from_slice::<serde_json::Value>(&data[1..]) {
-                                log::debug!("Input event: {:?}", event);
+                            if let Ok(event) = serde_json::from_slice::<InputEvent>(&data[1..]) {
+                                if event.event_type == "touch" {
+                                    let action = match event.action.as_str() {
+                                        "down" => 0u8,
+                                        "up" => 1u8,
+                                        "move" => 2u8,
+                                        _ => continue,
+                                    };
+                                    
+                                    // Scrcpy 1.18 INJECT_TOUCH_EVENT format (28 bytes)
+                                    let mut packet = [0u8; 28];
+                                    packet[0] = 2; // TYPE_INJECT_TOUCH_EVENT
+                                    packet[1] = action;
+                                    packet[2..10].copy_from_slice(&1u64.to_be_bytes()); // pointerId = 1
+                                    packet[10..14].copy_from_slice(&event.x.to_be_bytes());
+                                    packet[14..18].copy_from_slice(&event.y.to_be_bytes());
+                                    packet[18..20].copy_from_slice(&screen_width.to_be_bytes());
+                                    packet[20..22].copy_from_slice(&screen_height.to_be_bytes());
+                                    packet[22..24].copy_from_slice(&0xffffu16.to_be_bytes()); // pressure = 1.0 (max)
+                                    packet[24..28].copy_from_slice(&1u32.to_be_bytes()); // buttons = 1 (primary/left click)
+                                    
+                                    let _ = control_writer.write_all(&packet).await;
+                                }
                             }
                         }
                         MSG_TYPE_SHELL => {

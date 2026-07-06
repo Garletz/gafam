@@ -2,6 +2,8 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import type { PageData } from './$types';
+  import RemoteControl from '$lib/RemoteControl.svelte';
+  import AdbTerminal from '$lib/AdbTerminal.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -513,8 +515,9 @@
   <title>{phone} — GAFAM Relay</title>
 </svelte:head>
 
-<main class="relay-page">
-  <div class="relay-content">
+<div class="page-layout {appState === 'connected' ? 'is-connected' : ''}">
+  <main class="relay-page">
+    <div class="relay-content">
     {#if appState === 'setup'}
       <!-- SETUP CHALLENGE -->
       <div class="login-card">
@@ -571,7 +574,6 @@
             <div class="sidebar__tabs">
               <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
               <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
-              <a href="/{phone}/remote" class="tab remote-tab" title="Remote Control">📱</a>
             </div>
             <div class="sidebar__actions">
               {#if sidebarTab === 'contacts'}
@@ -650,8 +652,21 @@
         </main>
       </div>
     {/if}
-  </div>
-</main>
+    </div>
+  </main>
+
+  {#if vpcUrl && sessionToken}
+  <!-- REMOTE CONTROL PANEL -->
+  <aside class="remote-panel">
+    <div class="remote-phone-container">
+      <RemoteControl {sessionToken} {vpcUrl} certFingerprint={certFingerprint} />
+    </div>
+    <div class="remote-adb-container">
+      <AdbTerminal {sessionToken} {vpcUrl} certFingerprint={certFingerprint} />
+    </div>
+  </aside>
+  {/if}
+</div>
 
 <style>
   :global(body) {
@@ -660,17 +675,51 @@
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-  .relay-page {
+  .page-layout {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    max-width: 1200px;
+    height: 80vh;
+    margin: 40px auto;
+    border: 1px solid #dfe1e5;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ffffff;
+  }
+  .is-connected {
+    max-width: 100%;
+    height: 100vh;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+  .main-content {
     flex: 1;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
-  .relay-content {
-    flex: 1;
+  .container {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 40px 20px;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
-    padding: 20px;
+    height: 100%;
+  }
+  .container--full {
+    max-width: 100%;
+    padding: 0;
+  }
+  .top-bar {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
   }
   .login-card {
     background: #ffffff;
@@ -696,18 +745,14 @@
   .challenge-counter { font-size: 18px; font-weight: 500; margin-top: 20px; }
   
   .messenger-ui {
-    display: flex;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: 100%;
     width: 100%;
-    max-width: 1200px;
-    height: 80vh;
-    border: 1px solid #dfe1e5;
-    border-radius: 12px;
     overflow: hidden;
-    background: #ffffff;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
   }
   .sidebar {
-    width: 320px;
+    width: 300px;
     background: #ffffff;
     border-right: 1px solid #dfe1e5;
     display: flex;
@@ -739,17 +784,6 @@
     color: #202124;
     border-bottom-color: #202124;
   }
-  .remote-tab {
-    text-decoration: none;
-    margin-left: auto;
-    font-size: 18px;
-    padding: 8px 12px;
-    opacity: 0.6;
-    transition: opacity 0.15s;
-  }
-  .remote-tab:hover {
-    opacity: 1;
-  }
   .sidebar__actions {
     display: flex;
     flex-direction: column;
@@ -767,6 +801,29 @@
     background: #f1f3f4;
     font-size: 13px;
     outline: none;
+  }
+  
+  .remote-panel {
+    background: #ffffff;
+    border-left: 1px solid #dfe1e5;
+    display: flex;
+    flex-direction: column;
+    width: 380px;
+    overflow: hidden;
+  }
+  
+  .remote-phone-container {
+    flex: 2;
+    border-bottom: 1px solid #dfe1e5;
+    overflow: hidden;
+    position: relative;
+    background: #f5f5f5;
+  }
+
+  .remote-adb-container {
+    flex: 1;
+    overflow: hidden;
+    background: #ffffff;
   }
   .contact-search input:focus { border-color: #bdc1c6; }
   
@@ -807,8 +864,6 @@
     gap: 12px;
     align-items: center;
     color: #202124;
-    content-visibility: auto;
-    contain-intrinsic-size: 71px;
   }
   .chat-item:hover, .chat-item.active { background: #e8eaed; }
   .chat-item__avatar {

@@ -15,6 +15,7 @@
   let frameCount = $state(0);
   let isFullscreen = $state(false);
   let configBuffer: Uint8Array | null = null;
+  let hasReceivedKeyFrame = $state(false);
 
   // Message types matching vpc-relay/scrcpy_hub.go
   const MSG_TYPE_VIDEO = 0x01;
@@ -117,10 +118,20 @@
       }
       
       connected = false;
+      // Auto-reconnect if dropped
+      if (!streamAbort) {
+        setTimeout(() => {
+          if (vpcUrl && sessionToken && browser && !connected) connectStream();
+        }, 2000);
+      }
     } catch (e: any) {
       if (e.name !== 'AbortError') {
         error = 'Stream error: ' + e.message;
         connected = false;
+        // Auto-reconnect on error
+        setTimeout(() => {
+          if (vpcUrl && sessionToken && browser && !connected) connectStream();
+        }, 2000);
       }
     }
   }
@@ -135,6 +146,7 @@
       decoder = null;
     }
     configBuffer = null;
+    hasReceivedKeyFrame = false;
     connected = false;
   }
 
@@ -197,6 +209,15 @@
       dataToDecode = new Uint8Array(configBuffer.length + chunkData.length);
       dataToDecode.set(configBuffer);
       dataToDecode.set(chunkData, configBuffer.length);
+    }
+
+    if (!isKeyFrame && !hasReceivedKeyFrame) {
+      // Drop delta frames if we haven't seen a keyframe yet after connection
+      return;
+    }
+    
+    if (isKeyFrame && !isConfigOnly) {
+      hasReceivedKeyFrame = true;
     }
 
     try {
@@ -295,7 +316,7 @@
 <div class="remote-control">
   {#if error}
     <div class="rc-error">
-      <span>⚠️ {error}</span>
+      <span>{error}</span>
       <button onclick={connectToStream}>Retry</button>
     </div>
   {/if}
@@ -310,7 +331,7 @@
   <div class="rc-toolbar">
     <div class="rc-toolbar-left">
       {#if deviceInfo}
-        <span class="rc-device-name">📱 {deviceInfo.name}</span>
+        <span class="rc-device-name">Device: {deviceInfo.name}</span>
         <span class="rc-resolution">{deviceInfo.width}×{deviceInfo.height}</span>
       {/if}
       {#if connected}
@@ -345,6 +366,12 @@
       onwheel={handleWheel}
       oncontextmenu={(e) => e.preventDefault()}
     ></canvas>
+    {#if connected && !hasReceivedKeyFrame}
+      <div class="rc-loading-overlay">
+        <div class="rc-spinner"></div>
+        <span>Waiting for Video Stream...</span>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -353,7 +380,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #000;
+    background: #ffffff;
     overflow: hidden;
   }
 
@@ -362,8 +389,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 16px;
-    background: #050505;
-    border-bottom: 1px solid #333;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e5e5;
   }
 
   .rc-toolbar-left, .rc-toolbar-right {
@@ -375,7 +402,7 @@
   .rc-device-name {
     font-size: 13px;
     font-weight: 600;
-    color: #fff;
+    color: #000;
     letter-spacing: 1px;
     font-family: 'Courier New', Courier, monospace;
   }
@@ -397,15 +424,15 @@
   }
 
   .rc-status.connected {
-    color: #fff;
+    color: #000;
     background: transparent;
-    border-color: #fff;
+    border-color: #000;
   }
 
   .rc-btn {
     background: transparent;
-    border: 1px solid #555;
-    color: #fff;
+    border: 1px solid #ccc;
+    color: #000;
     padding: 6px 12px;
     border-radius: 0;
     cursor: pointer;
@@ -415,9 +442,9 @@
   }
 
   .rc-btn:hover {
-    background: #fff;
-    color: #000;
-    border-color: #fff;
+    background: #000;
+    color: #fff;
+    border-color: #000;
   }
 
   .rc-canvas-container {
@@ -427,7 +454,41 @@
     align-items: center;
     overflow: hidden;
     outline: none;
-    background: #000;
+    position: relative;
+    background: transparent;
+  }
+
+  .rc-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: #000;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    gap: 16px;
+    backdrop-filter: blur(2px);
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .rc-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(0,0,0,0.1);
+    border-radius: 50%;
+    border-top-color: #000;
+    animation: spin 1s ease-in-out infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   canvas {

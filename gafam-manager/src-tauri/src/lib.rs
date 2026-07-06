@@ -276,7 +276,7 @@ async fn scrcpy_start_bridge(
             state_clone.clone(),
         ).await {
             log::error!("Scrcpy bridge error: {}", e);
-            eprintln!("[BRIDGE] ❌ FATAL ERROR: {}", e);
+            eprintln!("[BRIDGE] FATAL ERROR: {}", e);
             // Reset state so frontend knows bridge failed
             let mut s = state_clone.write().await;
             s.active = false;

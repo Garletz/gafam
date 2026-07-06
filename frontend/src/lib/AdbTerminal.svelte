@@ -173,11 +173,10 @@
   .adb-terminal {
     display: flex;
     flex-direction: column;
-    background: #000;
+    background: #ffffff;
     overflow: hidden;
-    border-left: 1px solid #333;
     height: 100%;
-    min-height: 300px;
+    min-height: 200px;
   }
 
   .term-header {
@@ -185,14 +184,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 16px;
-    background: #050505;
-    border-bottom: 1px solid #333;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e5e5;
   }
 
   .term-title {
     font-size: 13px;
     font-weight: bold;
-    color: #fff;
+    color: #000;
     text-transform: uppercase;
     letter-spacing: 1px;
     font-family: 'Courier New', Courier, monospace;
@@ -207,15 +206,15 @@
   }
 
   .term-status.connected {
-    color: #fff;
+    color: #000;
   }
 
   .term-error {
     padding: 8px 16px;
-    background: #111;
-    color: #fff;
+    background: #f0f0f0;
+    color: #000;
     font-size: 12px;
-    border-bottom: 1px solid #555;
+    border-bottom: 1px solid #e5e5e5;
     font-family: 'Courier New', Courier, monospace;
   }
 
@@ -226,7 +225,7 @@
     font-family: 'Courier New', Courier, monospace;
     font-size: 13px;
     line-height: 1.5;
-    color: #ccc;
+    color: #333;
   }
 
   .term-line {
@@ -238,12 +237,12 @@
     display: flex;
     align-items: center;
     padding: 8px 16px;
-    border-top: 1px solid #333;
-    background: #050505;
+    border-top: 1px solid #e5e5e5;
+    background: #ffffff;
   }
 
   .term-prompt {
-    color: #fff;
+    color: #000;
     font-family: 'Courier New', Courier, monospace;
     font-size: 13px;
     font-weight: bold;
@@ -254,13 +253,13 @@
     flex: 1;
     background: transparent;
     border: none;
-    color: #fff;
+    color: #000;
     font-family: 'Courier New', Courier, monospace;
     font-size: 13px;
     outline: none;
   }
 
-  .term-input::placeholder {
-    color: #555;
+  .term-input:disabled {
+    color: #888;
   }
 </style>

@@ -468,7 +468,7 @@
                 disabled={!selectedDevice || bridgeStarting}
                 style="margin-top: 16px; width: 100%;"
               >
-                {bridgeStarting ? '⏳ Starting Bridge...' : '▶ Start Scrcpy Bridge'}
+                {bridgeStarting ? 'Starting Bridge...' : 'Start Scrcpy Bridge'}
               </button>
             {:else}
               <p class="hint-text">
@@ -594,8 +594,8 @@
   }
 
   .status-badge.active {
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.1);
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .status-badge.inactive {
@@ -638,9 +638,9 @@
   .btn-danger {
     width: 100%;
     padding: 12px;
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: var(--radius);
     font-weight: 600;
     cursor: pointer;
@@ -648,7 +648,7 @@
   }
 
   .btn-danger:hover {
-    background: rgba(239, 68, 68, 0.2);
+    background: rgba(255, 255, 255, 0.2);
   }
 
   .adb-section {
@@ -686,11 +686,7 @@
 
   .device-item.selected {
     border-color: var(--accent);
-    background: rgba(99, 102, 241, 0.05);
-  }
-
-  .device-icon {
-    font-size: 24px;
+    background: rgba(255, 255, 255, 0.05);
   }
 
   .device-info-compact {
@@ -718,7 +714,11 @@
   }
 
   .device-state.online {
-    color: #10b981;
+    color: #ffffff;
+  }
+
+  .terminal-content {
+    color: #ffffff;
   }
 
   .hint-text {
