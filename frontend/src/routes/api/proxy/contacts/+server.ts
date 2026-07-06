@@ -23,7 +23,7 @@ export const GET: RequestHandler = async ({ url }) => {
       const encoder = new TextEncoder();
 
       const httpRequest = [
-        `GET /api/web/contacts HTTP/1.1`,
+        `GET /api/proxy/contacts HTTP/1.1`,
         `Host: ${host}`,
         `Authorization: Bearer ${token}`,
         `Connection: close`,

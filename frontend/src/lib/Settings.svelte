@@ -12,7 +12,8 @@
 
   async function fetchGuardians() {
     try {
-      const res = await fetch(`${vpcUrl}/api/settings/guardians?token=${sessionToken}`);
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const res = await fetch(`/api/proxy/guardians?${params.toString()}`);
       if (res.ok) {
         guardians = await res.json();
       }
@@ -28,7 +29,8 @@
     isLoading = true;
     errorMsg = '';
     try {
-      const res = await fetch(`${vpcUrl}/api/settings/guardians?token=${sessionToken}`, {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const res = await fetch(`/api/proxy/guardians?${params.toString()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName, phone: newPhone, keyword: newKeyword })
@@ -50,7 +52,8 @@
 
   async function deleteGuardian(id: number) {
     try {
-      await fetch(`${vpcUrl}/api/settings/guardians?token=${sessionToken}&id=${id}`, {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, id: id.toString() });
+      await fetch(`/api/proxy/guardians?${params.toString()}`, {
         method: 'DELETE'
       });
       await fetchGuardians();
