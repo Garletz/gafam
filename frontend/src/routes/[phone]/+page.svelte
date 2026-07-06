@@ -518,7 +518,6 @@
 
 <div class="dashboard-wrapper">
   
-  <div class="messenger-container {appState === 'connected' ? 'is-connected' : ''}">
     {#if appState === 'setup'}
       <div class="login-card">
         <h2 class="login-card__title">Authorization Required</h2>
@@ -530,10 +529,7 @@
         </form>
         {#if statusMsg}<p class="login-card__status">{statusMsg}</p>{/if}
         
-        <div class="login-card__recovery">
-          <h4>Lost device? (Social Recovery)</h4>
-          <p>Ask a Trusted Guardian to send their trigger keyword (e.g. <code>URGENCE_GAFAM</code>) by SMS to your relay number. You will receive an emergency code in response.</p>
-        </div>
+
       </div>
 
     {:else if appState === 'waiting'}
@@ -554,8 +550,9 @@
       </div>
 
     {:else}
-      <div class="messenger-ui">
-        <aside class="sidebar">
+      <div class="messenger-container is-connected">
+        <div class="messenger-ui">
+          <aside class="sidebar">
           <div class="sidebar__header">
             <div class="sidebar__tabs">
               <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
@@ -637,8 +634,8 @@
           {/if}
         </main>
       </div>
+      </div>
     {/if}
-  </div>
 
   {#if vpcUrl && sessionToken}
     <aside class="remote-panel">
