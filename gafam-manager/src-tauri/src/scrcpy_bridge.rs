@@ -6,7 +6,8 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::net::TcpStream;
 use serde::{Deserialize, Serialize};
 use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{connect_async_tls_with_config, Connector, tungstenite::Message};
+use native_tls::TlsConnector;
 
 // ============================================================
 // === SCRCPY BRIDGE MODULE (Manifest 14) ===
@@ -291,7 +292,7 @@ pub async fn start_bridge(
     let mut scrcpy_reader = BufReader::with_capacity(64 * 1024, scrcpy_reader);
 
     // Step 5: Connect WebSocket to VPS
-    let ws_url = format!("{}/ws/scrcpy/bridge", vpc_url.replace("https://", "wss://").replace("http://", "ws://"));
+    let ws_url = format!("{}/ws/scrcpy/bridge", vpc_url.trim_end_matches('/').replace("https://", "wss://").replace("http://", "ws://"));
     let request = http::Request::builder()
         .uri(&ws_url)
         .header("Authorization", format!("Bearer {}", jwt_secret))
@@ -301,11 +302,29 @@ pub async fn start_bridge(
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", tokio_tungstenite::tungstenite::handshake::client::generate_key())
         .body(())
-        .map_err(|e| format!("Failed to build WS request: {}", e))?;
+        .map_err(|e| {
+            log::error!("Failed to build WS request: {}", e);
+            format!("Failed to build WS request: {}", e)
+        })?;
 
-    let (ws_stream, _) = connect_async(request)
-        .await
-        .map_err(|e| format!("Failed to connect WebSocket to VPS: {}", e))?;
+    let native_tls_connector = TlsConnector::builder()
+        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true)
+        .build()
+        .map_err(|e| format!("TLS build error: {}", e))?;
+    let connector = Connector::NativeTls(native_tls_connector);
+
+    let (ws_stream, _) = connect_async_tls_with_config(
+        request,
+        None, // config
+        false, // disable_nagle
+        Some(connector)
+    )
+    .await
+    .map_err(|e| {
+        log::error!("Failed to connect WebSocket to VPS: {}", e);
+        format!("Failed to connect WebSocket to VPS: {}", e)
+    })?;
 
     let (mut ws_write, mut ws_read) = ws_stream.split();
 
