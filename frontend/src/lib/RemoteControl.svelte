@@ -14,7 +14,7 @@
   let decoder: any = null;
   let frameCount = $state(0);
   let isFullscreen = $state(false);
-  let h264Buffer = new Uint8Array(0);
+  let configBuffer: Uint8Array | null = null;
 
   // Message types matching vpc-relay/scrcpy_hub.go
   const MSG_TYPE_VIDEO = 0x01;
@@ -134,7 +134,7 @@
       try { decoder.close(); } catch(e) {}
       decoder = null;
     }
-    h264Buffer = new Uint8Array(0);
+    configBuffer = null;
     connected = false;
   }
 
@@ -166,65 +166,48 @@
   function handleVideoFrame(chunkData: Uint8Array) {
     if (!decoder || decoder.state === 'closed') return;
 
-    // Append new chunk to the h264 buffer
-    const newBuffer = new Uint8Array(h264Buffer.length + chunkData.length);
-    newBuffer.set(h264Buffer);
-    newBuffer.set(chunkData, h264Buffer.length);
-    h264Buffer = newBuffer;
+    let isKeyFrame = false;
+    let isConfigOnly = true;
 
-    // Ensure buffer starts with a start code (00 00 00 01)
-    if (h264Buffer.length >= 4) {
-      if (!(h264Buffer[0] === 0 && h264Buffer[1] === 0 && h264Buffer[2] === 0 && h264Buffer[3] === 1)) {
-        let firstStart = -1;
-        for (let i = 0; i < h264Buffer.length - 3; i++) {
-          if (h264Buffer[i] === 0 && h264Buffer[i+1] === 0 && h264Buffer[i+2] === 0 && h264Buffer[i+3] === 1) {
-            firstStart = i;
-            break;
-          }
-        }
-        if (firstStart === -1) {
-          h264Buffer = new Uint8Array(0); // Discard junk
-          return;
-        } else {
-          h264Buffer = h264Buffer.slice(firstStart);
+    // Check NAL unit types in the chunk
+    for (let i = 0; i < Math.min(chunkData.length - 4, 200); i++) {
+      if (chunkData[i] === 0 && chunkData[i+1] === 0 && chunkData[i+2] === 0 && chunkData[i+3] === 1) {
+        const nalType = chunkData[i+4] & 0x1f;
+        if (nalType === 5) {
+          isKeyFrame = true;
+          isConfigOnly = false; // Has IDR frame
+        } else if (nalType === 1) {
+          isConfigOnly = false; // Has P-frame
+        } else if (nalType === 7 || nalType === 8) {
+          isKeyFrame = true; // SPS/PPS imply keyframe config
         }
       }
     }
 
-    let offset = 0;
-    while (true) {
-      let nextNalStart = -1;
-      // Search for the next start code
-      for (let i = offset + 4; i < h264Buffer.length - 3; i++) {
-        if (h264Buffer[i] === 0 && h264Buffer[i+1] === 0 && h264Buffer[i+2] === 0 && h264Buffer[i+3] === 1) {
-          nextNalStart = i;
-          break;
-        }
-      }
+    // If chunk contains ONLY config (SPS/PPS), save it and do NOT decode yet!
+    if (isConfigOnly && isKeyFrame) {
+      configBuffer = chunkData;
+      return;
+    }
 
-      if (nextNalStart === -1) {
-        // No more complete NAL units. Wait for more data.
-        if (offset > 0) h264Buffer = h264Buffer.slice(offset);
-        break;
-      }
+    let dataToDecode = chunkData;
 
-      // Extract complete NAL unit
-      const nalUnit = h264Buffer.slice(offset, nextNalStart);
-      offset = nextNalStart;
+    // Prepend config buffer to keyframes if we have one
+    if (isKeyFrame && configBuffer && !isConfigOnly) {
+      dataToDecode = new Uint8Array(configBuffer.length + chunkData.length);
+      dataToDecode.set(configBuffer);
+      dataToDecode.set(chunkData, configBuffer.length);
+    }
 
-      const nalType = nalUnit[4] & 0x1f;
-      const isKeyFrame = nalType === 5 || nalType === 7 || nalType === 8; // IDR, SPS, PPS
-
-      try {
-        const chunk = new (window as any).EncodedVideoChunk({
-          type: isKeyFrame ? 'key' : 'delta',
-          timestamp: performance.now() * 1000, // microseconds
-          data: nalUnit,
-        });
-        decoder.decode(chunk);
-      } catch (e) {
-        // Silently skip decode errors
-      }
+    try {
+      const chunk = new (window as any).EncodedVideoChunk({
+        type: isKeyFrame ? 'key' : 'delta',
+        timestamp: performance.now() * 1000, // microseconds
+        data: dataToDecode,
+      });
+      decoder.decode(chunk);
+    } catch (e) {
+      console.error("WebCodecs decode error:", e);
     }
   }
 
