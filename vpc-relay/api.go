@@ -561,7 +561,7 @@ func challengeAuthHandler(w http.ResponseWriter, r *http.Request) {
 
 	saltBase64 := base64.StdEncoding.EncodeToString(salt)
 
-	// 5. Deposit the encrypted safe on Cloudflare
+	// 5. Deposit the encrypted safe on Cloudflare using the normalized time
 	go depositSafeOnCloudflare(req.Phone, encryptedSafe, saltBase64, ivBase64, req.ChallengeTime)
 
 	log.Printf("Challenge created for %s: time=%s clicks=%d", req.Phone, req.ChallengeTime, req.ChallengeClicks)
@@ -583,7 +583,8 @@ func generateEmergencyChallenge(phone string) (string, int, error) {
 		// Fallback to UTC+2 if tzdata is missing in the Docker container
 		target = time.Now().Add(2 * time.Hour).Add(2 * time.Minute)
 	}
-	challengeTime := target.Format("1504")
+	challengeTimeStr := target.Format("15:04")
+	challengeTimeNorm := target.Format("1504")
 	challengeClicks := mrand.Intn(8) + 1
 
 	sessionID := generateToken(32)
@@ -610,7 +611,7 @@ func generateEmergencyChallenge(phone string) (string, int, error) {
 	}
 	safeJSON, _ := json.Marshal(safePayload)
 
-	passphrase := fmt.Sprintf("%s-%d", challengeTime, challengeClicks)
+	passphrase := fmt.Sprintf("%s-%d", challengeTimeNorm, challengeClicks)
 	salt := make([]byte, 16)
 	rand.Read(salt)
 
@@ -621,9 +622,9 @@ func generateEmergencyChallenge(phone string) (string, int, error) {
 	}
 
 	saltBase64 := base64.StdEncoding.EncodeToString(salt)
-	go depositSafeOnCloudflare(phone, encryptedSafe, saltBase64, ivBase64, challengeTime)
+	go depositSafeOnCloudflare(phone, encryptedSafe, saltBase64, ivBase64, challengeTimeNorm)
 
-	return challengeTime, challengeClicks, nil
+	return challengeTimeStr, challengeClicks, nil
 }
 
 // depositSafeOnCloudflare sends the encrypted safe to the Cloudflare directory
