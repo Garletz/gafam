@@ -759,9 +759,9 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO gafam_contacts (phone_number, display_name) 
+		INSERT INTO gafam_contacts (phone, name) 
 		VALUES (?, ?) 
-		ON CONFLICT(phone_number) DO UPDATE SET display_name=excluded.display_name
+		ON CONFLICT(phone) DO UPDATE SET name=excluded.name
 	`)
 	if err != nil {
 		tx.Rollback()
@@ -851,7 +851,7 @@ func deleteGuardianHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getContactsHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT phone_number, display_name FROM gafam_contacts")
+	rows, err := db.Query("SELECT phone, name FROM gafam_contacts")
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
