@@ -370,18 +370,9 @@
   {#if error}
     <div class="rc-error">
       <span>{error}</span>
-      <button onclick={connectToStream}>Retry</button>
+      <button onclick={checkStatusAndConnect}>Retry</button>
     </div>
-  {/if}
-
-  {#if !connected && !error}
-    <div class="rc-loading-overlay">
-      <div class="rc-spinner"></div>
-      <span>Connecting to Android stream...</span>
-    </div>
-  {/if}
-
-  {#if isCheckingStatus}
+  {:else if isCheckingStatus}
     <div class="rc-overlay-msg">
       <div class="rc-spinner"></div>
       <p>Checking ADB Connection...</p>
@@ -390,6 +381,11 @@
     <div class="rc-overlay-msg">
       <p>📱 Phone is not connected via ADB to the GAFAM Cloud.</p>
       <button class="rc-btn" onclick={checkStatusAndConnect} style="padding: 8px 16px; margin-top: 12px; border: 1px solid #ddd; cursor: pointer;">Retry Connection</button>
+    </div>
+  {:else if !connected}
+    <div class="rc-loading-overlay">
+      <div class="rc-spinner"></div>
+      <span>Connecting to Android stream...</span>
     </div>
   {:else}
     <div class="rc-toolbar">
