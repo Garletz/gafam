@@ -14,6 +14,7 @@
   let decoder: any = null;
   let frameCount = $state(0);
   let isFullscreen = $state(false);
+  let h264Buffer = new Uint8Array(0);
 
   // Message types matching vpc-relay/scrcpy_hub.go
   const MSG_TYPE_VIDEO = 0x01;
@@ -133,6 +134,7 @@
       try { decoder.close(); } catch(e) {}
       decoder = null;
     }
+    h264Buffer = new Uint8Array(0);
     connected = false;
   }
 
@@ -161,22 +163,68 @@
     }
   }
 
-  function handleVideoFrame(nalData: Uint8Array) {
+  function handleVideoFrame(chunkData: Uint8Array) {
     if (!decoder || decoder.state === 'closed') return;
 
-    // Determine if this is a keyframe by checking NAL unit type
-    const nalType = nalData.length > 0 ? (nalData[0] & 0x1f) : 0;
-    const isKeyFrame = nalType === 5 || nalType === 7; // IDR or SPS
+    // Append new chunk to the h264 buffer
+    const newBuffer = new Uint8Array(h264Buffer.length + chunkData.length);
+    newBuffer.set(h264Buffer);
+    newBuffer.set(chunkData, h264Buffer.length);
+    h264Buffer = newBuffer;
 
-    try {
-      const chunk = new (window as any).EncodedVideoChunk({
-        type: isKeyFrame ? 'key' : 'delta',
-        timestamp: performance.now() * 1000, // microseconds
-        data: nalData,
-      });
-      decoder.decode(chunk);
-    } catch (e) {
-      // Skip frames that can't be decoded
+    // Ensure buffer starts with a start code (00 00 00 01)
+    if (h264Buffer.length >= 4) {
+      if (!(h264Buffer[0] === 0 && h264Buffer[1] === 0 && h264Buffer[2] === 0 && h264Buffer[3] === 1)) {
+        let firstStart = -1;
+        for (let i = 0; i < h264Buffer.length - 3; i++) {
+          if (h264Buffer[i] === 0 && h264Buffer[i+1] === 0 && h264Buffer[i+2] === 0 && h264Buffer[i+3] === 1) {
+            firstStart = i;
+            break;
+          }
+        }
+        if (firstStart === -1) {
+          h264Buffer = new Uint8Array(0); // Discard junk
+          return;
+        } else {
+          h264Buffer = h264Buffer.slice(firstStart);
+        }
+      }
+    }
+
+    let offset = 0;
+    while (true) {
+      let nextNalStart = -1;
+      // Search for the next start code
+      for (let i = offset + 4; i < h264Buffer.length - 3; i++) {
+        if (h264Buffer[i] === 0 && h264Buffer[i+1] === 0 && h264Buffer[i+2] === 0 && h264Buffer[i+3] === 1) {
+          nextNalStart = i;
+          break;
+        }
+      }
+
+      if (nextNalStart === -1) {
+        // No more complete NAL units. Wait for more data.
+        if (offset > 0) h264Buffer = h264Buffer.slice(offset);
+        break;
+      }
+
+      // Extract complete NAL unit
+      const nalUnit = h264Buffer.slice(offset, nextNalStart);
+      offset = nextNalStart;
+
+      const nalType = nalUnit[4] & 0x1f;
+      const isKeyFrame = nalType === 5 || nalType === 7 || nalType === 8; // IDR, SPS, PPS
+
+      try {
+        const chunk = new (window as any).EncodedVideoChunk({
+          type: isKeyFrame ? 'key' : 'delta',
+          timestamp: performance.now() * 1000, // microseconds
+          data: nalUnit,
+        });
+        decoder.decode(chunk);
+      } catch (e) {
+        // Silently skip decode errors
+      }
     }
   }
 

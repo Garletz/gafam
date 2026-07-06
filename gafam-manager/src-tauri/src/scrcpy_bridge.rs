@@ -375,33 +375,57 @@ pub async fn start_bridge(
     info_msg.extend_from_slice(&info_json);
     let _ = ws_write.send(Message::Binary(info_msg.into())).await;
 
+    // Create an mpsc channel for all websocket writes to multiplex video and shell output
+    let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<Message>(100);
+    
+    let mut ws_write_task = tokio::spawn(async move {
+        while let Some(msg) = ws_rx.recv().await {
+            if ws_write.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
     // Step 7: Bidirectional relay
     let state_clone = state.clone();
+    let ws_tx_video = ws_tx.clone();
 
     // Task: Read H.264 from scrcpy and send to VPS
     let video_task = tokio::spawn(async move {
-        let mut buf = vec![0u8; 64 * 1024]; // 64KB buffer for H.264 frames
+        let mut pts_buf = [0u8; 8];
+        let mut size_buf = [0u8; 4];
+        
         loop {
-            match scrcpy_reader.read(&mut buf).await {
-                Ok(0) => break, // EOF
-                Ok(n) => {
-                    let mut frame_msg = Vec::with_capacity(1 + n);
-                    frame_msg.push(MSG_TYPE_VIDEO);
-                    frame_msg.extend_from_slice(&buf[..n]);
+            // Read PTS (8 bytes)
+            if scrcpy_reader.read_exact(&mut pts_buf).await.is_err() { break; }
+            
+            // Read Size (4 bytes)
+            if scrcpy_reader.read_exact(&mut size_buf).await.is_err() { break; }
+            
+            let packet_size = u32::from_be_bytes(size_buf) as usize;
+            
+            if packet_size > 0 {
+                // Read exact NAL unit packet data
+                let mut packet_data = vec![0u8; packet_size];
+                if scrcpy_reader.read_exact(&mut packet_data).await.is_err() { break; }
+                
+                let mut frame_msg = Vec::with_capacity(1 + packet_size);
+                frame_msg.push(MSG_TYPE_VIDEO);
+                frame_msg.extend_from_slice(&packet_data);
 
-                    if ws_write.send(Message::Binary(frame_msg.into())).await.is_err() {
-                        break;
-                    }
-
-                    let mut s = state_clone.write().await;
-                    s.frames_sent += 1;
+                if ws_tx_video.send(Message::Binary(frame_msg.into())).await.is_err() {
+                    break;
                 }
-                Err(_) => break,
+
+                let mut s = state_clone.write().await;
+                s.frames_sent += 1;
             }
         }
     });
 
     // Task: Read input events from VPS and inject via scrcpy control
+    let ws_tx_input = ws_tx.clone();
+    let device_serial_clone = device_serial.to_string();
     let input_task = tokio::spawn(async move {
         while let Some(Ok(msg)) = ws_read.next().await {
             match msg {
@@ -418,8 +442,25 @@ pub async fn start_bridge(
                             }
                         }
                         MSG_TYPE_SHELL => {
-                            // TODO: Forward to ADB shell subprocess
-                            log::debug!("Shell input received");
+                            // Forward to ADB shell subprocess
+                            let cmd_str = String::from_utf8_lossy(&data[1..]).to_string();
+                            let device_serial = device_serial_clone.clone();
+                            let ws_tx = ws_tx_input.clone();
+                            
+                            tokio::spawn(async move {
+                                let adb = find_adb();
+                                let output = Command::new(&adb)
+                                    .args(["-s", &device_serial, "shell", &cmd_str])
+                                    .output()
+                                    .await;
+                                    
+                                if let Ok(out) = output {
+                                    let mut resp_msg = vec![MSG_TYPE_SHELL];
+                                    resp_msg.extend_from_slice(&out.stdout);
+                                    resp_msg.extend_from_slice(&out.stderr);
+                                    let _ = ws_tx.send(Message::Binary(resp_msg.into())).await;
+                                }
+                            });
                         }
                         _ => {}
                     }
