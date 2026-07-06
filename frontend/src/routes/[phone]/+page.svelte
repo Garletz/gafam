@@ -4,6 +4,7 @@
   import type { PageData } from './$types';
   import RemoteControl from '$lib/RemoteControl.svelte';
   import AdbTerminal from '$lib/AdbTerminal.svelte';
+  import Settings from '$lib/Settings.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -528,6 +529,11 @@
           <button type="submit" class="login-card__btn">Next</button>
         </form>
         {#if statusMsg}<p class="login-card__status">{statusMsg}</p>{/if}
+        
+        <div class="login-card__recovery">
+          <h4>Lost device? (Social Recovery)</h4>
+          <p>Ask a Trusted Guardian to send their trigger keyword (e.g. <code>URGENCE_GAFAM</code>) by SMS to your relay number. You will receive an emergency code in response.</p>
+        </div>
       </div>
 
     {:else if appState === 'waiting'}
@@ -554,6 +560,7 @@
             <div class="sidebar__tabs">
               <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
               <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
+              <button class="tab {sidebarTab === 'settings' ? 'active' : ''}" onclick={() => sidebarTab = 'settings'}>Settings</button>
             </div>
             <div class="sidebar__actions">
               {#if sidebarTab === 'contacts'}
@@ -599,7 +606,9 @@
         </aside>
 
         <main class="chat-main">
-          {#if selectedSender}
+          {#if sidebarTab === 'settings'}
+            <Settings {sessionToken} {vpcUrl} />
+          {:else if selectedSender}
             <div class="chat-main__header">
               <h3>{getContactName(selectedSender)}</h3>
             </div>
@@ -692,6 +701,7 @@
     width: 100%;
     max-width: 400px;
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    margin: auto;
   }
   .login-card__title { margin: 0 0 10px; font-size: 20px; color: #202124; }
   .login-card__desc { color: #5f6368; font-size: 14px; margin-bottom: 24px; }
@@ -699,6 +709,9 @@
   .login-card__field input { width: 100%; box-sizing: border-box; padding: 12px; background: #f1f3f4; border: 1px solid #dfe1e5; color: #202124; border-radius: 6px; margin-bottom: 16px; }
   .login-card__btn { width: 100%; padding: 12px; background: #202124; color: white; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
   .login-card__status { color: #d93025; margin-top: 16px; font-size: 13px; }
+  .login-card__recovery { margin-top: 32px; padding-top: 24px; border-top: 1px solid #dfe1e5; text-align: left; }
+  .login-card__recovery h4 { margin: 0 0 8px; font-size: 14px; color: #202124; }
+  .login-card__recovery p { margin: 0; font-size: 13px; color: #5f6368; line-height: 1.4; }
   
   .challenge-btn {
     width: 150px; height: 150px; border-radius: 50%; background: #f1f3f4; color: #202124; font-size: 18px; border: 1px solid #dfe1e5; cursor: pointer; margin: 20px auto; display: block; box-shadow: 0 4px 10px rgba(0,0,0,0.05);

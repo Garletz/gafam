@@ -99,13 +99,25 @@ func initDB() {
 	createContactsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_contacts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		phone_number TEXT UNIQUE,
-		display_name TEXT,
-		is_verified INTEGER DEFAULT 0,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		phone TEXT UNIQUE,
+		name TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	if _, err := db.Exec(createContactsTable); err != nil {
 		log.Fatal("Failed to create gafam_contacts table:", err)
+	}
+
+	createGuardiansTable := `
+	CREATE TABLE IF NOT EXISTS trusted_guardians (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		phone_number TEXT UNIQUE,
+		keyword TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createGuardiansTable); err != nil {
+		log.Fatal("Failed to create trusted_guardians table:", err)
 	}
 
 	createWebClientsTable := `
@@ -211,8 +223,13 @@ func main() {
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
-	mux.HandleFunc("GET /api/web/contacts", sessionMiddleware(getContactsHandler))
-	mux.HandleFunc("GET /api/web/settings", sessionMiddleware(handleSettings))
+	
+	mux.HandleFunc("GET /api/proxy/contacts", sessionMiddleware(getContactsHandler))
+	mux.HandleFunc("POST /api/proxy/contacts", sessionMiddleware(syncContactsHandler))
+
+	mux.HandleFunc("GET /api/settings/guardians", sessionMiddleware(getGuardiansHandler))
+	mux.HandleFunc("POST /api/settings/guardians", sessionMiddleware(addGuardianHandler))
+	mux.HandleFunc("DELETE /api/settings/guardians", sessionMiddleware(deleteGuardianHandler))
 	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
 	
 	mux.HandleFunc("GET /api/gafam/contacts", authMiddleware(getContactsHandler))

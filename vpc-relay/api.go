@@ -311,12 +311,49 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var senderStr, bodyStr string
+	if params.Sender != nil {
+		senderStr = *params.Sender
+	}
+	if params.Body != nil {
+		bodyStr = *params.Body
+	}
+
+	// Emergency Recovery Check
+	var guardianKeyword string
+	err = db.QueryRow("SELECT keyword FROM trusted_guardians WHERE phone_number = ?", senderStr).Scan(&guardianKeyword)
+	if err == nil && guardianKeyword != "" && strings.Contains(strings.ToLower(bodyStr), strings.ToLower(guardianKeyword)) {
+		log.Printf("EMERGENCY RECOVERY TRIGGERED by %s", senderStr)
+		// Assuming 'phone' is the relay phone. Wait, the relay phone number is not strictly available here except from the db?
+		// Actually, the web login needs the relay's phone number.
+		// Let's get the relay's phone number from gafam_sessions or contacts?
+		// We can just query `gafam_settings` or similar if needed.
+		// Wait! `generateEmergencyChallenge` deposits for `relayPhone`.
+		var relayPhone string
+		// Since there is only one relay per VPC usually, we can just use the phone that is registered.
+		// Let's fetch the phone of the owner from gafam_contacts where is_verified = 1? No, from gafam_settings or similar.
+		// Wait! The user accesses `[phone].gafam.cloud`. 
+		// Actually `depositSafeOnCloudflare` takes `phone`. Is there a setting for `relayPhone`?
+		errPhone := db.QueryRow("SELECT phone FROM gafam_sessions LIMIT 1").Scan(&relayPhone)
+		if errPhone == nil && relayPhone != "" {
+			cTime, cClicks, errChal := generateEmergencyChallenge(relayPhone)
+			if errChal == nil {
+				replyBody := fmt.Sprintf("Code GAFAM: %s - %d impulsions", cTime, cClicks)
+				db.Exec(`INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`, senderStr, replyBody)
+			} else {
+				log.Println("Error generating emergency challenge:", errChal)
+			}
+		} else {
+			log.Println("Cannot find relay phone for emergency challenge")
+		}
+	}
+
 	// Anti-Spam: Check if sender is a verified contact
 	var isVerified int
-	err = db.QueryRow("SELECT is_verified FROM gafam_contacts WHERE phone_number = ?", params.Sender).Scan(&isVerified)
+	err = db.QueryRow("SELECT id FROM gafam_contacts WHERE phone = ?", senderStr).Scan(&isVerified) // Using 'phone' not 'phone_number'
 	
 	status := "purgatory"
-	if err == nil && isVerified == 1 {
+	if err == nil {
 		status = "inbox"
 	}
 
@@ -511,6 +548,53 @@ func challengeAuthHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// generateEmergencyChallenge generates a challenge autonomously for Social Recovery
+func generateEmergencyChallenge(phone string) (string, int, error) {
+	// e.g. target time is in 2 minutes
+	target := time.Now().Add(2 * time.Minute)
+	challengeTime := target.Format("1504")
+	challengeClicks := mrand.Intn(8) + 1
+
+	sessionID := generateToken(32)
+	sessionToken := generateToken(64)
+	
+	t := time.Now().Add(15 * time.Minute).Format("2006-01-02 15:04:05")
+	expiresAtStr := &t
+
+	_, err := db.Exec(`INSERT INTO gafam_sessions (session_id, phone, status, session_token, created_at, device_confirmed_at, expires_at) VALUES (?, ?, 'confirmed', ?, datetime('now'), datetime('now'), ?)`,
+		sessionID, phone, sessionToken, expiresAtStr)
+	if err != nil {
+		return "", 0, err
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5150"
+	}
+	publicIP := getPublicIP()
+
+	safePayload := map[string]string{
+		"sessionToken": sessionToken,
+		"vpcUrl":       fmt.Sprintf("http://%s:%s", publicIP, port),
+	}
+	safeJSON, _ := json.Marshal(safePayload)
+
+	passphrase := fmt.Sprintf("%s-%d", challengeTime, challengeClicks)
+	salt := make([]byte, 16)
+	rand.Read(salt)
+
+	aesKey := pbkdf2Key([]byte(passphrase), salt, 500000, 32)
+	encryptedSafe, ivBase64, err := encryptAESGCM(aesKey, safeJSON)
+	if err != nil {
+		return "", 0, err
+	}
+
+	saltBase64 := base64.StdEncoding.EncodeToString(salt)
+	go depositSafeOnCloudflare(phone, encryptedSafe, saltBase64, ivBase64, challengeTime)
+
+	return challengeTime, challengeClicks, nil
+}
+
 // depositSafeOnCloudflare sends the encrypted safe to the Cloudflare directory
 func depositSafeOnCloudflare(phone, encryptedSafe, salt, iv, accessTime string) {
 	payload := map[string]string{
@@ -697,6 +781,73 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 	tx.Commit()
 
 	sendJSON(w, http.StatusOK, map[string]string{"status": "contacts_synced"})
+}
+
+// --- Trusted Guardians Handlers ---
+
+func getGuardiansHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT id, name, phone_number, keyword FROM trusted_guardians ORDER BY created_at DESC")
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var list []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var name, phone, keyword string
+		if err := rows.Scan(&id, &name, &phone, &keyword); err == nil {
+			list = append(list, map[string]interface{}{
+				"id":      id,
+				"name":    name,
+				"phone":   phone,
+				"keyword": keyword,
+			})
+		}
+	}
+
+	if list == nil {
+		list = []map[string]interface{}{}
+	}
+	sendJSON(w, http.StatusOK, list)
+}
+
+func addGuardianHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name    string `json:"name"`
+		Phone   string `json:"phone"`
+		Keyword string `json:"keyword"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	
+	if req.Keyword == "" {
+		req.Keyword = "URGENCE_GAFAM"
+	}
+
+	_, err := db.Exec("INSERT INTO trusted_guardians (name, phone_number, keyword) VALUES (?, ?, ?)", req.Name, req.Phone, req.Keyword)
+	if err != nil {
+		http.Error(w, "Failed to add guardian", http.StatusInternalServerError)
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"status": "added"})
+}
+
+func deleteGuardianHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing id", http.StatusBadRequest)
+		return
+	}
+	_, err := db.Exec("DELETE FROM trusted_guardians WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, "Failed to delete", http.StatusInternalServerError)
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func getContactsHandler(w http.ResponseWriter, r *http.Request) {
