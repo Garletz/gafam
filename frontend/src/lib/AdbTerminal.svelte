@@ -122,7 +122,7 @@
     fetch(`/api/proxy/scrcpy/shell_input?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`, {
       method: 'POST',
       body: cmd + '\n',
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 'Content-Type': 'application/octet-stream' }
     }).catch(() => {});
 
     inputLine = '';

@@ -127,6 +127,11 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 			scrcpyHub.bridgeWriteMu.Lock()
 			err := b.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
 			scrcpyHub.bridgeWriteMu.Unlock()
+
+			// Send heartbeat frame to viewers to prevent Cloudflare ERR_QUIC_PROTOCOL_ERROR on idle
+			scrcpyHub.broadcastToViewers([]byte{MsgTypeHeartbeat})
+			scrcpyHub.broadcastToShellViewers([]byte{MsgTypeHeartbeat})
+
 			if err != nil {
 				return
 			}
@@ -140,6 +145,16 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 			scrcpyHub.bridgeReady = false
 			scrcpyHub.deviceInfo = nil
 			scrcpyHub.videoConfig = nil
+
+			// Close all viewer channels so the HTTP streams terminate cleanly
+			for v := range scrcpyHub.viewers {
+				close(v)
+				delete(scrcpyHub.viewers, v)
+			}
+			for v := range scrcpyHub.shellViewers {
+				close(v)
+				delete(scrcpyHub.shellViewers, v)
+			}
 		}
 		scrcpyHub.mu.Unlock()
 		conn.Close()
