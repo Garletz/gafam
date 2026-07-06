@@ -325,7 +325,7 @@ pub async fn start_bridge(
     } else {
         &ip
     };
-    let ws_url = format!("ws://{}:5150/ws/scrcpy/bridge", ip_no_port);
+    let ws_url = format!("ws://{}:5150/ws/scrcpy/bridge?force=true", ip_no_port);
     eprintln!("[BRIDGE] Step 5: Connecting WebSocket to: {}", ws_url);
     eprintln!("[BRIDGE] Step 5: JWT token (first 8 chars): {}...", &jwt_secret[..std::cmp::min(8, jwt_secret.len())]);
 
