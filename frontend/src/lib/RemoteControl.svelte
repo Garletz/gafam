@@ -322,8 +322,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #0a0a0f;
-    border-radius: 12px;
+    background: #000;
     overflow: hidden;
   }
 
@@ -332,8 +331,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.05);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: #050505;
+    border-bottom: 1px solid #333;
   }
 
   .rc-toolbar-left, .rc-toolbar-right {
@@ -345,41 +344,49 @@
   .rc-device-name {
     font-size: 13px;
     font-weight: 600;
-    color: #e2e8f0;
+    color: #fff;
+    letter-spacing: 1px;
+    font-family: 'Courier New', Courier, monospace;
   }
 
   .rc-resolution {
     font-size: 11px;
-    font-family: monospace;
-    color: #64748b;
+    font-family: 'Courier New', Courier, monospace;
+    color: #888;
   }
 
   .rc-status {
     font-size: 11px;
-    font-weight: 600;
+    font-weight: bold;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: 0;
+    font-family: 'Courier New', Courier, monospace;
+    letter-spacing: 1px;
+    border: 1px solid transparent;
   }
 
   .rc-status.connected {
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.15);
+    color: #fff;
+    background: transparent;
+    border-color: #fff;
   }
 
   .rc-btn {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #94a3b8;
+    background: transparent;
+    border: 1px solid #555;
+    color: #fff;
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: 0;
     cursor: pointer;
     font-size: 14px;
-    transition: all 0.15s;
+    transition: all 0.2s;
+    font-family: 'Courier New', Courier, monospace;
   }
 
   .rc-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    color: #e2e8f0;
+    background: #fff;
+    color: #000;
+    border-color: #fff;
   }
 
   .rc-canvas-container {
@@ -389,6 +396,7 @@
     align-items: center;
     overflow: hidden;
     outline: none;
+    background: #000;
   }
 
   canvas {
@@ -405,18 +413,25 @@
     justify-content: center;
     gap: 12px;
     padding: 12px 20px;
-    background: rgba(239, 68, 68, 0.1);
-    color: #f87171;
+    background: #111;
+    border-bottom: 1px solid #555;
+    color: #fff;
     font-size: 13px;
+    font-family: 'Courier New', Courier, monospace;
   }
 
   .rc-error button {
-    background: rgba(239, 68, 68, 0.2);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #f87171;
+    background: transparent;
+    border: 1px solid #fff;
+    color: #fff;
     padding: 4px 12px;
-    border-radius: 4px;
     cursor: pointer;
+    font-family: 'Courier New', Courier, monospace;
+  }
+
+  .rc-error button:hover {
+    background: #fff;
+    color: #000;
   }
 
   .rc-connecting {
@@ -425,16 +440,17 @@
     align-items: center;
     justify-content: center;
     padding: 60px 20px;
-    color: #64748b;
+    color: #888;
+    font-family: 'Courier New', Courier, monospace;
   }
 
   .rc-spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid rgba(99, 102, 241, 0.2);
-    border-top-color: #6366f1;
+    border: 2px solid #333;
+    border-top-color: #fff;
     border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    animation: spin 1s linear infinite;
     margin-bottom: 16px;
   }
 

@@ -39,6 +39,7 @@ type ScrcpyHub struct {
 	bridge        *websocket.Conn
 	bridgeReady   bool
 	deviceInfo    *ScrcpyDeviceInfo
+	videoConfig   []byte          // Cached SPS/PPS config frame for new viewers
 	viewers       map[chan []byte]bool
 	shellViewers  map[chan []byte]bool
 }
@@ -138,6 +139,7 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 			scrcpyHub.bridge = nil
 			scrcpyHub.bridgeReady = false
 			scrcpyHub.deviceInfo = nil
+			scrcpyHub.videoConfig = nil
 		}
 		scrcpyHub.mu.Unlock()
 		conn.Close()
@@ -162,6 +164,16 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 
 		switch data[0] {
 		case MsgTypeVideo:
+			// The first video frame from scrcpy ALWAYS contains the SPS/PPS NAL units (config packet)
+			// We MUST cache this and send it to any new viewer immediately so their decoder can initialize!
+			scrcpyHub.mu.Lock()
+			if scrcpyHub.videoConfig == nil {
+				scrcpyHub.videoConfig = make([]byte, len(data))
+				copy(scrcpyHub.videoConfig, data)
+				log.Printf("Cached Scrcpy video config packet (len: %d)", len(data))
+			}
+			scrcpyHub.mu.Unlock()
+
 			// Binary H.264 frame — broadcast to all viewers
 			if msgType == websocket.BinaryMessage {
 				scrcpyHub.broadcastToViewers(data)
@@ -249,6 +261,11 @@ func scrcpyVideoStreamHandler(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan []byte, 100)
 	scrcpyHub.mu.Lock()
 	scrcpyHub.viewers[ch] = true
+	
+	// Send the cached config packet immediately to this new viewer
+	if scrcpyHub.videoConfig != nil {
+		ch <- scrcpyHub.videoConfig
+	}
 	scrcpyHub.mu.Unlock()
 
 	log.Println("Scrcpy viewer connected (HTTP stream)")

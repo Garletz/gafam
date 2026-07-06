@@ -173,10 +173,9 @@
   .adb-terminal {
     display: flex;
     flex-direction: column;
-    background: #0d1117;
-    border-radius: 12px;
+    background: #000;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 1px solid #333;
     height: 100%;
     min-height: 300px;
   }
@@ -186,42 +185,48 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: #050505;
+    border-bottom: 1px solid #333;
   }
 
   .term-title {
     font-size: 13px;
-    font-weight: 600;
-    color: #c9d1d9;
+    font-weight: bold;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: 'Courier New', Courier, monospace;
   }
 
   .term-status {
     font-size: 11px;
-    font-weight: 600;
-    color: #6e7681;
+    font-weight: bold;
+    color: #888;
+    font-family: 'Courier New', Courier, monospace;
+    letter-spacing: 1px;
   }
 
   .term-status.connected {
-    color: #3fb950;
+    color: #fff;
   }
 
   .term-error {
     padding: 8px 16px;
-    background: rgba(248, 81, 73, 0.1);
-    color: #f85149;
+    background: #111;
+    color: #fff;
     font-size: 12px;
-    border-bottom: 1px solid rgba(248, 81, 73, 0.2);
+    border-bottom: 1px solid #555;
+    font-family: 'Courier New', Courier, monospace;
   }
 
   .term-output {
     flex: 1;
     overflow-y: auto;
     padding: 12px 16px;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+    font-family: 'Courier New', Courier, monospace;
     font-size: 13px;
     line-height: 1.5;
-    color: #c9d1d9;
+    color: #ccc;
   }
 
   .term-line {
@@ -233,15 +238,15 @@
     display: flex;
     align-items: center;
     padding: 8px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid #333;
+    background: #050505;
   }
 
   .term-prompt {
-    color: #3fb950;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+    color: #fff;
+    font-family: 'Courier New', Courier, monospace;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: bold;
     margin-right: 8px;
   }
 
@@ -249,13 +254,13 @@
     flex: 1;
     background: transparent;
     border: none;
-    color: #c9d1d9;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+    color: #fff;
+    font-family: 'Courier New', Courier, monospace;
     font-size: 13px;
     outline: none;
   }
 
   .term-input::placeholder {
-    color: #484f58;
+    color: #555;
   }
 </style>
