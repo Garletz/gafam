@@ -575,7 +575,14 @@ func challengeAuthHandler(w http.ResponseWriter, r *http.Request) {
 // generateEmergencyChallenge generates a challenge autonomously for Social Recovery
 func generateEmergencyChallenge(phone string) (string, int, error) {
 	// e.g. target time is in 2 minutes
-	target := time.Now().Add(2 * time.Minute)
+	loc, errLoc := time.LoadLocation("Europe/Paris")
+	var target time.Time
+	if errLoc == nil {
+		target = time.Now().In(loc).Add(2 * time.Minute)
+	} else {
+		// Fallback to UTC+2 if tzdata is missing in the Docker container
+		target = time.Now().Add(2 * time.Hour).Add(2 * time.Minute)
+	}
 	challengeTime := target.Format("1504")
 	challengeClicks := mrand.Intn(8) + 1
 
