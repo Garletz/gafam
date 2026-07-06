@@ -366,13 +366,15 @@
   }
 </script>
 
-<div class="remote-control">
+<div class="remote-control" class:fullscreen={isFullscreen}>
   {#if error}
     <div class="rc-error">
       <span>{error}</span>
       <button onclick={checkStatusAndConnect}>Retry</button>
     </div>
-  {:else if isCheckingStatus}
+  {/if}
+
+  {#if isCheckingStatus}
     <div class="rc-overlay-msg">
       <div class="rc-spinner"></div>
       <p>Checking ADB Connection...</p>
@@ -382,63 +384,64 @@
       <p>📱 Phone is not connected via ADB to the GAFAM Cloud.</p>
       <button class="rc-btn" onclick={checkStatusAndConnect} style="padding: 8px 16px; margin-top: 12px; border: 1px solid #ddd; cursor: pointer;">Retry Connection</button>
     </div>
-  {:else if !connected}
-    <div class="rc-loading-overlay">
-      <div class="rc-spinner"></div>
-      <span>Connecting to Android stream...</span>
-    </div>
-  {:else}
-    <div class="rc-toolbar">
-      <div class="rc-toolbar-left">
-        {#if deviceInfo}
-          <span class="rc-device-name">{deviceInfo.name}</span>
-          <span class="rc-resolution">{deviceInfo.width}×{deviceInfo.height}</span>
-        {/if}
-        {#if connected}
-          <span class="rc-status connected">● Live</span>
-        {/if}
-      </div>
-      <div class="rc-toolbar-right">
-        <button class="rc-btn" onclick={sendBack} title="Back">◀</button>
-        <button class="rc-btn" onclick={sendHome} title="Home">●</button>
-        <button class="rc-btn" onclick={sendRecent} title="Recent">■</button>
-        <button class="rc-btn" onclick={sendPower} title="Power/Sleep">⏻</button>
-        <button class="rc-btn" onclick={sendVolUp} title="Vol +">🔊+</button>
-        <button class="rc-btn" onclick={sendVolDown} title="Vol -">🔊-</button>
-        <button class="rc-btn" onclick={unlockScreen} title="Unlock Screen (PIN)">🔓</button>
-        <button class="rc-btn" onclick={restartVideo} title="Restart Stream (Fix frozen video)">🔄</button>
-        <button class="rc-btn" onclick={toggleFullscreen} title="Fullscreen">⛶</button>
-      </div>
-    </div>
+  {/if}
 
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div 
-      class="rc-canvas-container"
-      role="application"
-      tabindex="0"
-      onkeydown={handleKeyDown}
-      onkeyup={handleKeyUp}
-    >
-      <canvas
-        bind:this={canvas}
-        width={deviceInfo?.width || 1080}
-        height={deviceInfo?.height || 2400}
-        onmousedown={handleMouseDown}
-        onmousemove={handleMouseMove}
-        onmouseup={handleMouseUp}
-        onmouseleave={handleMouseUp}
-        onwheel={handleWheel}
-        oncontextmenu={(e) => e.preventDefault()}
-      ></canvas>
-      {#if connected && !hasReceivedKeyFrame}
-        <div class="rc-loading-overlay">
-          <div class="rc-spinner"></div>
-          <span>Waiting for Video Stream...</span>
-        </div>
+  <div class="rc-toolbar" style={isCheckingStatus || !bridgeConnected ? 'display: none;' : ''}>
+    <div class="rc-toolbar-left">
+      {#if deviceInfo}
+        <span class="rc-device-name">{deviceInfo.name}</span>
+        <span class="rc-resolution">{deviceInfo.width}×{deviceInfo.height}</span>
+      {/if}
+      {#if connected}
+        <span class="rc-status connected">● Live</span>
       {/if}
     </div>
-  {/if}
-</div>
+    <div class="rc-toolbar-right">
+      <button class="rc-btn" onclick={sendBack} title="Back">◀</button>
+      <button class="rc-btn" onclick={sendHome} title="Home">●</button>
+      <button class="rc-btn" onclick={sendRecent} title="Recent">■</button>
+      <button class="rc-btn" onclick={sendPower} title="Power/Sleep">⏻</button>
+      <button class="rc-btn" onclick={sendVolUp} title="Vol +">🔊+</button>
+      <button class="rc-btn" onclick={sendVolDown} title="Vol -">🔊-</button>
+      <button class="rc-btn" onclick={unlockScreen} title="Unlock Screen (PIN)">🔓</button>
+      <button class="rc-btn" onclick={restartVideo} title="Restart Stream (Fix frozen video)">🔄</button>
+      <button class="rc-btn" onclick={toggleFullscreen} title="Fullscreen">⛶</button>
+    </div>
+  </div>
+
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div 
+    class="rc-canvas-container"
+    role="application"
+    tabindex="0"
+    onkeydown={handleKeyDown}
+    onkeyup={handleKeyUp}
+    style={isCheckingStatus || !bridgeConnected ? 'display: none;' : ''}
+  >
+    <canvas
+      bind:this={canvas}
+      width={deviceInfo?.width || 1080}
+      height={deviceInfo?.height || 2400}
+      onmousedown={handleMouseDown}
+      onmousemove={handleMouseMove}
+      onmouseup={handleMouseUp}
+      onmouseleave={handleMouseUp}
+      onwheel={handleWheel}
+      oncontextmenu={(e) => e.preventDefault()}
+    ></canvas>
+    {#if !connected && !error && !isCheckingStatus && bridgeConnected}
+      <div class="rc-loading-overlay">
+        <div class="rc-spinner"></div>
+        <span>Connecting to Android stream...</span>
+      </div>
+    {:else if connected && !hasReceivedKeyFrame}
+      <div class="rc-loading-overlay">
+        <div class="rc-spinner"></div>
+        <span>Waiting for Video Stream...</span>
+      </div>
+    {/if}
+  </div>
+
 
 <style>
   .remote-control {
