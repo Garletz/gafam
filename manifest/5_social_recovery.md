@@ -39,3 +39,32 @@ En plus des Gardiens équipés de GAFAM, vous pouvez définir un **"Numéro de R
 5. L'APK répond alors automatiquement au téléphone de votre ami avec un SMS contenant les accès d'urgence : *"Code généré : Heure XX:XX, Impulsions X"*.
 6. Votre proche reçoit ce SMS. Il vous le montre.
 7. Vous vous connectez sur votre espace en ligne (`votre-numero.gafam.cloud`), vous rentrez le code (Heure + Impulsions) que votre ami vient de recevoir, et vous accédez à votre compte !
+
+## Résilience Ultime : La Coupure du Réseau GSM
+
+**La Réflexion :** Que se passe-t-il si le réseau télécom (GSM/4G/5G) est totalement coupé, rendant l'envoi et la réception de SMS impossibles ? Tant que le téléphone relais (branché chez vous) et l'appareil de votre ami ont accès à **Internet**, la validation d'urgence reste parfaitement possible.
+
+Le système propose **deux solutions de secours distinctes** selon l'équipement de votre ami :
+
+### Cas N°1 : L'Ami possède un GAFAM Cloud Relay (VPC-to-VPC Direct en Partenariat)
+Si deux utilisateurs possèdent chacun un GAFAM Cloud Relay avec leur propre VPC, et qu'ils sont en "partenariat" (c'est-à-dire qu'ils se connaissent et ont préalablement échangé les adresses IP/URL de leurs VPC respectifs), la validation se fait de machine à machine.
+1. **La Requête :** L'ami utilise son **VPC actif déjà connecté** pour créer une demande de code d'urgence destinée à votre VPC. 
+2. **Le Tunnel :** Puisque l'adresse de votre VPC est connue de son système, la demande transite directement d'un VPC à l'autre via le réseau fédéré Internet.
+3. **Le Résultat :** Votre VPC reçoit la requête, la valide (car elle provient d'un VPC partenaire de confiance), génère le code de sécurité, et le renvoie. Le code s'affiche directement sur l'interface GAFAM de votre ami. C'est 100% souverain et ça ne requiert aucune application tierce.
+
+### Cas N°2 : L'Ami n'a PAS de GAFAM (Internet Messaging + ADB Automation)
+Si votre ami n'utilise pas GAFAM, mais possède une application comme WhatsApp, Signal ou Telegram, le système utilise notre pont **ADB direct** pour manipuler physiquement le téléphone à distance et contourner la panne GSM.
+1. **Le Déclencheur :** Votre ami vous envoie le mot-clé d'urgence (`URGENCE_GAFAM`) via Signal ou WhatsApp.
+2. **L'Interception :** L'APK Android (ou le `gafam-manager` via ADB) détecte ce message entrant sur l'application tierce.
+3. **L'Automatisation ADB :** Le VPC utilise l'accès ADB pour simuler un humain : il ouvre Signal, tape le code de sécurité, et clique sur Envoyer.
+   - *Exemple de séquence ADB exécutée en silence par le VPC :*
+     ```bash
+     # Ouvre la conversation Signal de votre ami
+     adb shell am start -a android.intent.action.VIEW -d "https://signal.me/#p/+336AMI"
+     sleep 1
+     # Tape le code de récupération
+     adb shell input text "Code%sGAFAM:%s18:36%s-%s4%simpulsions"
+     # Appuie sur le bouton "Envoyer" de l'application (coordonnées X Y)
+     adb shell input tap 950 2100
+     ```
+4. **Le Résultat :** Votre ami reçoit le code de secours sur Signal. Le réseau GSM a été totalement contourné de manière astucieuse grâce au contrôle physique de l'appareil.
