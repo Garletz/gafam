@@ -22,14 +22,42 @@
   const MSG_TYPE_INPUT = 0x02;
   const MSG_TYPE_DEVICE_INFO = 0x03;
 
+  let bridgeConnected = $state(false);
+  let isCheckingStatus = $state(true);
+
   onMount(() => {
     if (canvas) {
       canvasCtx = canvas.getContext('2d');
     }
     if (vpcUrl && sessionToken) {
-      connectToStream();
+      checkStatusAndConnect();
     }
   });
+
+  async function checkStatusAndConnect() {
+    isCheckingStatus = true;
+    error = '';
+    
+    try {
+      const response = await fetch(`/api/proxy/scrcpy-status?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`);
+      if (!response.ok) {
+        error = 'Failed to check ADB status';
+        isCheckingStatus = false;
+        return;
+      }
+      
+      const status = await response.json();
+      bridgeConnected = status.bridge_connected;
+      
+      if (bridgeConnected) {
+        connectToStream();
+      }
+    } catch (err) {
+      error = 'Network error while checking ADB status';
+    } finally {
+      isCheckingStatus = false;
+    }
+  }
 
   onDestroy(() => {
     disconnect();
@@ -353,55 +381,67 @@
     </div>
   {/if}
 
-  <div class="rc-toolbar">
-    <div class="rc-toolbar-left">
-      {#if deviceInfo}
-        <span class="rc-device-name">{deviceInfo.name}</span>
-        <span class="rc-resolution">{deviceInfo.width}×{deviceInfo.height}</span>
-      {/if}
-      {#if connected}
-        <span class="rc-status connected">● Live</span>
-      {/if}
+  {#if isCheckingStatus}
+    <div class="rc-overlay-msg">
+      <div class="rc-spinner"></div>
+      <p>Checking ADB Connection...</p>
     </div>
-    <div class="rc-toolbar-right">
-      <button class="rc-btn" onclick={sendBack} title="Back">◀</button>
-      <button class="rc-btn" onclick={sendHome} title="Home">●</button>
-      <button class="rc-btn" onclick={sendRecent} title="Recent">■</button>
-      <button class="rc-btn" onclick={sendPower} title="Power/Sleep">⏻</button>
-      <button class="rc-btn" onclick={sendVolUp} title="Vol +">🔊+</button>
-      <button class="rc-btn" onclick={sendVolDown} title="Vol -">🔊-</button>
-      <button class="rc-btn" onclick={unlockScreen} title="Unlock Screen (PIN)">🔓</button>
-      <button class="rc-btn" onclick={restartVideo} title="Restart Stream (Fix frozen video)">🔄</button>
-      <button class="rc-btn" onclick={toggleFullscreen} title="Fullscreen">⛶</button>
+  {:else if !bridgeConnected}
+    <div class="rc-overlay-msg">
+      <p>📱 Phone is not connected via ADB to the GAFAM Cloud.</p>
+      <button class="rc-btn" onclick={checkStatusAndConnect} style="padding: 8px 16px; margin-top: 12px; border: 1px solid #ddd; cursor: pointer;">Retry Connection</button>
     </div>
-  </div>
-
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div 
-    class="rc-canvas-container"
-    role="application"
-    tabindex="0"
-    onkeydown={handleKeyDown}
-    onkeyup={handleKeyUp}
-  >
-    <canvas
-      bind:this={canvas}
-      width={deviceInfo?.width || 1080}
-      height={deviceInfo?.height || 2400}
-      onmousedown={handleMouseDown}
-      onmousemove={handleMouseMove}
-      onmouseup={handleMouseUp}
-      onmouseleave={handleMouseUp}
-      onwheel={handleWheel}
-      oncontextmenu={(e) => e.preventDefault()}
-    ></canvas>
-    {#if connected && !hasReceivedKeyFrame}
-      <div class="rc-loading-overlay">
-        <div class="rc-spinner"></div>
-        <span>Waiting for Video Stream...</span>
+  {:else}
+    <div class="rc-toolbar">
+      <div class="rc-toolbar-left">
+        {#if deviceInfo}
+          <span class="rc-device-name">{deviceInfo.name}</span>
+          <span class="rc-resolution">{deviceInfo.width}×{deviceInfo.height}</span>
+        {/if}
+        {#if connected}
+          <span class="rc-status connected">● Live</span>
+        {/if}
       </div>
-    {/if}
-  </div>
+      <div class="rc-toolbar-right">
+        <button class="rc-btn" onclick={sendBack} title="Back">◀</button>
+        <button class="rc-btn" onclick={sendHome} title="Home">●</button>
+        <button class="rc-btn" onclick={sendRecent} title="Recent">■</button>
+        <button class="rc-btn" onclick={sendPower} title="Power/Sleep">⏻</button>
+        <button class="rc-btn" onclick={sendVolUp} title="Vol +">🔊+</button>
+        <button class="rc-btn" onclick={sendVolDown} title="Vol -">🔊-</button>
+        <button class="rc-btn" onclick={unlockScreen} title="Unlock Screen (PIN)">🔓</button>
+        <button class="rc-btn" onclick={restartVideo} title="Restart Stream (Fix frozen video)">🔄</button>
+        <button class="rc-btn" onclick={toggleFullscreen} title="Fullscreen">⛶</button>
+      </div>
+    </div>
+
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div 
+      class="rc-canvas-container"
+      role="application"
+      tabindex="0"
+      onkeydown={handleKeyDown}
+      onkeyup={handleKeyUp}
+    >
+      <canvas
+        bind:this={canvas}
+        width={deviceInfo?.width || 1080}
+        height={deviceInfo?.height || 2400}
+        onmousedown={handleMouseDown}
+        onmousemove={handleMouseMove}
+        onmouseup={handleMouseUp}
+        onmouseleave={handleMouseUp}
+        onwheel={handleWheel}
+        oncontextmenu={(e) => e.preventDefault()}
+      ></canvas>
+      {#if connected && !hasReceivedKeyFrame}
+        <div class="rc-loading-overlay">
+          <div class="rc-spinner"></div>
+          <span>Waiting for Video Stream...</span>
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -561,5 +601,23 @@
 
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+
+  .rc-overlay-msg {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #666;
+    background: #fcfcfc;
+    text-align: center;
+    padding: 24px;
+  }
+  
+  .rc-overlay-msg p {
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    font-weight: 500;
   }
 </style>
