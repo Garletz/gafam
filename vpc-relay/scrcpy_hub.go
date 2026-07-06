@@ -75,13 +75,20 @@ func isAllowedOrigin(origin string) bool {
 // The GAFAM Manager connects here to stream H.264 video and receive input commands
 
 func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
+	force := r.URL.Query().Get("force") == "true"
+
 	scrcpyHub.mu.RLock()
-	hasBridge := scrcpyHub.bridge != nil
+	oldBridge := scrcpyHub.bridge
 	scrcpyHub.mu.RUnlock()
 
-	if hasBridge {
+	if oldBridge != nil && !force {
 		http.Error(w, `{"error":"A bridge is already connected"}`, http.StatusConflict)
 		return
+	}
+
+	// If we are forcing, close the old connection to unblock its read loop
+	if oldBridge != nil && force {
+		oldBridge.Close()
 	}
 
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
@@ -127,9 +134,11 @@ func scrcpyBridgeHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		scrcpyHub.mu.Lock()
-		scrcpyHub.bridge = nil
-		scrcpyHub.bridgeReady = false
-		scrcpyHub.deviceInfo = nil
+		if scrcpyHub.bridge == conn {
+			scrcpyHub.bridge = nil
+			scrcpyHub.bridgeReady = false
+			scrcpyHub.deviceInfo = nil
+		}
 		scrcpyHub.mu.Unlock()
 		conn.Close()
 		log.Println("Scrcpy bridge disconnected")
