@@ -10,11 +10,25 @@
     "frontendDist": "../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "main",
         "title": "gafam-manager",
         "width": 800,
-        "height": 600
+        "height": 750
+      },
+      {
+        "label": "tray_window",
+        "title": "GAFAM Status",
+        "url": "/tray",
+        "width": 350,
+        "height": 450,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {

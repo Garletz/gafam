@@ -1,4 +1,6 @@
 use tauri::{AppHandle, Manager};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
 use sha2::Digest;
 use axum::{routing::{get, post}, Router, response::{Html}, extract::Form};
 use serde::Deserialize;
@@ -301,12 +303,77 @@ async fn scrcpy_get_status(app: AppHandle) -> Result<scrcpy_bridge::BridgeStatus
     Ok(scrcpy_bridge::get_status(state.inner().clone()).await)
 }
 
+#[tauri::command]
+async fn show_main_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(Arc::new(tokio::sync::RwLock::new(BridgeState::default())) as SharedBridgeState)
+        .setup(|app| {
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        rect,
+                        ..
+                    } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("tray_window") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                // Calculate position
+                                if let Ok(window_size) = window.outer_size() {
+                                    let (rect_x, rect_y) = match rect.position {
+                                        tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+                                        tauri::Position::Logical(p) => (p.x, p.y),
+                                    };
+                                    let (rect_w, rect_h) = match rect.size {
+                                        tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+                                        tauri::Size::Logical(s) => (s.width, s.height),
+                                    };
+                                    let x = rect_x + (rect_w / 2.0) - (window_size.width as f64 / 2.0);
+                                    let y = rect_y + rect_h + 5.0;
+                                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: y as i32 }));
+                                }
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+            tauri::WindowEvent::Focused(focused) => {
+                if !focused && window.label() == "tray_window" {
+                    let _ = window.hide();
+                }
+            }
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![
             start_do_oauth,
             ping_vpc,
@@ -314,7 +381,9 @@ pub fn run() {
             scrcpy_connect_wifi,
             scrcpy_start_bridge,
             scrcpy_stop_bridge,
-            scrcpy_get_status
+            scrcpy_get_status,
+            show_main_window,
+            quit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

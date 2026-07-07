@@ -23,7 +23,7 @@
   let vpcUrl = $state("");
   let doConnecting = $state(false);
   let loadingText = $state("");
-  let canvas: HTMLCanvasElement;
+  let canvas = $state<HTMLCanvasElement | null>(null);
   let activeServer: SavedServer | null = $state(null);
 
   // Scrcpy Bridge State (Manifest 14)
@@ -717,9 +717,6 @@
     color: #ffffff;
   }
 
-  .terminal-content {
-    color: #ffffff;
-  }
 
   .hint-text {
     font-size: 13px;

@@ -1,6 +1,6 @@
 use std::process::Stdio;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::sync::{mpsc, RwLock};
 use tokio::net::TcpStream;
@@ -389,7 +389,7 @@ pub async fn start_bridge(
     // Create an mpsc channel for all websocket writes to multiplex video and shell output
     let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<Message>(100);
     
-    let mut ws_write_task = tokio::spawn(async move {
+    let _ws_write_task = tokio::spawn(async move {
         while let Some(msg) = ws_rx.recv().await {
             if ws_write.send(msg).await.is_err() {
                 break;
