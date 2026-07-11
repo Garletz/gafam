@@ -277,7 +277,7 @@
 
   {#if selectedDay}
     <div class="logs-stream" bind:this={streamEl}>
-      {#each filteredEntries as e (e.ts + e.tag + e.message.slice(0, 48))}
+      {#each filteredEntries as e}
         <div class="log-line level-{e.level}">
           <span class="c-time">{formatTime(e.ts)}</span>
           <span class="c-src">{e.source}</span>
@@ -314,17 +314,17 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: #000;
-    color: #e8e8e8;
+    background: #ffffff;
+    color: #202124;
   }
   .logs-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 8px 12px;
-    background: #0a0a0a;
-    border-bottom: 1px solid #222;
+    padding: 10px 16px;
+    background: #ffffff;
+    border-bottom: 1px solid #dfe1e5;
     flex-shrink: 0;
     flex-wrap: wrap;
   }
@@ -337,13 +337,12 @@
   }
   .logs-title {
     font-weight: 600;
-    font-size: 13px;
-    color: #fff;
-    letter-spacing: 0.02em;
+    font-size: 15px;
+    color: #202124;
   }
   .logs-count {
     font-size: 11px;
-    color: #888;
+    color: #80868b;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
   .live-btn {
@@ -351,9 +350,9 @@
     align-items: center;
     gap: 6px;
     background: transparent;
-    border: 1px solid #333;
-    color: #888;
-    border-radius: 2px;
+    border: 1px solid #dadce0;
+    color: #5f6368;
+    border-radius: 4px;
     padding: 3px 8px;
     font-size: 10px;
     font-weight: 700;
@@ -362,8 +361,8 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
   .live-btn.on {
-    border-color: #fff;
-    color: #fff;
+    border-color: #202124;
+    color: #202124;
   }
   .live-btn.busy .live-dot {
     opacity: 0.4;
@@ -372,30 +371,30 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #444;
+    background: #dadce0;
   }
   .live-btn.on .live-dot {
-    background: #fff;
-    box-shadow: 0 0 0 0 #fff;
+    background: #202124;
+    box-shadow: 0 0 0 0 rgba(32, 33, 36, 0.35);
     animation: pulse 1.6s ease-out infinite;
   }
   @keyframes pulse {
     0% {
-      box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.45);
+      box-shadow: 0 0 0 0 rgba(32, 33, 36, 0.35);
     }
     70% {
-      box-shadow: 0 0 0 6px rgba(255, 255, 255, 0);
+      box-shadow: 0 0 0 6px rgba(32, 33, 36, 0);
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+      box-shadow: 0 0 0 0 rgba(32, 33, 36, 0);
     }
   }
   .logs-toolbar select,
   .logs-toolbar input[type='search'] {
-    background: #000;
-    border: 1px solid #333;
-    color: #e8e8e8;
-    border-radius: 2px;
+    background: #ffffff;
+    border: 1px solid #dadce0;
+    color: #202124;
+    border-radius: 4px;
     padding: 4px 8px;
     font-size: 12px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -404,17 +403,17 @@
     width: 150px;
   }
   .btn {
-    background: #111;
-    color: #e8e8e8;
-    border: 1px solid #333;
-    border-radius: 2px;
+    background: #f1f3f4;
+    color: #202124;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
     padding: 4px 10px;
     font-size: 12px;
     cursor: pointer;
   }
   .btn:hover:not(:disabled) {
-    background: #1a1a1a;
-    border-color: #555;
+    background: #e8eaed;
+    border-color: #bdc1c6;
   }
   .btn:disabled {
     opacity: 0.4;
@@ -422,11 +421,11 @@
   }
   .btn-ghost {
     background: transparent;
-    color: #888;
+    color: #5f6368;
   }
   .btn-ghost:hover:not(:disabled) {
-    color: #fff;
-    border-color: #666;
+    color: #202124;
+    border-color: #bdc1c6;
   }
   .logs-stream {
     flex: 1;
@@ -434,23 +433,24 @@
     padding: 4px 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 12px;
-    line-height: 1.4;
+    line-height: 1.45;
+    background: #ffffff;
   }
   .log-line {
     display: flex;
     gap: 8px;
-    padding: 1px 10px;
+    padding: 2px 14px;
     white-space: nowrap;
   }
   .log-line:hover {
-    background: #111;
+    background: #f8f9fa;
   }
   .c-time {
-    color: #666;
+    color: #80868b;
     flex: 0 0 64px;
   }
   .c-src {
-    color: #aaa;
+    color: #5f6368;
     flex: 0 0 36px;
     text-transform: uppercase;
     font-size: 10px;
@@ -459,16 +459,16 @@
   .c-lvl {
     flex: 0 0 12px;
     font-weight: 700;
-    color: #fff;
+    color: #202124;
   }
   .c-tag {
-    color: #999;
+    color: #5f6368;
     flex: 0 0 110px;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .c-msg {
-    color: #ddd;
+    color: #202124;
     flex: 1;
     min-width: 0;
     white-space: pre-wrap;
@@ -476,15 +476,18 @@
   }
   .level-E .c-lvl,
   .level-E .c-msg {
-    color: #fff;
+    color: #d93025;
     font-weight: 600;
   }
   .level-W .c-lvl {
-    color: #ccc;
+    color: #e37400;
+  }
+  .level-I .c-lvl {
+    color: #188038;
   }
   .level-D .c-lvl,
   .level-V .c-lvl {
-    color: #777;
+    color: #80868b;
   }
   .logs-footer {
     flex-shrink: 0;
@@ -492,16 +495,16 @@
     justify-content: center;
     align-items: center;
     padding: 8px;
-    border-top: 1px solid #222;
-    background: #0a0a0a;
+    border-top: 1px solid #dfe1e5;
+    background: #ffffff;
   }
   .footer-meta {
     font-size: 11px;
-    color: #666;
+    color: #80868b;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
   .empty-stream {
-    color: #666;
+    color: #80868b;
     text-align: center;
     padding: 24px;
     font-size: 12px;
@@ -510,10 +513,10 @@
     padding-top: 80px;
   }
   .error {
-    color: #fff;
-    padding: 6px 12px;
+    color: #d93025;
+    padding: 6px 16px;
     font-size: 12px;
-    background: #1a1a1a;
-    border-bottom: 1px solid #333;
+    background: #fce8e6;
+    border-bottom: 1px solid #f5c2c0;
   }
 </style>

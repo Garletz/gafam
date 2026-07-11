@@ -29,6 +29,15 @@ func deriveKey(secret string) []byte {
 	return hash[:]
 }
 
+// phoneToSubdomain normalizes MSISDN to the gafam.cloud subdomain form (e.g. 0628782725).
+func phoneToSubdomain(phone string) string {
+	digits := regexp.MustCompile(`[^0-9]`).ReplaceAllString(phone, "")
+	if strings.HasPrefix(digits, "33") && len(digits) >= 11 {
+		return "0" + digits[2:]
+	}
+	return digits
+}
+
 // PBKDF2 implementation (no external dependency needed)
 func pbkdf2Key(password, salt []byte, iterations, keyLen int) []byte {
 	hmacSha256 := func(key, data []byte) []byte {
@@ -362,7 +371,9 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		if errPhone == nil && relayPhone != "" {
 			cTime, cClicks, errChal := generateEmergencyChallenge(relayPhone)
 			if errChal == nil {
-				replyBody := fmt.Sprintf("Code GAFAM: %s - %d impulsions", cTime, cClicks)
+				tNorm := strings.ReplaceAll(cTime, ":", "")
+				loginURL := fmt.Sprintf("https://%s.gafam.cloud/?t=%s", phoneToSubdomain(relayPhone), tNorm)
+				replyBody := fmt.Sprintf("Code GAFAM: %s - %d impulsions\n%s", cTime, cClicks, loginURL)
 				db.Exec(`INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`, senderStr, replyBody)
 			} else {
 				log.Println("Error generating emergency challenge:", errChal)

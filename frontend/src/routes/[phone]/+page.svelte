@@ -165,6 +165,16 @@
       pollInterval = setInterval(loadSms, 5000);
     } else {
       appState = 'setup';
+      // Deep link from recovery SMS: https://{phone}.gafam.cloud/?t=1834
+      const tParam = page.url.searchParams.get('t') || page.url.searchParams.get('time');
+      if (tParam) {
+        const digits = tParam.replace(/[^0-9]/g, '');
+        if (digits.length === 4) {
+          inputTime = `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+          challengeTimeStr = digits;
+          startWaitingForTime();
+        }
+      }
     }
 
     return () => {
@@ -735,35 +745,6 @@
   .messenger-container.is-connected.is-logs {
     max-width: min(1400px, 96vw);
   }
-  .messenger-container.is-connected.is-logs .sidebar {
-    background: #0a0a0a;
-    border-right: 1px solid #222;
-    color: #e8e8e8;
-  }
-  .messenger-container.is-connected.is-logs .sidebar__header {
-    background: #000;
-    border-bottom: 1px solid #222;
-  }
-  .messenger-container.is-connected.is-logs .tab {
-    color: #888;
-  }
-  .messenger-container.is-connected.is-logs .tab.active {
-    color: #fff;
-    border-bottom-color: #fff;
-  }
-  .messenger-container.is-connected.is-logs .chat-item {
-    color: #ccc;
-  }
-  .messenger-container.is-connected.is-logs .chat-item:hover,
-  .messenger-container.is-connected.is-logs .chat-item.active {
-    background: #141414;
-  }
-  .messenger-container.is-connected.is-logs .chat-item__name {
-    color: #fff;
-  }
-  .messenger-container.is-connected.is-logs .chat-item__preview {
-    color: #777;
-  }
   .messenger-ui {
     display: flex;
     flex: 1;
@@ -774,43 +755,35 @@
     padding: 10px 16px 6px;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #666;
+    letter-spacing: 0.04em;
+    color: #80868b;
     font-weight: 600;
   }
   .logs-day-avatar {
-    background: #1a1a1a !important;
+    background: #202124 !important;
     color: #fff !important;
     font-size: 12px !important;
-    border: 1px solid #333;
   }
   .logs-quota-mini {
     width: 100%;
     font-size: 11px;
-    color: #777;
+    color: #5f6368;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
   .quota-bar {
-    height: 2px;
-    background: #222;
-    border-radius: 0;
+    height: 3px;
+    background: #e8eaed;
+    border-radius: 2px;
     overflow: hidden;
   }
   .quota-fill {
     height: 100%;
-    background: #fff;
+    background: #202124;
   }
   .chat-main--logs {
-    background: #000 !important;
-  }
-  .messenger-container.is-connected.is-logs .logs-sidebar-hint {
-    color: #888;
-  }
-  .messenger-container.is-connected.is-logs .logs-sidebar-hint .hint-sub {
-    color: #555;
+    background: #ffffff !important;
   }
   .top-bar {
     width: 100%;
