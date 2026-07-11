@@ -68,6 +68,7 @@ func initDB() {
 
 	// Try to add status column if upgrading an existing DB
 	db.Exec("ALTER TABLE gafam_sms ADD COLUMN status TEXT DEFAULT 'inbox';")
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gafam_sms_dedup ON gafam_sms(sender, body, timestamp)`)
 
 	createSessionsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_sessions (
@@ -209,6 +210,7 @@ func main() {
 	// Protected Routes (Bearer token from APK)
 	mux.HandleFunc("POST /api/gafam/pair-device", authMiddleware(pairDeviceHandler))
 	mux.HandleFunc("POST /api/auth/sms/", authMiddleware(smsHandler))
+	mux.HandleFunc("POST /api/auth/sms/sync", authMiddleware(syncSmsHistoryHandler))
 	mux.HandleFunc("GET /api/auth/sms/outbox", authMiddleware(getOutboxHandler))
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
 	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))

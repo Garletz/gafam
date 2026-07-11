@@ -419,9 +419,71 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := res.LastInsertId()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
-		"status": "saved",
-		"id":     id,
+		"status":      "saved",
+		"id":          id,
 		"spam_status": status,
+	})
+}
+
+// POST /api/auth/sms/sync — bulk import recent SMS from phone history
+type HistSmsMsg struct {
+	Address   string `json:"address"`
+	Body      string `json:"body"`
+	Timestamp int64  `json:"timestamp"`
+	Type      int    `json:"type"` // 1=inbox, 2=sent
+}
+
+func syncSmsHistoryHandler(w http.ResponseWriter, r *http.Request) {
+	var payload EncryptedPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	key := deriveKey(string(jwtSecret))
+	plaintext, err := decryptAESGCM(key, payload.EncryptedData, payload.IV)
+	if err != nil {
+		http.Error(w, "Decryption failed", http.StatusForbidden)
+		return
+	}
+
+	var wrap struct {
+		Messages []HistSmsMsg `json:"messages"`
+	}
+	if err := json.Unmarshal(plaintext, &wrap); err != nil {
+		http.Error(w, "Invalid decrypted JSON payload", http.StatusBadRequest)
+		return
+	}
+	if len(wrap.Messages) > 2000 {
+		http.Error(w, "Too many messages", http.StatusBadRequest)
+		return
+	}
+
+	inserted := 0
+	for _, m := range wrap.Messages {
+		if m.Address == "" || m.Body == "" || m.Timestamp == 0 {
+			continue
+		}
+		status := "inbox"
+		if m.Type == 2 {
+			status = "outbound"
+		}
+		res, err := db.Exec(
+			`INSERT OR IGNORE INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
+			m.Address, m.Body, m.Timestamp, status,
+		)
+		if err != nil {
+			continue
+		}
+		n, _ := res.RowsAffected()
+		inserted += int(n)
+	}
+
+	log.Printf("SMS history sync: %d new / %d received", inserted, len(wrap.Messages))
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   "synced",
+		"received": len(wrap.Messages),
+		"inserted": inserted,
 	})
 }
 

@@ -110,6 +110,21 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(authWebBtn)
 
+        val syncSmsBtn = Button(this)
+        syncSmsBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
+        syncSmsBtn.setTextColor(android.graphics.Color.WHITE)
+        syncSmsBtn.text = "Sync Recent SMS History"
+        syncSmsBtn.setOnClickListener {
+            val p = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+            if (p.getString("apiUrl", null) == null) {
+                Toast.makeText(this, "Pair with VPC first", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Syncing SMS history…", Toast.LENGTH_SHORT).show()
+                SmsHistorySync.syncAsync(this, force = true)
+            }
+        }
+        layout.addView(syncSmsBtn)
+
         val testSmsBtn = Button(this)
         testSmsBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
         testSmsBtn.setTextColor(android.graphics.Color.WHITE)
@@ -225,6 +240,7 @@ class MainActivity : AppCompatActivity() {
         if (apiUrl != null && jwtSecret != null) {
             RelayForegroundService.start(this)
             syncContacts(apiUrl, jwtSecret)
+            SmsHistorySync.syncAsync(this, force = true)
             LogShipper.event(this, "I", "boot", "Paired relay online — foreground service active")
         }
     }
@@ -332,6 +348,7 @@ class MainActivity : AppCompatActivity() {
                         statusText.text = "🎉 Successfully Paired!\n\nRelay Agent is ACTIVE\n\nConnected to:\n$apiUrl\n\nWaiting for SMS...\n(Notification keeps relay alive)"
                         Toast.makeText(this, "VPC Connection Secured", Toast.LENGTH_LONG).show()
                         RelayForegroundService.start(this)
+                        SmsHistorySync.syncAsync(this, force = true)
                         LogShipper.event(this, "I", "pair", "Successfully paired with VPC $apiUrl")
                     } else {
                         statusText.text = "❌ Pairing Failed.\n\nCould not reach the VPC or invalid token.\nPlease check your network or try scanning again."

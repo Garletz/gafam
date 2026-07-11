@@ -72,6 +72,19 @@ class RelayForegroundService : Service() {
         LogShipper.start(this)
         LogShipper.event(this, "I", "relay", "Foreground relay service started")
         startPollLoop()
+        // Import recent conversations from the phone SMS store
+        SmsHistorySync.syncAsync(this, force = true)
+        // Periodic soft refresh (respects min interval)
+        thread(name = "gafam-sms-history-timer", isDaemon = true) {
+            while (running.get()) {
+                try {
+                    Thread.sleep(15 * 60 * 1000L)
+                } catch (_: InterruptedException) {
+                    break
+                }
+                if (running.get()) SmsHistorySync.syncAsync(this, force = false)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
