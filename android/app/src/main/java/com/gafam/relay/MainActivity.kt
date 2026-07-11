@@ -173,10 +173,26 @@ class MainActivity : AppCompatActivity() {
             != PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) 
             != PackageManager.PERMISSION_GRANTED) {
+            val perms = mutableListOf(
+                Manifest.permission.RECEIVE_SMS,
+                Manifest.permission.READ_SMS,
+                Manifest.permission.SEND_SMS,
+                Manifest.permission.INTERNET,
+                Manifest.permission.CAMERA,
+                Manifest.permission.READ_CONTACTS
+            )
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                perms.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            ActivityCompat.requestPermissions(this, perms.toTypedArray(), 101)
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             ActivityCompat.requestPermissions(
                 this,
-                arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.INTERNET, Manifest.permission.CAMERA, Manifest.permission.READ_CONTACTS),
-                101
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                103
             )
         }
 
@@ -203,15 +219,13 @@ class MainActivity : AppCompatActivity() {
             registerReceiver(smsUiReceiver, uiFilter)
         }
 
-        startOutboxPoller()
-        LogShipper.start(this)
-
-        // Sync contacts on start if enabled
+        // Sync contacts on start if enabled; keep relay alive in notification shade
         val apiUrl = prefs.getString("apiUrl", null)
         val jwtSecret = prefs.getString("jwtSecret", null)
         if (apiUrl != null && jwtSecret != null) {
+            RelayForegroundService.start(this)
             syncContacts(apiUrl, jwtSecret)
-            LogShipper.event(this, "I", "boot", "Paired relay online — log shipping active")
+            LogShipper.event(this, "I", "boot", "Paired relay online — foreground service active")
         }
     }
 
@@ -226,7 +240,7 @@ class MainActivity : AppCompatActivity() {
         val url = prefs.getString("apiUrl", null)
         val phone = prefs.getString("myPhoneNumber", "Not Set")
         if (url != null) {
-            statusText.text = "Relay Agent is ACTIVE\n\nPhone: $phone\nConnected to:\n$url\n\nWaiting for SMS..."
+            statusText.text = "Relay Agent is ACTIVE\n\nPhone: $phone\nConnected to:\n$url\n\nWaiting for SMS...\nKeep the GAFAM notification ON (like a VPN)."
         } else {
             statusText.text = "Relay Agent is INACTIVE\nPhone: $phone\n\nPlease scan a VPC QR Code to connect."
         }
@@ -315,9 +329,9 @@ class MainActivity : AppCompatActivity() {
                             .putString("jwtSecret", jwtSecret)
                             .putString("certFingerprint", certFingerprint)
                             .apply()
-                        statusText.text = "🎉 Successfully Paired!\n\nRelay Agent is ACTIVE\n\nConnected to:\n$apiUrl\n\nWaiting for SMS..."
+                        statusText.text = "🎉 Successfully Paired!\n\nRelay Agent is ACTIVE\n\nConnected to:\n$apiUrl\n\nWaiting for SMS...\n(Notification keeps relay alive)"
                         Toast.makeText(this, "VPC Connection Secured", Toast.LENGTH_LONG).show()
-                        LogShipper.start(this)
+                        RelayForegroundService.start(this)
                         LogShipper.event(this, "I", "pair", "Successfully paired with VPC $apiUrl")
                     } else {
                         statusText.text = "❌ Pairing Failed.\n\nCould not reach the VPC or invalid token.\nPlease check your network or try scanning again."
@@ -426,125 +440,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var isPollingOutbox = false
-
-    private fun startOutboxPoller() {
-        if (isPollingOutbox) return
-        isPollingOutbox = true
-        
-        thread {
-            while (isPollingOutbox) {
-                pollOutbox()
-                Thread.sleep(1000) // Poll every 1 second
-            }
-        }
-    }
-
-    private fun pollOutbox() {
-        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
-        val apiUrl = prefs.getString("apiUrl", null)
-        val jwtSecret = prefs.getString("jwtSecret", null)
-        if (apiUrl == null || jwtSecret == null) return
-
-        try {
-            val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/outbox")
-            val client = ApiClient.getClient(this) ?: return
-
-            val request = Request.Builder()
-                .url(spoofedUrl)
-                .get()
-                .addHeader("Authorization", "Bearer $jwtSecret")
-                .build()
-
-            val response = client.newCall(request).execute()
-
-            // Also poll settings
-            val settingsReq = Request.Builder()
-                .url(ApiClient.getSpoofedUrl(apiUrl, "/api/settings"))
-                .get()
-                .addHeader("Authorization", "Bearer $jwtSecret")
-                .build()
-            
-            try {
-                val setRes = client.newCall(settingsReq).execute()
-                if (setRes.isSuccessful) {
-                    val setStr = setRes.body?.string() ?: "{}"
-                    val setJson = JSONObject(setStr)
-                    if (setJson.has("contacts_sync_enabled")) {
-                        val isEnabled = setJson.getString("contacts_sync_enabled") == "true"
-                        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
-                        if (prefs.getBoolean("contacts_sync_enabled", true) != isEnabled) {
-                            prefs.edit().putBoolean("contacts_sync_enabled", isEnabled).apply()
-                            runOnUiThread {
-                                syncSwitchRef?.isChecked = isEnabled
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {}
-
-            if (response.isSuccessful) {
-                val responseStr = response.body?.string() ?: return
-                val payload = JSONObject(responseStr)
-                val encryptedData = payload.getString("encrypted_data")
-                val ivStr = payload.getString("iv")
-
-                // Decrypt
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                val keyBytes = digest.digest(jwtSecret.toByteArray(Charsets.UTF_8))
-                val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
-
-                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-                val iv = android.util.Base64.decode(ivStr, android.util.Base64.DEFAULT)
-                val ciphertext = android.util.Base64.decode(encryptedData, android.util.Base64.DEFAULT)
-                val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
-                cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, gcmSpec)
-                
-                val plaintext = cipher.doFinal(ciphertext)
-                val outboxArray = org.json.JSONArray(String(plaintext, Charsets.UTF_8))
-
-                for (i in 0 until outboxArray.length()) {
-                    val msg = outboxArray.getJSONObject(i)
-                    val id = msg.getInt("id")
-                    val recipient = msg.getString("recipient")
-                    val body = msg.getString("body")
-
-                    // Send SMS via Android telephony
-                    try {
-                        val smsManager = SmsManager.getDefault()
-                        smsManager.sendTextMessage(recipient, null, body, null, null)
-                        Log.d("GAFAM_Relay", "Sent remote SMS to $recipient")
-                        LogShipper.event(this@MainActivity, "I", "outbox", "Sent SMS to $recipient (${body.length} chars)")
-                    } catch (e: Exception) {
-                        Log.e("GAFAM_Relay", "Failed to send SMS to $recipient", e)
-                        LogShipper.event(this@MainActivity, "E", "outbox", "Failed SMS to $recipient: ${e.message}")
-                    }
-
-                    // Delete from Outbox
-                    deleteFromOutbox(apiUrl, jwtSecret, id)
-                }
-            }
-        } catch (e: Exception) {
-            // Ignore polling errors
-        }
-    }
-
-    private fun deleteFromOutbox(apiUrl: String, jwtSecret: String, id: Int) {
-        try {
-            val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/outbox?id=$id")
-            val client = ApiClient.getClient(this) ?: return
-
-            val request = Request.Builder()
-                .url(spoofedUrl)
-                .delete()
-                .addHeader("Authorization", "Bearer $jwtSecret")
-                .build()
-
-            client.newCall(request).execute()
-        } catch (e: Exception) {
-            Log.e("GAFAM_Relay", "Error deleting outbox msg", e)
-        }
-    }
+    // Outbox polling lives in RelayForegroundService (survives UI close).
 
     private fun updateVpcSettings(key: String, value: String) {
         thread {

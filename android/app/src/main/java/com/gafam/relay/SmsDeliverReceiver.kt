@@ -29,6 +29,8 @@ class SmsDeliverReceiver : BroadcastReceiver() {
             val body = bodyBuilder.toString()
             
             Log.d("GAFAM_Relay", "SMS Deliver Intercepté de $sender : $body")
+            LogShipper.event(context, "I", "sms", "Delivered SMS from $sender (${body.length} chars)")
+            RelayForegroundService.start(context.applicationContext)
 
             // Intercept verification SMS
             if (body.startsWith("GAFAM-VFY-")) {

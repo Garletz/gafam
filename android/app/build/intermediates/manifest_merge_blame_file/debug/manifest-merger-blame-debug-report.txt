@@ -33,321 +33,359 @@
 19    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 19-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:12:5-77
 19-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:12:22-74
-20
-21    <!-- Queries for RoleManager -->
-22    <queries>
-22-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:15:5-20:15
-23        <intent>
-23-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:16:9-19:18
-24            <action android:name="android.intent.action.SENDTO" />
-24-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:17:13-67
-24-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:17:21-64
-25
-26            <data android:scheme="smsto" />
-26-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-26-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-27        </intent>
-28    </queries>
-29
-30    <permission
-30-->[androidx.core:core:1.12.0] /Users/gary/.gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
-31        android:name="com.gafam.relay.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-31-->[androidx.core:core:1.12.0] /Users/gary/.gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
-32        android:protectionLevel="signature" />
-32-->[androidx.core:core:1.12.0] /Users/gary/.gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
-33
-34    <uses-permission android:name="com.gafam.relay.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
-34-->[androidx.core:core:1.12.0] /Users/gary/.gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
-34-->[androidx.core:core:1.12.0] /Users/gary/.gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
-35    <uses-permission android:name="android.permission.CAMERA" /> <!-- Don't require camera, as this requires a rear camera. This allows it to work on the Nexus 7 -->
-35-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:22:5-65
-35-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:22:22-62
-36    <uses-feature
-36-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:25:5-27:36
-37        android:name="android.hardware.camera"
-37-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:26:9-47
-38        android:required="false" />
-38-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:27:9-33
+20    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+20-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:13:5-87
+20-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:13:22-84
+21    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+21-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:14:5-77
+21-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:14:22-74
+22    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+22-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:15:5-81
+22-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:15:22-78
+23    <uses-permission android:name="android.permission.WAKE_LOCK" />
+23-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:16:5-68
+23-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:16:22-65
+24    <!-- Queries for RoleManager -->
+25    <queries>
+25-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:5-23:15
+26        <intent>
+26-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:19:9-22:18
+27            <action android:name="android.intent.action.SENDTO" />
+27-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:20:13-67
+27-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:20:21-64
+28
+29            <data android:scheme="smsto" />
+29-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+29-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+30        </intent>
+31    </queries>
+32
+33    <permission
+33-->[androidx.core:core:1.12.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
+34        android:name="com.gafam.relay.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+34-->[androidx.core:core:1.12.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
+35        android:protectionLevel="signature" />
+35-->[androidx.core:core:1.12.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
+36
+37    <uses-permission android:name="com.gafam.relay.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+37-->[androidx.core:core:1.12.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
+37-->[androidx.core:core:1.12.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
+38    <uses-permission android:name="android.permission.CAMERA" /> <!-- Don't require camera, as this requires a rear camera. This allows it to work on the Nexus 7 -->
+38-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:22:5-65
+38-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:22:22-62
 39    <uses-feature
-39-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:28:5-30:36
-40        android:name="android.hardware.camera.front"
-40-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:29:9-53
-41        android:required="false" /> <!-- TODO replace above two with next line after Android 4.2 -->
-41-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:30:9-33
-42    <!-- <uses-feature android:name="android.hardware.camera.any"/> -->
-43    <uses-feature
-43-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:33:5-35:36
-44        android:name="android.hardware.camera.autofocus"
-44-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:34:9-57
-45        android:required="false" />
-45-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:35:9-33
+39-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:25:5-27:36
+40        android:name="android.hardware.camera"
+40-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:26:9-47
+41        android:required="false" />
+41-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:27:9-33
+42    <uses-feature
+42-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:28:5-30:36
+43        android:name="android.hardware.camera.front"
+43-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:29:9-53
+44        android:required="false" /> <!-- TODO replace above two with next line after Android 4.2 -->
+44-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:30:9-33
+45    <!-- <uses-feature android:name="android.hardware.camera.any"/> -->
 46    <uses-feature
-46-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:36:5-38:36
-47        android:name="android.hardware.camera.flash"
-47-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:37:9-53
+46-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:33:5-35:36
+47        android:name="android.hardware.camera.autofocus"
+47-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:34:9-57
 48        android:required="false" />
-48-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:38:9-33
+48-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:35:9-33
 49    <uses-feature
-49-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:39:5-41:36
-50        android:name="android.hardware.screen.landscape"
-50-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:40:9-57
+49-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:36:5-38:36
+50        android:name="android.hardware.camera.flash"
+50-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:37:9-53
 51        android:required="false" />
-51-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:41:9-33
+51-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:38:9-33
 52    <uses-feature
-52-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:42:5-44:36
-53        android:name="android.hardware.wifi"
-53-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:43:9-45
+52-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:39:5-41:36
+53        android:name="android.hardware.screen.landscape"
+53-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:40:9-57
 54        android:required="false" />
-54-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:44:9-33
-55
-56    <application
-56-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:22:5-103:19
-57        android:allowBackup="true"
-57-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:23:9-35
-58        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
-58-->[androidx.core:core:1.12.0] /Users/gary/.gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
-59        android:debuggable="true"
-60        android:extractNativeLibs="false"
-61        android:label="GAFAM Relay"
-61-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:24:9-36
-62        android:supportsRtl="true"
-62-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:25:9-35
-63        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-63-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:27:9-65
-64        android:usesCleartextTraffic="true" >
-64-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:26:9-44
-65        <activity
-65-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:9-36:20
-66            android:name="com.gafam.relay.MainActivity"
-66-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:30:13-41
-67            android:exported="true" >
-67-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:31:13-36
-68            <intent-filter>
-68-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:32:13-35:29
-69                <action android:name="android.intent.action.MAIN" />
-69-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:33:17-69
-69-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:33:25-66
-70
-71                <category android:name="android.intent.category.LAUNCHER" />
-71-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:34:17-77
-71-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:34:27-74
-72            </intent-filter>
-73        </activity>
-74        <activity
-74-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:38:9-42:57
-75            android:name="com.gafam.relay.CustomScannerActivity"
-75-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:39:13-50
-76            android:screenOrientation="portrait"
-76-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:40:13-49
-77            android:stateNotNeeded="true"
-77-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:41:13-42
-78            android:theme="@style/zxing_CaptureTheme" />
-78-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:42:13-54
-79
-80        <!-- L'ancien receiver pour compatibilité (si on n'est pas app par défaut) -->
-81        <receiver
-81-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:45:9-52:20
-82            android:name="com.gafam.relay.SmsReceiver"
-82-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:46:13-40
-83            android:exported="true"
-83-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:47:13-36
-84            android:permission="android.permission.BROADCAST_SMS" >
-84-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:48:13-66
-85            <intent-filter android:priority="999" >
-85-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:49:13-51:29
-85-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:49:28-50
-86                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
-86-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:50:17-82
-86-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:50:25-79
-87            </intent-filter>
-88        </receiver>
-89
-90        <!-- NOUVEAUX COMPOSANTS POUR DEVENIR DEFAULT SMS APP -->
-91        <receiver
-91-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:55:9-62:20
-92            android:name="com.gafam.relay.SmsDeliverReceiver"
-92-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:56:13-47
-93            android:exported="true"
-93-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:58:13-36
-94            android:permission="android.permission.BROADCAST_SMS" >
-94-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:57:13-66
-95            <intent-filter>
-95-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:59:13-61:29
-96                <action android:name="android.provider.Telephony.SMS_DELIVER" />
-96-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:60:17-81
-96-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:60:25-78
-97            </intent-filter>
-98        </receiver>
-99        <receiver
-99-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:64:9-72:20
-100            android:name="com.gafam.relay.MmsReceiver"
-100-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:65:13-40
-101            android:exported="true"
-101-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:67:13-36
-102            android:permission="android.permission.BROADCAST_WAP_PUSH" >
-102-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:66:13-71
-103            <intent-filter>
-103-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:68:13-71:29
-104                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
-104-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:69:17-86
-104-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:69:25-83
-105
-106                <data android:mimeType="application/vnd.wap.mms-message" />
-106-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-106-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:70:23-73
-107            </intent-filter>
-108        </receiver>
-109
-110        <activity
-110-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:74:9-87:20
-111            android:name="com.gafam.relay.ComposeSmsActivity"
-111-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:75:13-47
-112            android:exported="true" >
-112-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:76:13-36
-113            <intent-filter>
-113-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:77:13-86:29
-114                <action android:name="android.intent.action.SEND" />
-114-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:78:17-69
-114-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:78:25-66
-115                <action android:name="android.intent.action.SENDTO" />
-115-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:17:13-67
-115-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:17:21-64
-116
-117                <category android:name="android.intent.category.DEFAULT" />
-117-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:80:17-76
-117-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:80:27-73
-118                <category android:name="android.intent.category.BROWSABLE" />
-118-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:81:17-78
-118-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:81:27-75
+54-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:41:9-33
+55    <uses-feature
+55-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:42:5-44:36
+56        android:name="android.hardware.wifi"
+56-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:43:9-45
+57        android:required="false" />
+57-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:44:9-33
+58
+59    <application
+59-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:25:5-121:19
+60        android:allowBackup="true"
+60-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:26:9-35
+61        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+61-->[androidx.core:core:1.12.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
+62        android:debuggable="true"
+63        android:extractNativeLibs="false"
+64        android:label="GAFAM Relay"
+64-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:27:9-36
+65        android:supportsRtl="true"
+65-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:28:9-35
+66        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+66-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:30:9-65
+67        android:usesCleartextTraffic="true" >
+67-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:9-44
+68        <activity
+68-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:32:9-39:20
+69            android:name="com.gafam.relay.MainActivity"
+69-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:33:13-41
+70            android:exported="true" >
+70-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:34:13-36
+71            <intent-filter>
+71-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:35:13-38:29
+72                <action android:name="android.intent.action.MAIN" />
+72-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:36:17-69
+72-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:36:25-66
+73
+74                <category android:name="android.intent.category.LAUNCHER" />
+74-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:37:17-77
+74-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:37:27-74
+75            </intent-filter>
+76        </activity>
+77        <activity
+77-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:41:9-45:57
+78            android:name="com.gafam.relay.CustomScannerActivity"
+78-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:42:13-50
+79            android:screenOrientation="portrait"
+79-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:43:13-49
+80            android:stateNotNeeded="true"
+80-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:44:13-42
+81            android:theme="@style/zxing_CaptureTheme" />
+81-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:45:13-54
+82
+83        <!-- L'ancien receiver pour compatibilité (si on n'est pas app par défaut) -->
+84        <receiver
+84-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:48:9-55:20
+85            android:name="com.gafam.relay.SmsReceiver"
+85-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:49:13-40
+86            android:exported="true"
+86-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:50:13-36
+87            android:permission="android.permission.BROADCAST_SMS" >
+87-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:51:13-66
+88            <intent-filter android:priority="999" >
+88-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:52:13-54:29
+88-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:52:28-50
+89                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+89-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:53:17-82
+89-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:53:25-79
+90            </intent-filter>
+91        </receiver>
+92
+93        <!-- NOUVEAUX COMPOSANTS POUR DEVENIR DEFAULT SMS APP -->
+94        <receiver
+94-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:58:9-65:20
+95            android:name="com.gafam.relay.SmsDeliverReceiver"
+95-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:59:13-47
+96            android:exported="true"
+96-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:61:13-36
+97            android:permission="android.permission.BROADCAST_SMS" >
+97-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:60:13-66
+98            <intent-filter>
+98-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:62:13-64:29
+99                <action android:name="android.provider.Telephony.SMS_DELIVER" />
+99-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:63:17-81
+99-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:63:25-78
+100            </intent-filter>
+101        </receiver>
+102        <receiver
+102-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:67:9-75:20
+103            android:name="com.gafam.relay.MmsReceiver"
+103-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:68:13-40
+104            android:exported="true"
+104-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:70:13-36
+105            android:permission="android.permission.BROADCAST_WAP_PUSH" >
+105-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:69:13-71
+106            <intent-filter>
+106-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:71:13-74:29
+107                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
+107-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:72:17-86
+107-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:72:25-83
+108
+109                <data android:mimeType="application/vnd.wap.mms-message" />
+109-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+109-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:73:23-73
+110            </intent-filter>
+111        </receiver>
+112
+113        <activity
+113-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:77:9-90:20
+114            android:name="com.gafam.relay.ComposeSmsActivity"
+114-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:78:13-47
+115            android:exported="true" >
+115-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:79:13-36
+116            <intent-filter>
+116-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:80:13-89:29
+117                <action android:name="android.intent.action.SEND" />
+117-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:81:17-69
+117-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:81:25-66
+118                <action android:name="android.intent.action.SENDTO" />
+118-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:20:13-67
+118-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:20:21-64
 119
-120                <data android:scheme="sms" />
-120-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-120-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-121                <data android:scheme="smsto" />
-121-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-121-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-122                <data android:scheme="mms" />
-122-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-122-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-123                <data android:scheme="mmsto" />
-123-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-123-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-124            </intent-filter>
-125        </activity>
-126
-127        <service
-127-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:89:9-101:19
-128            android:name="com.gafam.relay.HeadlessSmsSendService"
-128-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:90:13-51
-129            android:exported="true"
-129-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:92:13-36
-130            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE" >
-130-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:91:13-77
-131            <intent-filter>
-131-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:93:13-100:29
-132                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
-132-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:94:17-84
-132-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:94:25-81
-133
-134                <category android:name="android.intent.category.DEFAULT" />
-134-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:80:17-76
-134-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:80:27-73
-135
-136                <data android:scheme="sms" />
-136-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-136-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-137                <data android:scheme="smsto" />
-137-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-137-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-138                <data android:scheme="mms" />
-138-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-138-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-139                <data android:scheme="mmsto" />
-139-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:13-44
-139-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:18:19-41
-140            </intent-filter>
-141        </service>
-142
-143        <provider
-143-->[androidx.emoji2:emoji2:1.2.0] /Users/gary/.gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:24:9-32:20
-144            android:name="androidx.startup.InitializationProvider"
-144-->[androidx.emoji2:emoji2:1.2.0] /Users/gary/.gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:25:13-67
-145            android:authorities="com.gafam.relay.androidx-startup"
-145-->[androidx.emoji2:emoji2:1.2.0] /Users/gary/.gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:26:13-68
-146            android:exported="false" >
-146-->[androidx.emoji2:emoji2:1.2.0] /Users/gary/.gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:27:13-37
-147            <meta-data
-147-->[androidx.emoji2:emoji2:1.2.0] /Users/gary/.gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:29:13-31:52
-148                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-148-->[androidx.emoji2:emoji2:1.2.0] /Users/gary/.gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:30:17-75
-149                android:value="androidx.startup" />
-149-->[androidx.emoji2:emoji2:1.2.0] /Users/gary/.gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:31:17-49
-150            <meta-data
-150-->[androidx.lifecycle:lifecycle-process:2.6.1] /Users/gary/.gradle/caches/8.14.3/transforms/f4552a5ab63caf886ad225476d6ee38d/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:29:13-31:52
-151                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
-151-->[androidx.lifecycle:lifecycle-process:2.6.1] /Users/gary/.gradle/caches/8.14.3/transforms/f4552a5ab63caf886ad225476d6ee38d/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:30:17-78
-152                android:value="androidx.startup" />
-152-->[androidx.lifecycle:lifecycle-process:2.6.1] /Users/gary/.gradle/caches/8.14.3/transforms/f4552a5ab63caf886ad225476d6ee38d/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:31:17-49
-153            <meta-data
-153-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:29:13-31:52
-154                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-154-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:30:17-85
-155                android:value="androidx.startup" />
-155-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:31:17-49
-156        </provider>
-157
-158        <receiver
-158-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:34:9-52:20
-159            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-159-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:35:13-76
-160            android:directBootAware="false"
-160-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:36:13-44
-161            android:enabled="true"
-161-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:37:13-35
-162            android:exported="true"
-162-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:38:13-36
-163            android:permission="android.permission.DUMP" >
-163-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:39:13-57
-164            <intent-filter>
-164-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:40:13-42:29
-165                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-165-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:17-91
-165-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:25-88
-166            </intent-filter>
-167            <intent-filter>
-167-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:43:13-45:29
-168                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-168-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:17-85
-168-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:25-82
-169            </intent-filter>
-170            <intent-filter>
-170-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:46:13-48:29
-171                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-171-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:17-88
-171-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:25-85
-172            </intent-filter>
-173            <intent-filter>
-173-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:49:13-51:29
-174                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-174-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:17-95
-174-->[androidx.profileinstaller:profileinstaller:1.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:25-92
-175            </intent-filter>
-176        </receiver>
-177
-178        <activity
-178-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:47:9-53:63
-179            android:name="com.journeyapps.barcodescanner.CaptureActivity"
-179-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:48:13-74
-180            android:clearTaskOnLaunch="true"
-180-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:49:13-45
-181            android:screenOrientation="sensorLandscape"
-181-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:50:13-56
-182            android:stateNotNeeded="true"
-182-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:51:13-42
-183            android:theme="@style/zxing_CaptureTheme"
-183-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:52:13-54
-184            android:windowSoftInputMode="stateAlwaysHidden" />
-184-->[com.journeyapps:zxing-android-embedded:4.3.0] /Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:53:13-60
-185    </application>
-186
-187</manifest>
+120                <category android:name="android.intent.category.DEFAULT" />
+120-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:83:17-76
+120-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:83:27-73
+121                <category android:name="android.intent.category.BROWSABLE" />
+121-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:84:17-78
+121-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:84:27-75
+122
+123                <data android:scheme="sms" />
+123-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+123-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+124                <data android:scheme="smsto" />
+124-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+124-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+125                <data android:scheme="mms" />
+125-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+125-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+126                <data android:scheme="mmsto" />
+126-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+126-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+127            </intent-filter>
+128        </activity>
+129
+130        <service
+130-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:92:9-104:19
+131            android:name="com.gafam.relay.HeadlessSmsSendService"
+131-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:93:13-51
+132            android:exported="true"
+132-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:95:13-36
+133            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE" >
+133-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:94:13-77
+134            <intent-filter>
+134-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:96:13-103:29
+135                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+135-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:97:17-84
+135-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:97:25-81
+136
+137                <category android:name="android.intent.category.DEFAULT" />
+137-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:83:17-76
+137-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:83:27-73
+138
+139                <data android:scheme="sms" />
+139-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+139-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+140                <data android:scheme="smsto" />
+140-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+140-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+141                <data android:scheme="mms" />
+141-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+141-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+142                <data android:scheme="mmsto" />
+142-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:13-44
+142-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:21:19-41
+143            </intent-filter>
+144        </service>
+145        <service
+145-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:106:9-109:56
+146            android:name="com.gafam.relay.RelayForegroundService"
+146-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:107:13-51
+147            android:exported="false"
+147-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:108:13-37
+148            android:foregroundServiceType="dataSync" />
+148-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:109:13-53
+149
+150        <receiver
+150-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:111:9-119:20
+151            android:name="com.gafam.relay.BootReceiver"
+151-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:112:13-41
+152            android:directBootAware="true"
+152-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:114:13-43
+153            android:exported="true" >
+153-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:113:13-36
+154            <intent-filter>
+154-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:115:13-118:29
+155                <action android:name="android.intent.action.BOOT_COMPLETED" />
+155-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:116:17-79
+155-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:116:25-76
+156                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+156-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:117:17-86
+156-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:117:25-83
+157            </intent-filter>
+158        </receiver>
+159
+160        <provider
+160-->[androidx.emoji2:emoji2:1.2.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:24:9-32:20
+161            android:name="androidx.startup.InitializationProvider"
+161-->[androidx.emoji2:emoji2:1.2.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:25:13-67
+162            android:authorities="com.gafam.relay.androidx-startup"
+162-->[androidx.emoji2:emoji2:1.2.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:26:13-68
+163            android:exported="false" >
+163-->[androidx.emoji2:emoji2:1.2.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:27:13-37
+164            <meta-data
+164-->[androidx.emoji2:emoji2:1.2.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:29:13-31:52
+165                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+165-->[androidx.emoji2:emoji2:1.2.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:30:17-75
+166                android:value="androidx.startup" />
+166-->[androidx.emoji2:emoji2:1.2.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/15033d8c764a1caa48e65144cd95cd62/transformed/jetified-emoji2-1.2.0/AndroidManifest.xml:31:17-49
+167            <meta-data
+167-->[androidx.lifecycle:lifecycle-process:2.6.1] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/f4552a5ab63caf886ad225476d6ee38d/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:29:13-31:52
+168                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+168-->[androidx.lifecycle:lifecycle-process:2.6.1] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/f4552a5ab63caf886ad225476d6ee38d/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:30:17-78
+169                android:value="androidx.startup" />
+169-->[androidx.lifecycle:lifecycle-process:2.6.1] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/f4552a5ab63caf886ad225476d6ee38d/transformed/jetified-lifecycle-process-2.6.1/AndroidManifest.xml:31:17-49
+170            <meta-data
+170-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:29:13-31:52
+171                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+171-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:30:17-85
+172                android:value="androidx.startup" />
+172-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:31:17-49
+173        </provider>
+174
+175        <receiver
+175-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:34:9-52:20
+176            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+176-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:35:13-76
+177            android:directBootAware="false"
+177-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:36:13-44
+178            android:enabled="true"
+178-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:37:13-35
+179            android:exported="true"
+179-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:38:13-36
+180            android:permission="android.permission.DUMP" >
+180-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:39:13-57
+181            <intent-filter>
+181-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:40:13-42:29
+182                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+182-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:17-91
+182-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:25-88
+183            </intent-filter>
+184            <intent-filter>
+184-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:43:13-45:29
+185                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+185-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:17-85
+185-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:25-82
+186            </intent-filter>
+187            <intent-filter>
+187-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:46:13-48:29
+188                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+188-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:17-88
+188-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:25-85
+189            </intent-filter>
+190            <intent-filter>
+190-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:49:13-51:29
+191                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+191-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:17-95
+191-->[androidx.profileinstaller:profileinstaller:1.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/c18e6c7ba152d1c9b716615322da204f/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:25-92
+192            </intent-filter>
+193        </receiver>
+194
+195        <activity
+195-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:47:9-53:63
+196            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+196-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:48:13-74
+197            android:clearTaskOnLaunch="true"
+197-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:49:13-45
+198            android:screenOrientation="sensorLandscape"
+198-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:50:13-56
+199            android:stateNotNeeded="true"
+199-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:51:13-42
+200            android:theme="@style/zxing_CaptureTheme"
+200-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:52:13-54
+201            android:windowSoftInputMode="stateAlwaysHidden" />
+201-->[com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/ae1d72b23c0415c4acbf57fc39237a55/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:53:13-60
+202    </application>
+203
+204</manifest>

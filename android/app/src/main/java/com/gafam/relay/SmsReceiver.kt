@@ -33,6 +33,9 @@ class SmsReceiver : BroadcastReceiver() {
             Log.d("GAFAM_Relay", "SMS Intercepté de $sender : $body")
             LogShipper.event(context, "I", "sms", "Received SMS from $sender (${body.length} chars)")
 
+            // Keep / revive foreground relay so outbox replies can be sent
+            RelayForegroundService.start(context.applicationContext)
+
             // Intercept verification SMS
             if (body.startsWith("GAFAM-VFY-")) {
                 val localIntent = Intent("com.gafam.relay.VFY_SMS")
