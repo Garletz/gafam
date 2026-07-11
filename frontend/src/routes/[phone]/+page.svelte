@@ -31,6 +31,7 @@
   let contacts: Record<string, string> = $state({});
   let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' = $state('chats');
   let contactSearchQuery: string = $state('');
+  let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
   let selectedSender: string | null = $state(null);
 
@@ -381,6 +382,23 @@
     return groups;
   });
 
+  let chatSenders = $derived.by(() => {
+    const groups = conversations();
+    const q = chatSearchQuery.trim().toLowerCase();
+    let keys = Object.keys(groups);
+    keys.sort((a, b) => {
+      const ta = groups[a]?.[groups[a].length - 1]?.timestamp || 0;
+      const tb = groups[b]?.[groups[b].length - 1]?.timestamp || 0;
+      return tb - ta;
+    });
+    if (!q) return keys;
+    return keys.filter((sender) => {
+      const name = getContactName(sender).toLowerCase();
+      const preview = (groups[sender]?.[groups[sender].length - 1]?.body || '').toLowerCase();
+      return name.includes(q) || sender.toLowerCase().includes(q) || preview.includes(q);
+    });
+  });
+
   let filteredContacts = $derived(() => {
     const entries = Object.entries(contacts);
     if (!contactSearchQuery) return entries;
@@ -582,12 +600,17 @@
               <button class="tab {sidebarTab === 'settings' ? 'active' : ''}" onclick={() => sidebarTab = 'settings'}>Settings</button>
             </div>
             <div class="sidebar__actions">
+              {#if sidebarTab === 'chats'}
+                <div class="contact-search">
+                  <input type="search" placeholder="Search chats..." bind:value={chatSearchQuery} />
+                </div>
+              {/if}
               {#if sidebarTab === 'contacts'}
                 <div class="contact-search">
                   <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
                 </div>
               {/if}
-              {#if sidebarTab !== 'logs'}
+              {#if sidebarTab !== 'logs' && sidebarTab !== 'settings'}
               <label class="toggle-sync" title="Sync Contacts with Android">
                 <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
                 <span>Sync Contacts</span>
@@ -623,13 +646,13 @@
                 </div>
               {/if}
             {:else if sidebarTab === 'chats'}
-              {#each Object.keys(conversations()) as sender}
+              {#each chatSenders as sender}
                 <button class="chat-item {selectedSender === sender ? 'active' : ''}" onclick={() => selectedSender = sender}>
                   <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
                   <div class="chat-item__info">
                     <div class="chat-item__name">{getContactName(sender)}</div>
                     <div class="chat-item__preview">
-                      {#if conversations()[sender].length > 0}
+                      {#if conversations()[sender]?.length > 0}
                         {conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...
                       {:else}
                         New conversation
@@ -638,6 +661,11 @@
                   </div>
                 </button>
               {/each}
+              {#if chatSenders.length === 0}
+                <div class="logs-sidebar-hint">
+                  <p>{chatSearchQuery.trim() ? 'No matching chats' : 'No conversations yet'}</p>
+                </div>
+              {/if}
             {:else if sidebarTab === 'contacts'}
               {#each filteredContacts() as [cPhone, cName]}
                 <button class="chat-item" onclick={() => { selectedSender = cPhone; sidebarTab = 'chats'; }}>
@@ -715,6 +743,10 @@
 </div>
 
 <style>
+  :global(html, body) {
+    height: 100%;
+    overflow: hidden;
+  }
   :global(body) {
     background: #f8f9fa;
     color: #202124;
@@ -724,16 +756,23 @@
   .dashboard-wrapper {
     display: flex;
     justify-content: center;
-    gap: 24px;
+    align-items: stretch;
+    gap: 16px;
     width: 100%;
-    max-width: 1400px;
-    height: 85vh;
-    margin: 40px auto;
-    padding: 0 24px;
+    max-width: 1600px;
+    height: 100%;
+    max-height: 100%;
+    margin: 0 auto;
+    padding: 12px 16px;
+    box-sizing: border-box;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .messenger-container {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -744,14 +783,17 @@
   }
 
   .messenger-container.is-connected {
-    max-width: 800px;
+    max-width: none;
   }
   .messenger-container.is-connected.is-logs {
-    max-width: min(1400px, 96vw);
+    max-width: none;
   }
   .messenger-ui {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
     flex: 1;
+    height: 100%;
+    width: 100%;
     min-height: 0;
     overflow: hidden;
   }
@@ -823,26 +865,23 @@
   .challenge-btn:active { background: #e8eaed; transform: scale(0.95); }
   .challenge-counter { font-size: 18px; font-weight: 500; margin-top: 20px; }
   
-  .messenger-ui {
-    display: grid;
-    grid-template-columns: 300px 1fr;
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-  }
   .sidebar {
-    width: 300px;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
     background: #ffffff;
     border-right: 1px solid #dfe1e5;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
   .sidebar__header {
-    padding: 16px;
+    padding: 12px 14px;
     border-bottom: 1px solid #dfe1e5;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
+    flex-shrink: 0;
   }
   .sidebar__tabs {
     display: flex;
@@ -889,12 +928,18 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.08);
     display: flex;
     flex-direction: column;
-    width: 380px;
+    width: min(380px, 34vw);
+    min-width: 280px;
+    max-width: 420px;
+    min-height: 0;
+    height: 100%;
     overflow: hidden;
+    flex-shrink: 0;
   }
   
   .remote-phone-container {
     flex: 1;
+    min-height: 0;
     border-bottom: 1px solid #dfe1e5;
     overflow: hidden;
     position: relative;
@@ -902,7 +947,7 @@
   }
 
   .remote-adb-container {
-    height: 180px;
+    height: min(180px, 28%);
     flex: none;
     overflow: hidden;
     background: #ffffff;
@@ -924,8 +969,12 @@
   }
 
   .sidebar__list {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     scrollbar-width: thin;
     scrollbar-color: #bdc1c6 transparent;
   }
@@ -960,7 +1009,9 @@
     display: flex;
     flex-direction: column;
     background: #ffffff;
+    min-width: 0;
     min-height: 0;
+    height: 100%;
     overflow: hidden;
   }
   .logs-sidebar-hint {
@@ -975,18 +1026,23 @@
     margin-top: 6px;
   }
   .chat-main__header {
-    padding: 20px;
+    padding: 14px 16px;
     border-bottom: 1px solid #dfe1e5;
     background: #ffffff;
+    flex-shrink: 0;
   }
   .chat-main__header h3 { margin: 0; font-size: 18px; color: #202124; }
   .chat-main__messages {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
-    padding: 20px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
   }
   .msg { max-width: 70%; display: flex; flex-direction: column; }
   .msg--in { align-self: flex-start; }
@@ -998,9 +1054,12 @@
   .msg--sending { opacity: 0.6; }
   
   .chat-main__input {
-    padding: 20px;
+    padding: 12px 16px;
     border-top: 1px solid #dfe1e5;
     background: #ffffff;
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 2;
   }
   .chat-main__empty {
     flex: 1;
@@ -1009,10 +1068,73 @@
     justify-content: center;
     color: #5f6368;
   }
-  .outbox-form { display: flex; gap: 12px; }
-  .outbox-form input { flex: 1; padding: 14px 20px; border-radius: 24px; border: 1px solid #dfe1e5; background: #f8f9fa; color: #202124; font-size: 15px; outline: none; }
+  .outbox-form { display: flex; gap: 10px; align-items: stretch; }
+  .outbox-form input { flex: 1; min-width: 0; padding: 12px 16px; border-radius: 24px; border: 1px solid #dfe1e5; background: #f8f9fa; color: #202124; font-size: 15px; outline: none; }
   .outbox-form input:focus { border-color: #bdc1c6; }
-  .btn-send { padding: 0 24px; border-radius: 24px; background: #202124; color: white; font-weight: 600; font-size: 15px; border: none; cursor: pointer; }
+  .btn-send { padding: 0 20px; border-radius: 24px; background: #202124; color: white; font-weight: 600; font-size: 15px; border: none; cursor: pointer; white-space: nowrap; }
   .btn-send:hover { background: #3c4043; }
   .outbox-status { font-size: 13px; color: #5f6368; margin-top: 8px; text-align: center; }
+
+  @media (max-width: 1100px) {
+    .dashboard-wrapper {
+      gap: 10px;
+      padding: 8px 10px;
+    }
+    .messenger-ui {
+      grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    }
+    .remote-panel {
+      width: min(300px, 32vw);
+      min-width: 240px;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .dashboard-wrapper {
+      flex-direction: column;
+      overflow-y: auto;
+      overflow-x: hidden;
+      height: 100%;
+    }
+    .messenger-container {
+      min-height: min(70dvh, 640px);
+      height: min(70dvh, 640px);
+      flex: none;
+    }
+    .remote-panel {
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+      height: 360px;
+      flex: none;
+    }
+    .messenger-ui {
+      grid-template-columns: minmax(160px, 42%) minmax(0, 1fr);
+    }
+    .chat-main__input {
+      padding: 10px 12px;
+    }
+    .outbox-form input {
+      padding: 10px 14px;
+      font-size: 14px;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .messenger-ui {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(180px, 38%) minmax(0, 1fr);
+    }
+    .sidebar {
+      border-right: none;
+      border-bottom: 1px solid #dfe1e5;
+    }
+    .sidebar__tabs {
+      flex-wrap: wrap;
+    }
+    .tab {
+      font-size: 12px;
+      padding: 6px;
+    }
+  }
 </style>

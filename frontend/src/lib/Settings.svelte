@@ -107,7 +107,10 @@
   .settings-panel {
     padding: 24px;
     height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     background: #fafafa;
   }
   .settings-header h3 {

@@ -112,18 +112,21 @@
 
 <style>
   .app-container {
-    min-height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
   .global-header {
     display: flex;
     align-items: center;
-    padding: 12px 24px;
+    padding: 10px 20px;
     background: #ffffff;
     border-bottom: 1px solid #dfe1e5;
     position: relative;
     z-index: 50;
+    flex-shrink: 0;
   }
   .global-header__logo {
     font-size: 22px;
@@ -227,7 +230,14 @@
 
   .app-content {
     flex: 1;
+    min-height: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+  .app-content > :global(*) {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
   }
 </style>
