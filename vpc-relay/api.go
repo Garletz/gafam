@@ -373,7 +373,10 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 			if errChal == nil {
 				tNorm := strings.ReplaceAll(cTime, ":", "")
 				loginURL := fmt.Sprintf("https://%s.gafam.cloud/?t=%s", phoneToSubdomain(relayPhone), tNorm)
-				replyBody := fmt.Sprintf("Code GAFAM: %s - %d impulsions\n%s", cTime, cClicks, loginURL)
+				replyBody := fmt.Sprintf(
+					"Code GAFAM: %s - %d impulsions\nCliquez sur le lien, attendez la fin du timer, puis faites %d impulsions.\n%s",
+					cTime, cClicks, cClicks, loginURL,
+				)
 				db.Exec(`INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`, senderStr, replyBody)
 			} else {
 				log.Println("Error generating emergency challenge:", errChal)
