@@ -75,6 +75,103 @@ impl Default for BridgeState {
 
 pub type SharedBridgeState = Arc<RwLock<BridgeState>>;
 
+/// Ship system logcat via ADB → VPC while the remote bridge is alive.
+async fn ship_adb_logcat_loop(
+    device_serial: String,
+    vpc_host: String,
+    jwt_secret: String,
+    state: SharedBridgeState,
+) {
+    let adb = find_adb();
+    let mut last_fingerprint = String::new();
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let url = format!("http://{}:5150/api/auth/logs", vpc_host);
+
+    loop {
+        {
+            let s = state.read().await;
+            if !s.active {
+                break;
+            }
+        }
+
+        let output = Command::new(&adb)
+            .args(["-s", &device_serial, "logcat", "-d", "-v", "threadtime", "-t", "120"])
+            .output()
+            .await;
+
+        if let Ok(out) = output {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let lines: Vec<&str> = text.lines().collect();
+            if !lines.is_empty() {
+                let fp = lines.last().unwrap_or(&"").to_string();
+                let start = if last_fingerprint.is_empty() {
+                    lines.len().saturating_sub(40)
+                } else if let Some(idx) = lines.iter().position(|l| *l == last_fingerprint) {
+                    idx + 1
+                } else {
+                    lines.len().saturating_sub(40)
+                };
+                last_fingerprint = fp;
+
+                let mut entries = Vec::new();
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(0);
+
+                for (i, line) in lines[start..].iter().enumerate() {
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    let (level, tag, message) = parse_logcat_line(line);
+                    entries.push(serde_json::json!({
+                        "ts": now + i as i64,
+                        "source": "adb",
+                        "level": level,
+                        "tag": tag,
+                        "message": message,
+                    }));
+                }
+
+                if !entries.is_empty() {
+                    let body = serde_json::json!({ "entries": entries });
+                    let _ = client
+                        .post(&url)
+                        .header("Authorization", format!("Bearer {}", jwt_secret))
+                        .json(&body)
+                        .send()
+                        .await;
+                }
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    }
+}
+
+fn parse_logcat_line(line: &str) -> (String, String, String) {
+    for marker in [" V ", " D ", " I ", " W ", " E ", " F "] {
+        if let Some(idx) = line.find(marker) {
+            let level = marker.trim().to_string();
+            let rest = line[idx + marker.len()..].trim();
+            if let Some(colon) = rest.find(':') {
+                let tag = rest[..colon].trim().to_string();
+                let msg = rest[colon + 1..].trim().to_string();
+                return (level, tag, msg);
+            }
+            return (level, "logcat".into(), rest.to_string());
+        }
+    }
+    ("I".into(), "logcat".into(), line.to_string())
+}
+
 /// Find the ADB binary path
 fn find_adb() -> String {
     // Check common locations
@@ -373,6 +470,15 @@ pub async fn start_bridge(
     }
 
     log::info!("Bridge connected to VPS: {}", vpc_url);
+
+    // Bonus: ship ADB logcat to VPC while bridge is active
+    let log_state = state.clone();
+    let log_device = device_serial.clone();
+    let log_host = ip_no_port.to_string();
+    let log_jwt = jwt_secret.clone();
+    let _logcat_task = tokio::spawn(async move {
+        ship_adb_logcat_loop(log_device, log_host, log_jwt, log_state).await;
+    });
 
     // Step 6: Send device info
     let device_info = serde_json::json!({

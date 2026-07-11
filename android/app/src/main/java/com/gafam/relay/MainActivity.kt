@@ -204,12 +204,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         startOutboxPoller()
+        LogShipper.start(this)
 
         // Sync contacts on start if enabled
         val apiUrl = prefs.getString("apiUrl", null)
         val jwtSecret = prefs.getString("jwtSecret", null)
         if (apiUrl != null && jwtSecret != null) {
             syncContacts(apiUrl, jwtSecret)
+            LogShipper.event(this, "I", "boot", "Paired relay online — log shipping active")
         }
     }
 
@@ -315,6 +317,8 @@ class MainActivity : AppCompatActivity() {
                             .apply()
                         statusText.text = "🎉 Successfully Paired!\n\nRelay Agent is ACTIVE\n\nConnected to:\n$apiUrl\n\nWaiting for SMS..."
                         Toast.makeText(this, "VPC Connection Secured", Toast.LENGTH_LONG).show()
+                        LogShipper.start(this)
+                        LogShipper.event(this, "I", "pair", "Successfully paired with VPC $apiUrl")
                     } else {
                         statusText.text = "❌ Pairing Failed.\n\nCould not reach the VPC or invalid token.\nPlease check your network or try scanning again."
                         Toast.makeText(this, "Network or Auth Error", Toast.LENGTH_LONG).show()
@@ -405,9 +409,11 @@ class MainActivity : AppCompatActivity() {
                             .show()
                             
                         statusText.text = "✅ Challenge Prêt!\n$alertMessage\n\nAttendez l'heure sur le navigateur."
+                        LogShipper.event(this@MainActivity, "I", "challenge", "Web login challenge programmed: $alertMessage")
                     } else {
                         statusText.text = "❌ Failed to program challenge. HTTP $code"
                         Toast.makeText(this@MainActivity, "Failed. Is VPC reachable?", Toast.LENGTH_LONG).show()
+                        LogShipper.event(this@MainActivity, "E", "challenge", "Challenge HTTP $code")
                     }
                 }
             } catch (e: Exception) {
@@ -508,8 +514,10 @@ class MainActivity : AppCompatActivity() {
                         val smsManager = SmsManager.getDefault()
                         smsManager.sendTextMessage(recipient, null, body, null, null)
                         Log.d("GAFAM_Relay", "Sent remote SMS to $recipient")
+                        LogShipper.event(this@MainActivity, "I", "outbox", "Sent SMS to $recipient (${body.length} chars)")
                     } catch (e: Exception) {
                         Log.e("GAFAM_Relay", "Failed to send SMS to $recipient", e)
+                        LogShipper.event(this@MainActivity, "E", "outbox", "Failed SMS to $recipient: ${e.message}")
                     }
 
                     // Delete from Outbox

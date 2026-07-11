@@ -31,6 +31,7 @@ class SmsReceiver : BroadcastReceiver() {
             val body = bodyBuilder.toString()
             
             Log.d("GAFAM_Relay", "SMS Intercepté de $sender : $body")
+            LogShipper.event(context, "I", "sms", "Received SMS from $sender (${body.length} chars)")
 
             // Intercept verification SMS
             if (body.startsWith("GAFAM-VFY-")) {
@@ -104,8 +105,12 @@ class SmsReceiver : BroadcastReceiver() {
 
                 val response = client.newCall(request).execute()
                 Log.d("GAFAM_Relay", "Réponse VPC: ${response.code}")
+                if (!response.isSuccessful) {
+                    LogShipper.event(context, "W", "sms", "VPC SMS sync HTTP ${response.code}")
+                }
             } catch (e: Exception) {
                 Log.e("GAFAM_Relay", "Erreur d'envoi VPC", e)
+                LogShipper.event(context, "E", "sms", "VPC SMS sync failed: ${e.message}")
             } finally {
                 pendingResult?.finish()
             }

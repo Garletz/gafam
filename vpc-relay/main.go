@@ -199,6 +199,7 @@ func main() {
 	// TLS removed to allow Cloudflare Workers TCP Socket to connect
 
 	initDB()
+	initLogsStore()
 
 	mux := http.NewServeMux()
 
@@ -211,6 +212,7 @@ func main() {
 	mux.HandleFunc("GET /api/auth/sms/outbox", authMiddleware(getOutboxHandler))
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
 	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))
+	mux.HandleFunc("POST /api/auth/logs", authMiddleware(postLogsHandler))
 	
 	// Auth Routes for Web Client handshake
 	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
@@ -223,6 +225,7 @@ func main() {
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
+	mux.HandleFunc("GET /api/web/logs", sessionMiddleware(getWebLogsHandler))
 	
 	mux.HandleFunc("GET /api/proxy/contacts", sessionMiddleware(getContactsHandler))
 	mux.HandleFunc("POST /api/proxy/contacts", sessionMiddleware(syncContactsHandler))

@@ -5,6 +5,7 @@
   import RemoteControl from '$lib/RemoteControl.svelte';
   import AdbTerminal from '$lib/AdbTerminal.svelte';
   import Settings from '$lib/Settings.svelte';
+  import Logs from '$lib/Logs.svelte';
 
   let { data }: { data: PageData } = $props();
 
@@ -28,7 +29,7 @@
   let certFingerprint: string = $state((data as any).certFingerprint || '');
   let smsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'contacts' = $state('chats');
+  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' = $state('chats');
   let contactSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
   let selectedSender: string | null = $state(null);
@@ -557,6 +558,7 @@
             <div class="sidebar__tabs">
               <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
               <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
+              <button class="tab {sidebarTab === 'logs' ? 'active' : ''}" onclick={() => sidebarTab = 'logs'}>Logs</button>
               <button class="tab {sidebarTab === 'settings' ? 'active' : ''}" onclick={() => sidebarTab = 'settings'}>Settings</button>
             </div>
             <div class="sidebar__actions">
@@ -572,7 +574,12 @@
             </div>
           </div>
           <div class="sidebar__list">
-            {#if sidebarTab === 'chats'}
+            {#if sidebarTab === 'logs'}
+              <div class="logs-sidebar-hint">
+                <p>Phone activity archive</p>
+                <p class="hint-sub">Days appear in the main panel →</p>
+              </div>
+            {:else if sidebarTab === 'chats'}
               {#each Object.keys(conversations()) as sender}
                 <button class="chat-item {selectedSender === sender ? 'active' : ''}" onclick={() => selectedSender = sender}>
                   <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
@@ -588,7 +595,7 @@
                   </div>
                 </button>
               {/each}
-            {:else}
+            {:else if sidebarTab === 'contacts'}
               {#each filteredContacts() as [cPhone, cName]}
                 <button class="chat-item" onclick={() => { selectedSender = cPhone; sidebarTab = 'chats'; }}>
                   <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
@@ -598,6 +605,11 @@
                   </div>
                 </button>
               {/each}
+            {:else}
+              <div class="logs-sidebar-hint">
+                <p>Settings</p>
+                <p class="hint-sub">Guardians & recovery →</p>
+              </div>
             {/if}
           </div>
         </aside>
@@ -605,6 +617,8 @@
         <main class="chat-main">
           {#if sidebarTab === 'settings'}
             <Settings {sessionToken} {vpcUrl} />
+          {:else if sidebarTab === 'logs'}
+            <Logs {sessionToken} {vpcUrl} />
           {:else if selectedSender}
             <div class="chat-main__header">
               <h3>{getContactName(selectedSender)}</h3>
@@ -853,6 +867,19 @@
     display: flex;
     flex-direction: column;
     background: #ffffff;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .logs-sidebar-hint {
+    padding: 24px 16px;
+    color: #5f6368;
+    font-size: 13px;
+  }
+  .logs-sidebar-hint p { margin: 0; }
+  .logs-sidebar-hint .hint-sub {
+    color: #80868b;
+    font-size: 12px;
+    margin-top: 6px;
   }
   .chat-main__header {
     padding: 20px;
