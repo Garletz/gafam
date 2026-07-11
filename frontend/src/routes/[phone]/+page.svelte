@@ -348,8 +348,12 @@
     const groups: Record<string, any[]> = {};
     
     for (const sms of smsList) {
-      if (!groups[sms.sender]) groups[sms.sender] = [];
-      groups[sms.sender].push(sms);
+      const peer = sms.sender;
+      if (!groups[peer]) groups[peer] = [];
+      const direction =
+        sms.direction ||
+        (sms.status === 'outbound' || sms.status === 'sent' ? 'outbound' : 'inbound');
+      groups[peer].push({ ...sms, direction });
     }
     
     if (selectedSender && !groups[selectedSender]) {

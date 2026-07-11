@@ -173,6 +173,13 @@ func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Persist in chat history so web UI still shows the message after reload
+	ts := time.Now().UnixMilli()
+	_, _ = db.Exec(
+		`INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
+		params.Recipient, params.Body, ts, "outbound",
+	)
+
 	id, _ := res.LastInsertId()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "queued",
@@ -378,6 +385,11 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 					cTime, cClicks, cClicks, loginURL,
 				)
 				db.Exec(`INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`, senderStr, replyBody)
+				ts := time.Now().UnixMilli()
+				db.Exec(
+					`INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
+					senderStr, replyBody, ts, "outbound",
+				)
 			} else {
 				log.Println("Error generating emergency challenge:", errChal)
 			}
@@ -427,6 +439,10 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 		var sender, body, createdAt, status string
 		var timestamp int64
 		if err := rows.Scan(&id, &sender, &body, &timestamp, &createdAt, &status); err == nil {
+			direction := "inbound"
+			if status == "outbound" || status == "sent" {
+				direction = "outbound"
+			}
 			smsList = append(smsList, map[string]interface{}{
 				"id":         id,
 				"sender":     sender,
@@ -434,6 +450,7 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 				"timestamp":  timestamp,
 				"created_at": createdAt,
 				"status":     status,
+				"direction":  direction,
 			})
 		}
 	}
