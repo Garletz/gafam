@@ -33,6 +33,12 @@
   let contactSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
   let selectedSender: string | null = $state(null);
+
+  // Logs archive (days live in left sidebar)
+  let logDays: Array<{ day: string; bytes: number; lines: number; updated_at: string }> = $state([]);
+  let selectedLogDay: string | null = $state(null);
+  let logTotalBytes = $state(0);
+  let logQuotaBytes = $state(1 << 30);
   let pollInterval: ReturnType<typeof setInterval>;
   let countdownInterval: ReturnType<typeof setInterval>;
   let statusMsg = $state('');
@@ -551,7 +557,7 @@
       </div>
 
     {:else}
-      <div class="messenger-container is-connected">
+      <div class="messenger-container is-connected {sidebarTab === 'logs' ? 'is-logs' : ''}">
         <div class="messenger-ui">
           <aside class="sidebar">
           <div class="sidebar__header">
@@ -567,18 +573,41 @@
                   <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
                 </div>
               {/if}
+              {#if sidebarTab !== 'logs'}
               <label class="toggle-sync" title="Sync Contacts with Android">
                 <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
                 <span>Sync Contacts</span>
               </label>
+              {/if}
+              {#if sidebarTab === 'logs'}
+                <div class="logs-quota-mini">
+                  <span>{(logTotalBytes / 1024).toFixed(0)} KB / {(logQuotaBytes / (1024 * 1024)).toFixed(0)} MB</span>
+                  <div class="quota-bar"><div class="quota-fill" style="width: {Math.min(100, (logTotalBytes / logQuotaBytes) * 100)}%"></div></div>
+                </div>
+              {/if}
             </div>
           </div>
           <div class="sidebar__list">
             {#if sidebarTab === 'logs'}
-              <div class="logs-sidebar-hint">
-                <p>Phone activity archive</p>
-                <p class="hint-sub">Days appear in the main panel →</p>
-              </div>
+              <div class="logs-archive-label">Phone activity archive</div>
+              {#each logDays as d}
+                <button
+                  class="chat-item {selectedLogDay === d.day ? 'active' : ''}"
+                  onclick={() => selectedLogDay = d.day}
+                >
+                  <div class="chat-item__avatar logs-day-avatar">{d.day.slice(8, 10)}</div>
+                  <div class="chat-item__info">
+                    <div class="chat-item__name">{new Date(d.day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                    <div class="chat-item__preview">{d.lines} lines · {(d.bytes / 1024).toFixed(1)} KB</div>
+                  </div>
+                </button>
+              {/each}
+              {#if logDays.length === 0}
+                <div class="logs-sidebar-hint">
+                  <p>No days yet</p>
+                  <p class="hint-sub">APK ships logs every few seconds after pairing.</p>
+                </div>
+              {/if}
             {:else if sidebarTab === 'chats'}
               {#each Object.keys(conversations()) as sender}
                 <button class="chat-item {selectedSender === sender ? 'active' : ''}" onclick={() => selectedSender = sender}>
@@ -614,11 +643,18 @@
           </div>
         </aside>
 
-        <main class="chat-main">
+        <main class="chat-main {sidebarTab === 'logs' ? 'chat-main--logs' : ''}">
           {#if sidebarTab === 'settings'}
             <Settings {sessionToken} {vpcUrl} />
           {:else if sidebarTab === 'logs'}
-            <Logs {sessionToken} {vpcUrl} />
+            <Logs
+              {sessionToken}
+              {vpcUrl}
+              bind:selectedDay={selectedLogDay}
+              bind:days={logDays}
+              bind:totalBytes={logTotalBytes}
+              bind:quotaBytes={logQuotaBytes}
+            />
           {:else if selectedSender}
             <div class="chat-main__header">
               <h3>{getContactName(selectedSender)}</h3>
@@ -695,6 +731,86 @@
 
   .messenger-container.is-connected {
     max-width: 800px;
+  }
+  .messenger-container.is-connected.is-logs {
+    max-width: min(1400px, 96vw);
+  }
+  .messenger-container.is-connected.is-logs .sidebar {
+    background: #0a0a0a;
+    border-right: 1px solid #222;
+    color: #e8e8e8;
+  }
+  .messenger-container.is-connected.is-logs .sidebar__header {
+    background: #000;
+    border-bottom: 1px solid #222;
+  }
+  .messenger-container.is-connected.is-logs .tab {
+    color: #888;
+  }
+  .messenger-container.is-connected.is-logs .tab.active {
+    color: #fff;
+    border-bottom-color: #fff;
+  }
+  .messenger-container.is-connected.is-logs .chat-item {
+    color: #ccc;
+  }
+  .messenger-container.is-connected.is-logs .chat-item:hover,
+  .messenger-container.is-connected.is-logs .chat-item.active {
+    background: #141414;
+  }
+  .messenger-container.is-connected.is-logs .chat-item__name {
+    color: #fff;
+  }
+  .messenger-container.is-connected.is-logs .chat-item__preview {
+    color: #777;
+  }
+  .messenger-ui {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .logs-archive-label {
+    padding: 10px 16px 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #666;
+    font-weight: 600;
+  }
+  .logs-day-avatar {
+    background: #1a1a1a !important;
+    color: #fff !important;
+    font-size: 12px !important;
+    border: 1px solid #333;
+  }
+  .logs-quota-mini {
+    width: 100%;
+    font-size: 11px;
+    color: #777;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  .quota-bar {
+    height: 2px;
+    background: #222;
+    border-radius: 0;
+    overflow: hidden;
+  }
+  .quota-fill {
+    height: 100%;
+    background: #fff;
+  }
+  .chat-main--logs {
+    background: #000 !important;
+  }
+  .messenger-container.is-connected.is-logs .logs-sidebar-hint {
+    color: #888;
+  }
+  .messenger-container.is-connected.is-logs .logs-sidebar-hint .hint-sub {
+    color: #555;
   }
   .top-bar {
     width: 100%;

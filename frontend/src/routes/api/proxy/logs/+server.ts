@@ -1,7 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
-async function vpcGet(vpcUrl: string, token: string, pathAndQuery: string) {
+async function vpcRequest(
+	vpcUrl: string,
+	token: string,
+	method: 'GET' | 'DELETE',
+	pathAndQuery: string
+) {
 	const parsed = new URL(vpcUrl);
 	const host = parsed.hostname;
 	const port = parseInt(parsed.port) || 5150;
@@ -14,7 +19,7 @@ async function vpcGet(vpcUrl: string, token: string, pathAndQuery: string) {
 		const encoder = new TextEncoder();
 
 		const httpRequest = [
-			`GET ${pathAndQuery} HTTP/1.1`,
+			`${method} ${pathAndQuery} HTTP/1.1`,
 			`Host: ${host}`,
 			`Authorization: Bearer ${token}`,
 			`Connection: close`,
@@ -56,15 +61,18 @@ async function vpcGet(vpcUrl: string, token: string, pathAndQuery: string) {
 			return json({ error: 'Failed to parse JSON', raw: body }, { status: 500 });
 		}
 	} catch (socketError: any) {
-		// Local dev fallback
 		try {
 			const response = await fetch(`${vpcUrl}${pathAndQuery}`, {
+				method,
 				headers: { Authorization: `Bearer ${token}` }
 			});
 			const data = await response.json();
 			return json(data, { status: response.status });
 		} catch (fetchError: any) {
-			return json({ error: 'TCP Socket failed', details: socketError.message, fetch: fetchError.message }, { status: 500 });
+			return json(
+				{ error: 'TCP Socket failed', details: socketError.message, fetch: fetchError.message },
+				{ status: 500 }
+			);
 		}
 	}
 }
@@ -83,7 +91,23 @@ export const GET: RequestHandler = async ({ url }) => {
 		if (day) {
 			path += `&day=${encodeURIComponent(day)}&offset=${encodeURIComponent(offset)}&limit=${encodeURIComponent(limit)}`;
 		}
-		return await vpcGet(vpcUrl, token, path);
+		return await vpcRequest(vpcUrl, token, 'GET', path);
+	} catch (err: any) {
+		return json({ error: err.message }, { status: 500 });
+	}
+};
+
+export const DELETE: RequestHandler = async ({ url }) => {
+	const vpcUrl = url.searchParams.get('vpcUrl');
+	const token = url.searchParams.get('token');
+	const day = url.searchParams.get('day');
+
+	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
+
+	try {
+		let path = `/api/web/logs?token=${encodeURIComponent(token)}`;
+		if (day) path += `&day=${encodeURIComponent(day)}`;
+		return await vpcRequest(vpcUrl, token, 'DELETE', path);
 	} catch (err: any) {
 		return json({ error: err.message }, { status: 500 });
 	}

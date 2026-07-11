@@ -413,3 +413,33 @@ func getWebLogsHandler(w http.ResponseWriter, r *http.Request) {
 		"total_lines": totalLines,
 	})
 }
+
+// DELETE /api/web/logs — clear one day (?day=) or all logs
+func deleteWebLogsHandler(w http.ResponseWriter, r *http.Request) {
+	day := r.URL.Query().Get("day")
+
+	logsMu.Lock()
+	defer logsMu.Unlock()
+
+	if day != "" {
+		if !validDay(day) {
+			http.Error(w, "Invalid day", http.StatusBadRequest)
+			return
+		}
+		_ = os.Remove(dayFilePath(day))
+		_, _ = db.Exec(`DELETE FROM log_days WHERE day = ?`, day)
+		sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "cleared": day})
+		return
+	}
+
+	entries, err := os.ReadDir(logsDir)
+	if err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
+				_ = os.Remove(filepath.Join(logsDir, e.Name()))
+			}
+		}
+	}
+	_, _ = db.Exec(`DELETE FROM log_days`)
+	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "cleared": "all"})
+}
