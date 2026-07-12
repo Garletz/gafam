@@ -30,6 +30,7 @@
   let smsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
   let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' = $state('chats');
+  let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
   let contactSearchQuery: string = $state('');
   let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
@@ -717,17 +718,52 @@
                 </div>
               {/each}
             {:else}
-              <div class="logs-sidebar-hint">
-                <p>Settings</p>
-                <p class="hint-sub">Guardians & recovery →</p>
-              </div>
+              <button
+                type="button"
+                class="chat-item settings-nav {settingsSection === 'node' ? 'active' : ''}"
+                onclick={() => { sidebarTab = 'settings'; settingsSection = 'node'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">V</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">VPS Node</div>
+                  <div class="chat-item__preview">Status & updates</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                class="chat-item settings-nav {settingsSection === 'recovery' ? 'active' : ''}"
+                onclick={() => { sidebarTab = 'settings'; settingsSection = 'recovery'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">R</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">Recovery</div>
+                  <div class="chat-item__preview">Emergency guardians</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                class="chat-item settings-nav {settingsSection === 'contacts' ? 'active' : ''}"
+                onclick={() => { sidebarTab = 'settings'; settingsSection = 'contacts'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">C</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">Contacts</div>
+                  <div class="chat-item__preview">Sync from Android</div>
+                </div>
+              </button>
             {/if}
           </div>
         </aside>
 
         <main class="chat-main {sidebarTab === 'logs' ? 'chat-main--logs' : ''}">
           {#if sidebarTab === 'settings'}
-            <Settings {sessionToken} {vpcUrl} />
+            <Settings
+              {sessionToken}
+              {vpcUrl}
+              bind:section={settingsSection}
+              bind:syncContacts
+              onContactSyncChange={toggleContactSync}
+            />
           {:else if sidebarTab === 'logs'}
             <Logs
               {sessionToken}
@@ -1077,6 +1113,13 @@
   .chat-item__info { flex: 1; overflow: hidden; }
   .chat-item__name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
   .chat-item__preview { font-size: 13px; color: #5f6368; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .settings-nav__icon {
+    font-size: 13px !important;
+    font-weight: 700;
+    background: #202124 !important;
+    color: #ffffff !important;
+  }
   
   .chat-main {
     flex: 1;

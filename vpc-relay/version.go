@@ -33,8 +33,33 @@ func vpcInfoHandler(w http.ResponseWriter, r *http.Request) {
 		"image":           "ghcr.io/garletz/gafam:latest",
 		"uptime_seconds":  uptime,
 		"started_at":      serverStartedAt.UTC().Format(time.RFC3339),
-		"watchtower":      os.Getenv("WATCHTOWER_TOKEN") != "",
+		"watchtower":      checkWatchtowerReachable(),
 	})
+}
+
+func checkWatchtowerReachable() bool {
+	token := os.Getenv("WATCHTOWER_TOKEN")
+	if token == "" {
+		return false
+	}
+	watchtowerURL := os.Getenv("WATCHTOWER_URL")
+	if watchtowerURL == "" {
+		watchtowerURL = "http://host.docker.internal:8080/v1/update"
+	}
+	// HEAD/GET may not be supported; a short POST with auth validates reachability.
+	req, err := http.NewRequest(http.MethodPost, watchtowerURL, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	// Any HTTP response means Watchtower is reachable (401/403 still counts).
+	return resp.StatusCode > 0
 }
 
 func triggerUpdateHandler(w http.ResponseWriter, r *http.Request) {

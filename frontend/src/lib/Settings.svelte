@@ -1,7 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  let { vpcUrl, sessionToken }: { vpcUrl: string, sessionToken: string } = $props();
+  let {
+    vpcUrl,
+    sessionToken,
+    section = $bindable<'node' | 'recovery' | 'contacts'>('node'),
+    syncContacts = $bindable(true),
+    onContactSyncChange
+  }: {
+    vpcUrl: string;
+    sessionToken: string;
+    section?: 'node' | 'recovery' | 'contacts';
+    syncContacts?: boolean;
+    onContactSyncChange?: () => void;
+  } = $props();
 
   type VpcInfo = {
     status: string;
@@ -22,7 +34,7 @@
     image: string;
   };
 
-  let guardians: Array<{ id: number, name: string, phone: string, keyword: string }> = $state([]);
+  let guardians: Array<{ id: number; name: string; phone: string; keyword: string }> = $state([]);
   let newName = $state('');
   let newPhone = $state('');
   let newKeyword = $state('URGENCE_GAFAM');
@@ -46,7 +58,7 @@
     const d = Math.floor(seconds / 86400);
     const h = Math.floor((seconds % 86400) / 3600);
     const m = Math.floor((seconds % 3600) / 60);
-    if (d > 0) return `${d}j ${h}h`;
+    if (d > 0) return `${d}d ${h}h`;
     if (h > 0) return `${h}h ${m}m`;
     return `${m}m`;
   }
@@ -54,7 +66,10 @@
   function formatDate(iso: string) {
     if (!iso || iso === 'unknown') return '—';
     try {
-      return new Date(iso).toLocaleString();
+      return new Date(iso).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
     } catch {
       return iso;
     }
@@ -82,7 +97,7 @@
       if (regRes.ok) {
         registryInfo = await regRes.json();
       }
-    } catch (err) {
+    } catch {
       vpcError = 'Network error';
       vpcInfo = null;
     } finally {
@@ -99,10 +114,14 @@
       const res = await fetch(`/api/proxy/vpc-info?${params.toString()}`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        updateMsg = data.message || 'Update triggered. The node will restart in ~30s.';
+        updateMsg = data.message || 'Update started. Node restarts in ~30 seconds.';
         setTimeout(fetchVpcStatus, 8000);
       } else {
-        updateMsg = data.message || data.error || 'Update failed';
+        const hint =
+          data.error === 'watchtower_unreachable'
+            ? ' Watchtower is not reachable from the VPC container. Re-run deploy-vpc.sh on the server (keep JWT_SECRET).'
+            : '';
+        updateMsg = (data.message || data.error || 'Update failed') + hint;
       }
     } catch {
       updateMsg = 'Network error';
@@ -115,18 +134,16 @@
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken });
       const res = await fetch(`/api/proxy/guardians?${params.toString()}`);
-      if (res.ok) {
-        guardians = await res.json();
-      }
+      if (res.ok) guardians = await res.json();
     } catch (err) {
-      console.error("Failed to fetch guardians", err);
+      console.error('Failed to fetch guardians', err);
     }
   }
 
   async function addGuardian(e: Event) {
     e.preventDefault();
     if (!newName || !newPhone || !newKeyword) return;
-    
+
     isLoading = true;
     errorMsg = '';
     try {
@@ -144,7 +161,7 @@
       } else {
         errorMsg = 'Failed to add guardian';
       }
-    } catch (err) {
+    } catch {
       errorMsg = 'Network error';
     } finally {
       isLoading = false;
@@ -154,12 +171,10 @@
   async function deleteGuardian(id: number) {
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, id: id.toString() });
-      await fetch(`/api/proxy/guardians?${params.toString()}`, {
-        method: 'DELETE'
-      });
+      await fetch(`/api/proxy/guardians?${params.toString()}`, { method: 'DELETE' });
       await fetchGuardians();
     } catch (err) {
-      console.error("Failed to delete", err);
+      console.error('Failed to delete', err);
     }
   }
 
@@ -169,374 +184,709 @@
   });
 </script>
 
-<div class="settings-panel">
-  <section class="settings-section">
-    <div class="settings-header">
-      <h3>VPS Node</h3>
-      <p>Status, version and updates for your relay server. Data and pairing are preserved during updates.</p>
-    </div>
+<div class="settings">
+  <header class="settings__head">
+    <h2 class="settings__title">Settings</h2>
+    <nav class="settings__nav" aria-label="Settings sections">
+      <button
+        type="button"
+        class="settings__tab"
+        class:is-active={section === 'node'}
+        onclick={() => (section = 'node')}
+      >
+        VPS Node
+      </button>
+      <button
+        type="button"
+        class="settings__tab"
+        class:is-active={section === 'recovery'}
+        onclick={() => (section = 'recovery')}
+      >
+        Recovery
+      </button>
+      <button
+        type="button"
+        class="settings__tab"
+        class:is-active={section === 'contacts'}
+        onclick={() => (section = 'contacts')}
+      >
+        Contacts
+      </button>
+    </nav>
+  </header>
 
-    <div class="vpc-card">
-      <div class="vpc-card__top">
-        <div class="vpc-status">
-          <span class="status-dot {vpcInfo ? 'online' : vpcError ? 'offline' : 'unknown'}"></span>
-          <span class="status-label">
-            {#if vpcLoading}
-              Checking…
-            {:else if vpcInfo}
-              Online
-            {:else}
-              Offline
-            {/if}
-          </span>
+  <div class="settings__body">
+    {#if section === 'node'}
+      <section class="panel">
+        <div class="panel__intro">
+          <p>Relay server status and updates. Pairing and data are kept during updates.</p>
         </div>
-        <button type="button" class="btn-refresh" onclick={fetchVpcStatus} disabled={vpcLoading}>
-          Refresh
-        </button>
-      </div>
 
-      {#if vpcError}
-        <p class="vpc-error">{vpcError}</p>
-      {/if}
-
-      {#if vpcInfo}
-        <dl class="vpc-meta">
-          <div><dt>Version</dt><dd>#{vpcInfo.version}</dd></div>
-          <div><dt>Build</dt><dd><code>{vpcInfo.git_sha_short}</code></dd></div>
-          <div><dt>Built at</dt><dd>{formatDate(vpcInfo.build_time)}</dd></div>
-          <div><dt>Uptime</dt><dd>{formatUptime(vpcInfo.uptime_seconds)}</dd></div>
-          <div><dt>Image</dt><dd><code>{vpcInfo.image}</code></dd></div>
-          <div><dt>Watchtower</dt><dd>{vpcInfo.watchtower ? 'Enabled' : 'Auto only (legacy node)'}</dd></div>
-        </dl>
-
-        {#if registryInfo}
-          <div class="update-banner {updateAvailable ? 'update-banner--available' : 'update-banner--ok'}">
-            {#if updateAvailable}
-              <strong>Update available</strong>
-              <span>GitHub main: <code>{registryInfo.git_sha_short}</code> · your node: <code>{vpcInfo.git_sha_short}</code></span>
-            {:else}
-              <strong>Up to date</strong>
-              <span>Latest build on GitHub main (<code>{registryInfo.git_sha_short}</code>)</span>
-            {/if}
+        <div class="status-bar">
+          <div class="status-bar__left">
+            <span
+              class="status-pill"
+              class:is-online={!!vpcInfo}
+              class:is-offline={!!vpcError && !vpcLoading}
+            ></span>
+            <span class="status-bar__label">
+              {#if vpcLoading}
+                Checking…
+              {:else if vpcInfo}
+                Online
+              {:else}
+                Offline
+              {/if}
+            </span>
           </div>
-        {/if}
-
-        <div class="vpc-actions">
-          <button
-            type="button"
-            class="btn-update"
-            onclick={triggerVpcUpdate}
-            disabled={updateLoading || !vpcInfo.watchtower}
-            title={vpcInfo.watchtower ? 'Pull latest image now' : 'Redeploy deploy-vpc.sh to enable manual update'}
-          >
-            {updateLoading ? 'Updating…' : 'Update now'}
+          <button type="button" class="btn-ghost" onclick={fetchVpcStatus} disabled={vpcLoading}>
+            Refresh
           </button>
-          <span class="vpc-hint">Auto-update every 5 min via Watchtower. Manual update restarts the container (~30s).</span>
         </div>
-        {#if updateMsg}
-          <p class="update-msg">{updateMsg}</p>
+
+        {#if vpcError}
+          <p class="panel__error">{vpcError}</p>
         {/if}
-      {/if}
 
-      <details class="vpc-help">
-        <summary>Recreate a deleted VPS</summary>
-        <ol>
-          <li>Open <strong>GAFAM Manager</strong> → create a DigitalOcean droplet (or run <code>deploy-vpc.sh</code> on any VPS).</li>
-          <li>Scan the QR code with the APK — pairing, SMS history and settings stay on the phone.</li>
-          <li>Re-authorize on <code>{vpcUrl ? new URL(vpcUrl).hostname : 'yourphone.gafam.cloud'}</code> after pairing.</li>
-          <li>No need to rebuild the APK for a VPC code update.</li>
-        </ol>
-      </details>
-    </div>
-  </section>
-
-  <section class="settings-section">
-    <div class="settings-header">
-      <h3>Emergency Social Recovery</h3>
-      <p>Add trusted friends or family who can generate emergency login codes for you if you lose your device.</p>
-    </div>
-
-    <div class="guardians-list">
-      {#each guardians as guardian}
-        <div class="guardian-card">
-          <div class="guardian-info">
-            <strong>{guardian.name}</strong>
-            <span class="guardian-phone">{guardian.phone}</span>
-            <span class="guardian-keyword">Keyword: <code>{guardian.keyword}</code></span>
+        {#if vpcInfo}
+          <div class="stats-grid">
+            <div class="stat">
+              <span class="stat__label">Version</span>
+              <span class="stat__value">#{vpcInfo.version}</span>
+            </div>
+            <div class="stat">
+              <span class="stat__label">Build</span>
+              <span class="stat__value mono">{vpcInfo.git_sha_short}</span>
+            </div>
+            <div class="stat">
+              <span class="stat__label">Built</span>
+              <span class="stat__value">{formatDate(vpcInfo.build_time)}</span>
+            </div>
+            <div class="stat">
+              <span class="stat__label">Uptime</span>
+              <span class="stat__value">{formatUptime(vpcInfo.uptime_seconds)}</span>
+            </div>
+            <div class="stat stat--wide">
+              <span class="stat__label">Image</span>
+              <span class="stat__value mono">{vpcInfo.image}</span>
+            </div>
+            <div class="stat">
+              <span class="stat__label">Watchtower</span>
+              <span class="stat__value">{vpcInfo.watchtower ? 'Reachable' : 'Unreachable'}</span>
+            </div>
           </div>
-          <button class="btn-delete" onclick={() => deleteGuardian(guardian.id)}>Remove</button>
-        </div>
-      {/each}
-      {#if guardians.length === 0}
-        <p class="empty-state">No trusted guardians added yet.</p>
-      {/if}
-    </div>
 
-    <form class="add-guardian-form" onsubmit={addGuardian}>
-      <h4>Add Trusted Guardian</h4>
-      {#if errorMsg}<div class="error">{errorMsg}</div>{/if}
-      <div class="form-row">
-        <input type="text" placeholder="Name" bind:value={newName} required />
-        <input type="tel" placeholder="Phone (e.g. +336...)" bind:value={newPhone} required />
-      </div>
-      <div class="form-row">
-        <input type="text" placeholder="Trigger Keyword" bind:value={newKeyword} required />
-        <button type="submit" disabled={isLoading}>Add Guardian</button>
-      </div>
-    </form>
-  </section>
+          <div class="subpanel" class:subpanel--highlight={updateAvailable}>
+            <div class="subpanel__head">
+              <h3>Software update</h3>
+              {#if registryInfo}
+                <span class="subpanel__badge">
+                  {updateAvailable ? 'New build' : 'Up to date'}
+                </span>
+              {/if}
+            </div>
+
+            {#if registryInfo}
+              <div class="version-compare">
+                <div class="version-row">
+                  <span class="version-row__label">This node</span>
+                  <code>{vpcInfo.git_sha_short}</code>
+                </div>
+                <div class="version-row">
+                  <span class="version-row__label">GitHub main</span>
+                  <code>{registryInfo.git_sha_short}</code>
+                </div>
+              </div>
+            {/if}
+
+            <div class="subpanel__actions">
+              <button
+                type="button"
+                class="btn-primary"
+                onclick={triggerVpcUpdate}
+                disabled={updateLoading || !vpcInfo.watchtower || !updateAvailable}
+              >
+                {#if updateLoading}
+                  Updating…
+                {:else if !updateAvailable}
+                  No update
+                {:else}
+                  Update now
+                {/if}
+              </button>
+              <p class="subpanel__hint">
+                Watchtower checks GHCR every 5 minutes. Manual update restarts the container (~30s).
+              </p>
+            </div>
+
+            {#if updateMsg}
+              <p class="subpanel__msg">{updateMsg}</p>
+            {/if}
+          </div>
+
+          <details class="help-block">
+            <summary>Recreate a deleted VPS</summary>
+            <ol>
+              <li>Open <strong>GAFAM Manager</strong> and create a droplet, or run <code>deploy-vpc.sh</code>.</li>
+              <li>Scan the QR code with the APK — pairing stays on the phone.</li>
+              <li>Re-authorize on <code>{vpcUrl ? new URL(vpcUrl).hostname : 'yourphone.gafam.cloud'}</code>.</li>
+            </ol>
+          </details>
+        {/if}
+      </section>
+
+    {:else if section === 'recovery'}
+      <section class="panel">
+        <div class="panel__intro">
+          <p>Trusted contacts who can trigger emergency login codes if you lose your device.</p>
+        </div>
+
+        <div class="guardian-list">
+          {#each guardians as guardian}
+            <article class="guardian-card">
+              <div class="guardian-card__main">
+                <strong class="guardian-card__name">{guardian.name}</strong>
+                <span class="guardian-card__phone">{guardian.phone}</span>
+                <span class="guardian-card__keyword">Keyword <code>{guardian.keyword}</code></span>
+              </div>
+              <button type="button" class="btn-ghost" onclick={() => deleteGuardian(guardian.id)}>
+                Remove
+              </button>
+            </article>
+          {/each}
+          {#if guardians.length === 0}
+            <p class="empty">No guardians configured.</p>
+          {/if}
+        </div>
+
+        <form class="form-card" onsubmit={addGuardian}>
+          <h3 class="form-card__title">Add guardian</h3>
+          {#if errorMsg}<p class="panel__error">{errorMsg}</p>{/if}
+          <div class="form-row">
+            <input type="text" placeholder="Name" bind:value={newName} required />
+            <input type="tel" placeholder="Phone (+33…)" bind:value={newPhone} required />
+          </div>
+          <div class="form-row">
+            <input type="text" placeholder="Trigger keyword" bind:value={newKeyword} required />
+            <button type="submit" class="btn-primary" disabled={isLoading}>Add</button>
+          </div>
+        </form>
+      </section>
+
+    {:else}
+      <section class="panel">
+        <div class="panel__intro">
+          <p>Sync contact names from your Android device to the web interface.</p>
+        </div>
+
+        <div class="toggle-card">
+          <label class="toggle-row">
+            <input
+              type="checkbox"
+              bind:checked={syncContacts}
+              onchange={() => onContactSyncChange?.()}
+            />
+            <span class="toggle-row__text">
+              <strong>Sync contacts</strong>
+              <span>Pull names from the phone and match them to SMS threads.</span>
+            </span>
+          </label>
+        </div>
+
+        <p class="panel__note">
+          When enabled, the relay APK sends your address book to your VPC. Data stays on your server.
+        </p>
+      </section>
+    {/if}
+  </div>
 </div>
 
 <style>
-  .settings-panel {
-    padding: 24px;
+  .settings {
+    display: flex;
+    flex-direction: column;
     height: 100%;
     min-height: 0;
-    box-sizing: border-box;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    background: #fafafa;
+    background: #ffffff;
   }
-  .settings-section {
-    margin-bottom: 36px;
+
+  .settings__head {
+    flex-shrink: 0;
+    padding: 16px 20px 0;
+    border-bottom: 1px solid #dfe1e5;
   }
-  .settings-section:last-child {
-    margin-bottom: 0;
-  }
-  .settings-header h3 {
-    margin: 0 0 8px 0;
+
+  .settings__title {
+    margin: 0 0 12px;
+    font-size: 18px;
+    font-weight: 600;
     color: #202124;
   }
-  .settings-header p {
-    margin: 0 0 16px 0;
+
+  .settings__nav {
+    display: flex;
+    gap: 4px;
+    margin-bottom: -1px;
+  }
+
+  .settings__tab {
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
     color: #5f6368;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: 0;
+  }
+
+  .settings__tab:hover {
+    color: #202124;
+    background: #f8f9fa;
+  }
+
+  .settings__tab.is-active {
+    color: #202124;
+    border-bottom-color: #202124;
+  }
+
+  .settings__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 20px;
+  }
+
+  .panel__intro {
+    margin-bottom: 20px;
+  }
+
+  .panel__intro p,
+  .panel__note {
+    margin: 0;
     font-size: 14px;
+    line-height: 1.5;
+    color: #5f6368;
   }
-  .vpc-card {
-    background: white;
-    border: 1px solid #dfe1e5;
-    border-radius: 8px;
-    padding: 16px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+
+  .panel__note {
+    margin-top: 16px;
   }
-  .vpc-card__top {
+
+  .panel__error {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: #202124;
+    font-weight: 500;
+  }
+
+  .status-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 12px;
+    padding: 12px 14px;
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    background: #f8f9fa;
+    margin-bottom: 16px;
   }
-  .vpc-status {
+
+  .status-bar__left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+  }
+
+  .status-bar__label {
+    font-size: 14px;
     font-weight: 600;
     color: #202124;
   }
-  .status-dot {
-    width: 10px;
-    height: 10px;
+
+  .status-pill {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: #80868b;
+    background: #bdc1c6;
+    flex-shrink: 0;
   }
-  .status-dot.online { background: #1e8e3e; }
-  .status-dot.offline { background: #d93025; }
-  .btn-refresh {
-    padding: 6px 12px;
-    border: 1px solid #dfe1e5;
-    border-radius: 6px;
-    background: #fff;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
+
+  .status-pill.is-online {
+    background: #202124;
   }
-  .btn-refresh:hover { background: #f1f3f4; }
-  .vpc-error {
-    color: #d93025;
-    font-size: 13px;
-    margin: 0 0 12px;
+
+  .status-pill.is-offline {
+    background: transparent;
+    border: 2px solid #80868b;
+    box-sizing: border-box;
   }
-  .vpc-meta {
+
+  .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 10px 16px;
-    margin: 0 0 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: #dfe1e5;
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 16px;
   }
-  .vpc-meta div {
+
+  .stat {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
+    padding: 12px 14px;
+    background: #ffffff;
   }
-  .vpc-meta dt {
+
+  .stat--wide {
+    grid-column: span 2;
+  }
+
+  .stat__label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #80868b;
+  }
+
+  .stat__value {
+    font-size: 14px;
+    color: #202124;
+    word-break: break-all;
+  }
+
+  .stat__value.mono,
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+  }
+
+  .subpanel {
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    padding: 16px;
+    background: #ffffff;
+    margin-bottom: 16px;
+  }
+
+  .subpanel--highlight {
+    border-color: #202124;
+    box-shadow: inset 3px 0 0 #202124;
+  }
+
+  .subpanel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .subpanel__head h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #202124;
+  }
+
+  .subpanel__badge {
     font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #5f6368;
+    border: 1px solid #dfe1e5;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: #f8f9fa;
+  }
+
+  .subpanel--highlight .subpanel__badge {
+    color: #202124;
+    border-color: #202124;
+    background: #ffffff;
+  }
+
+  .version-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .version-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    background: #f8f9fa;
+    border: 1px solid #e8eaed;
+    border-radius: 6px;
+  }
+
+  .version-row__label {
+    font-size: 11px;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: #80868b;
-    font-weight: 600;
   }
-  .vpc-meta dd {
-    margin: 0;
+
+  .version-row code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 14px;
     color: #202124;
   }
-  .vpc-meta code {
-    font-size: 12px;
-    background: #f1f3f4;
-    padding: 2px 6px;
-    border-radius: 4px;
-  }
-  .update-banner {
-    padding: 10px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 12px;
-  }
-  .update-banner--ok {
-    background: #e6f4ea;
-    color: #137333;
-  }
-  .update-banner--available {
-    background: #fef7e0;
-    color: #b06000;
-  }
-  .update-banner code {
-    background: rgba(0,0,0,0.06);
-    padding: 1px 4px;
-    border-radius: 3px;
-  }
-  .vpc-actions {
+
+  .subpanel__actions {
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
-  .btn-update {
-    align-self: flex-start;
-    padding: 10px 18px;
-    background: #202124;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .btn-update:disabled {
-    background: #80868b;
-    cursor: not-allowed;
-  }
-  .vpc-hint {
+
+  .subpanel__hint {
+    margin: 0;
     font-size: 12px;
+    line-height: 1.45;
     color: #80868b;
-    line-height: 1.4;
   }
-  .update-msg {
-    margin: 10px 0 0;
+
+  .subpanel__msg {
+    margin: 12px 0 0;
     font-size: 13px;
-    color: #1a73e8;
+    color: #202124;
   }
-  .vpc-help {
-    margin-top: 16px;
+
+  .help-block {
     font-size: 13px;
     color: #5f6368;
+    border-top: 1px solid #e8eaed;
+    padding-top: 14px;
   }
-  .vpc-help summary {
+
+  .help-block summary {
     cursor: pointer;
     font-weight: 600;
     color: #202124;
+    list-style: none;
   }
-  .vpc-help ol {
-    margin: 8px 0 0;
-    padding-left: 20px;
-    line-height: 1.5;
+
+  .help-block summary::-webkit-details-marker {
+    display: none;
   }
-  .guardians-list {
+
+  .help-block ol {
+    margin: 10px 0 0;
+    padding-left: 18px;
+    line-height: 1.55;
+  }
+
+  .help-block code {
+    font-size: 12px;
+    background: #f1f3f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .guardian-list {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-bottom: 32px;
+    gap: 10px;
+    margin-bottom: 20px;
   }
+
   .guardian-card {
-    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    background: #ffffff;
+  }
+
+  .guardian-card__main {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .guardian-card__name {
+    font-size: 15px;
+    color: #202124;
+  }
+
+  .guardian-card__phone {
+    font-size: 13px;
+    color: #5f6368;
+  }
+
+  .guardian-card__keyword {
+    font-size: 12px;
+    color: #80868b;
+    margin-top: 2px;
+  }
+
+  .guardian-card__keyword code {
+    font-size: 12px;
+    background: #f1f3f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: #202124;
+  }
+
+  .empty {
+    margin: 0;
+    padding: 24px;
+    text-align: center;
+    font-size: 13px;
+    color: #80868b;
+    border: 1px dashed #dfe1e5;
+    border-radius: 8px;
+  }
+
+  .form-card {
     border: 1px solid #dfe1e5;
     border-radius: 8px;
     padding: 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    background: #f8f9fa;
   }
-  .guardian-info {
+
+  .form-card__title {
+    margin: 0 0 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #202124;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .form-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .form-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid #dfe1e5;
+    border-radius: 6px;
+    background: #ffffff;
+    font-size: 14px;
+    color: #202124;
+  }
+
+  .form-row input:focus {
+    outline: none;
+    border-color: #bdc1c6;
+  }
+
+  .toggle-card {
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    padding: 16px;
+    background: #f8f9fa;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+  }
+
+  .toggle-row input {
+    margin-top: 3px;
+    accent-color: #202124;
+    cursor: pointer;
+  }
+
+  .toggle-row__text {
     display: flex;
     flex-direction: column;
     gap: 4px;
   }
-  .guardian-phone {
-    color: #5f6368;
+
+  .toggle-row__text strong {
     font-size: 14px;
+    color: #202124;
   }
-  .guardian-keyword {
-    font-size: 12px;
-    color: #1a73e8;
-    background: #e8f0fe;
-    padding: 2px 6px;
-    border-radius: 4px;
-    width: fit-content;
-    margin-top: 4px;
-  }
-  .btn-delete {
-    background: #fce8e6;
-    color: #d93025;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    cursor: pointer;
+
+  .toggle-row__text span {
     font-size: 13px;
-    font-weight: 500;
+    color: #5f6368;
+    line-height: 1.4;
   }
-  .btn-delete:hover {
-    background: #fad2cf;
-  }
-  .empty-state {
-    color: #80868b;
-    font-style: italic;
-  }
-  .add-guardian-form {
-    background: white;
-    border: 1px solid #dfe1e5;
-    border-radius: 8px;
-    padding: 20px;
-  }
-  .add-guardian-form h4 {
-    margin: 0 0 16px 0;
-  }
-  .form-row {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 12px;
-  }
-  .form-row input {
-    flex: 1;
-    padding: 10px;
-    border: 1px solid #dfe1e5;
-    border-radius: 6px;
-  }
-  .form-row button {
-    padding: 10px 20px;
+
+  .btn-primary {
+    align-self: flex-start;
+    padding: 10px 18px;
     background: #202124;
-    color: white;
+    color: #ffffff;
     border: none;
     border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
-    font-weight: 500;
   }
-  .form-row button:disabled {
-    background: #80868b;
+
+  .btn-primary:hover:not(:disabled) {
+    background: #3c4043;
   }
-  .error {
-    color: #d93025;
+
+  .btn-primary:disabled {
+    background: #bdc1c6;
+    cursor: not-allowed;
+  }
+
+  .btn-ghost {
+    padding: 6px 12px;
+    border: 1px solid #dfe1e5;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #202124;
     font-size: 13px;
-    margin-bottom: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: #f1f3f4;
+  }
+
+  .btn-ghost:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 640px) {
+    .stats-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .stat--wide {
+      grid-column: span 2;
+    }
+
+    .version-compare {
+      grid-template-columns: 1fr;
+    }
+
+    .form-row {
+      flex-direction: column;
+    }
   }
 </style>

@@ -43,17 +43,32 @@ docker network create gafam-net 2>/dev/null || true
 echo "[*] Downloading GAFAM API..."
 docker pull ghcr.io/garletz/gafam:latest
 
-# 5. Build and Deploy
+# 5. Watchtower first (HTTP API on host loopback — reliable vs Docker DNS)
+echo "[*] Setting up Watchtower for automatic updates..."
+docker rm -f watchtower 2>/dev/null || true
+docker run -d \
+  --name watchtower \
+  --network gafam-net \
+  --restart always \
+  -p 127.0.0.1:8080:8080 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e WATCHTOWER_HTTP_API_TOKEN="${WATCHTOWER_TOKEN}" \
+  containrrr/watchtower \
+  --cleanup \
+  --interval 300 \
+  --http-api-update \
+  --http-api-periodic-polls \
+  --http-api-token "${WATCHTOWER_TOKEN}" \
+  gafam-api
+
+# 6. Deploy GAFAM API
 echo "[*] Starting GAFAM VPC services..."
-# Stop and remove existing container if it exists
 docker rm -f gafam-api 2>/dev/null || true
 
-# Run the new container
-# Port 5150: HTTP Clair (Cloudflare)
-# Port 5151: HTTPS + SNI Spoofing (Android)
 docker run -d \
   --name gafam-api \
   --network gafam-net \
+  --add-host=host.docker.internal:host-gateway \
   --restart always \
   -p 5150:5150 \
   -p 5151:5151 \
@@ -65,23 +80,8 @@ docker run -d \
   -e TLS_KEY="/app/certs/key.pem" \
   -e JWT_SECRET="${JWT_SECRET}" \
   -e WATCHTOWER_TOKEN="${WATCHTOWER_TOKEN}" \
-  -e WATCHTOWER_URL="http://watchtower:8080/v1/update" \
+  -e WATCHTOWER_URL="http://host.docker.internal:8080/v1/update" \
   ghcr.io/garletz/gafam:latest
-
-# 6. Auto-Update System (Watchtower)
-echo "[*] Setting up Watchtower for automatic updates..."
-docker rm -f watchtower 2>/dev/null || true
-docker run -d \
-  --name watchtower \
-  --network gafam-net \
-  --restart always \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  containrrr/watchtower \
-  --cleanup \
-  --interval 300 \
-  --http-api-update \
-  --http-api-token "${WATCHTOWER_TOKEN}" \
-  gafam-api
 
 echo ""
 echo "=========================================="
@@ -90,5 +90,5 @@ echo "=========================================="
 echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
 echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes."
-echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud (after pairing)."
+echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
 echo "=========================================="
