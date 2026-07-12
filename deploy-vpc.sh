@@ -53,7 +53,7 @@ docker run -d \
   -p 127.0.0.1:8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e WATCHTOWER_HTTP_API_TOKEN="${WATCHTOWER_TOKEN}" \
-  containrrr/watchtower:1.7.1 \
+  nickfedor/watchtower:latest \
   --cleanup \
   --interval 300 \
   --http-api-update \
