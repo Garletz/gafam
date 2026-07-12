@@ -46,6 +46,7 @@
   };
 
   let suparnaLoading = $state(false);
+  let qwenLoading = $state(false);
   let suparnaReading: SuparnaReading | null = $state(null);
   let suparnaError = $state('');
   let suparnaStatus: { model_ready?: boolean; download?: { status?: string } } | null = $state(null);
@@ -233,7 +234,7 @@
     }
   }
 
-  async function invokeSuparna(refresh = false) {
+  async function invokeSuparnaHeuristic(refresh = false) {
     if (!selectedDay) return;
     suparnaLoading = true;
     suparnaError = '';
@@ -244,7 +245,7 @@
         action: 'read-logs',
         day: selectedDay,
         refresh: refresh ? '1' : '0',
-        llm: refresh && suparnaStatus?.model_ready ? '1' : '0'
+        llm: '0'
       });
       const res = await fetch(`/api/proxy/suparna?${params}`, { method: 'POST' });
       const data = await res.json();
@@ -257,6 +258,33 @@
       suparnaError = 'Network error';
     } finally {
       suparnaLoading = false;
+    }
+  }
+
+  async function invokeSuparnaLLM(refresh = false) {
+    if (!selectedDay || !suparnaStatus?.model_ready) return;
+    qwenLoading = true;
+    suparnaError = '';
+    try {
+      const params = new URLSearchParams({
+        vpcUrl,
+        token: sessionToken,
+        action: 'read-logs',
+        day: selectedDay,
+        refresh: refresh ? '1' : '0',
+        llm: '1'
+      });
+      const res = await fetch(`/api/proxy/suparna?${params}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        suparnaError = data.error || 'Analyse Qwen impossible';
+        return;
+      }
+      suparnaReading = data;
+    } catch {
+      suparnaError = 'Network error';
+    } finally {
+      qwenLoading = false;
     }
   }
 
@@ -325,9 +353,9 @@
       <button
         type="button"
         class="btn btn-suparna"
-        disabled={!selectedDay || suparnaLoading}
-        onclick={() => invokeSuparna(false)}
-        title="Invoquer Suparna"
+        disabled={!selectedDay || suparnaLoading || qwenLoading}
+        onclick={() => invokeSuparnaHeuristic(false)}
+        title="Aperçu rapide (heuristique, sans Qwen)"
       >
         {suparnaLoading ? '…' : 'Suparna'}
       </button>
@@ -371,9 +399,18 @@
     <div class="suparna-bar">
       <span class="suparna-label">सुपर्ण</span>
       {#if suparnaStatus?.model_ready}
-        <span class="suparna-meta">modèle prêt</span>
+        <span class="suparna-meta">Qwen prêt · analyse manuelle</span>
+        <button
+          type="button"
+          class="btn btn-qwen"
+          disabled={qwenLoading || suparnaLoading}
+          onclick={() => invokeSuparnaLLM(false)}
+          title="Lance Qwen une fois — rien ne tourne en arrière-plan"
+        >
+          {qwenLoading ? 'Analyse…' : 'Analyser la journée (Qwen)'}
+        </button>
       {:else}
-        <span class="suparna-meta">heuristique</span>
+        <span class="suparna-meta">aperçu heuristique</span>
         <button type="button" class="btn btn-ghost" disabled={modelDownloading} onclick={downloadSuparnaModel}>
           {modelDownloading ? 'Téléchargement…' : 'Télécharger Qwen'}
         </button>
@@ -411,7 +448,25 @@
         {/if}
         <div class="suparna-foot">
           <span>{suparnaReading.engine} · {suparnaReading.confidence}</span>
-          <button type="button" class="btn btn-ghost" onclick={() => invokeSuparna(true)}>Actualiser</button>
+          {#if suparnaReading.engine === 'qwen-onnx'}
+            <button
+              type="button"
+              class="btn btn-ghost"
+              disabled={qwenLoading}
+              onclick={() => invokeSuparnaLLM(true)}
+            >
+              Relancer analyse Qwen
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="btn btn-ghost"
+              disabled={suparnaLoading}
+              onclick={() => invokeSuparnaHeuristic(true)}
+            >
+              Actualiser aperçu
+            </button>
+          {/if}
         </div>
       </div>
     {/if}
@@ -666,6 +721,14 @@
   }
   .btn-suparna:hover:not(:disabled) {
     background: #3c4043;
+  }
+  .btn-qwen {
+    background: #1a73e8;
+    color: #fff;
+    border-color: #1a73e8;
+  }
+  .btn-qwen:hover:not(:disabled) {
+    background: #1557b0;
   }
   .suparna-bar {
     display: flex;

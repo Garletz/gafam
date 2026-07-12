@@ -13,16 +13,22 @@ import (
 
 const llmTimeout = 90 * time.Second
 
-func InterpretDay(day string, lines []LogLine, forceLLM bool) Reading {
-	if forceLLM || ModelDirReady() {
-		if r, err := runLLM(day, lines); err == nil {
-			r.ModelReady = ModelDirReady()
-			return r
+// InterpretDay returns a reading. LLM runs only when useLLM is true (explicit user action).
+func InterpretDay(day string, lines []LogLine, useLLM bool) (Reading, error) {
+	if useLLM {
+		if !ModelDirReady() {
+			return Reading{}, fmt.Errorf("model not ready")
 		}
+		r, err := runLLM(day, lines)
+		if err != nil {
+			return Reading{}, err
+		}
+		r.ModelReady = true
+		return r, nil
 	}
 	r := HeuristicReading(day, lines)
 	r.ModelReady = ModelDirReady()
-	return r
+	return r, nil
 }
 
 func runLLM(day string, lines []LogLine) (Reading, error) {

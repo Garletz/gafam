@@ -106,11 +106,11 @@ func ReadDayHandler(w http.ResponseWriter, r *http.Request, readDay func(day str
 		http.Error(w, "Missing day", http.StatusBadRequest)
 		return
 	}
-	force := r.URL.Query().Get("refresh") == "1" || r.URL.Query().Get("llm") == "1"
+	useLLM := r.URL.Query().Get("llm") == "1"
+	forceRefresh := r.URL.Query().Get("refresh") == "1"
 
-	// Cached reading unless refresh
-	if !force {
-		if cached, ok := loadCachedReading(day); ok {
+	if !forceRefresh {
+		if cached, ok := loadCachedReading(day, useLLM); ok {
 			sendJSON(w, http.StatusOK, cached)
 			return
 		}
@@ -122,9 +122,14 @@ func ReadDayHandler(w http.ResponseWriter, r *http.Request, readDay func(day str
 		return
 	}
 
-	useLLM := force && ModelDirReady()
-	reading := InterpretDay(day, lines, useLLM)
-	_ = saveCachedReading(day, reading)
+	reading, err := InterpretDay(day, lines, useLLM)
+	if err != nil {
+		sendJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"error": err.Error(),
+		})
+		return
+	}
+	_ = saveCachedReading(day, reading, useLLM)
 
 	sendJSON(w, http.StatusOK, reading)
 }
@@ -188,9 +193,16 @@ func sendJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Write(jsonData)
 }
 
-func loadCachedReading(day string) (Reading, bool) {
-	path := filepath.Join(dataRoot(), "suparna", "readings", day+".json")
-	b, err := os.ReadFile(path)
+func readingCachePath(day string, llm bool) string {
+	name := day + ".json"
+	if llm {
+		name = day + ".qwen.json"
+	}
+	return filepath.Join(dataRoot(), "suparna", "readings", name)
+}
+
+func loadCachedReading(day string, llm bool) (Reading, bool) {
+	b, err := os.ReadFile(readingCachePath(day, llm))
 	if err != nil {
 		return Reading{}, false
 	}
@@ -201,7 +213,7 @@ func loadCachedReading(day string) (Reading, bool) {
 	return r, true
 }
 
-func saveCachedReading(day string, r Reading) error {
+func saveCachedReading(day string, r Reading, llm bool) error {
 	dir := filepath.Join(dataRoot(), "suparna", "readings")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -210,7 +222,7 @@ func saveCachedReading(day string, r Reading) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, day+".json"), b, 0o644)
+	return os.WriteFile(readingCachePath(day, llm), b, 0o644)
 }
 
 // Unused import guard
