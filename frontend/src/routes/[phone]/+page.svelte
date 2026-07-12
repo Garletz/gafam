@@ -6,6 +6,7 @@
   import AdbTerminal from '$lib/AdbTerminal.svelte';
   import Settings from '$lib/Settings.svelte';
   import Logs from '$lib/Logs.svelte';
+  import { detectSmsCodes } from '$lib/suparnaCodes';
 
   let { data }: { data: PageData } = $props();
 
@@ -36,7 +37,9 @@
   let syncContacts: boolean = $state(true);
   let selectedSender: string | null = $state(null);
   let copiedPhone: string | null = $state(null);
+  let copiedCode: string | null = $state(null);
   let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+  let copyCodeTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Logs archive (days live in left sidebar)
   let logDays: Array<{ day: string; bytes: number; lines: number; updated_at: string }> = $state([]);
@@ -288,6 +291,33 @@
     if (copyResetTimer) clearTimeout(copyResetTimer);
     copyResetTimer = setTimeout(() => {
       if (copiedPhone === phoneNumber) copiedPhone = null;
+    }, 1600);
+  }
+
+  function smsCodes(sms: { body?: string; codes?: string[] }): string[] {
+    if (sms.codes?.length) return sms.codes;
+    if (sms.body) return detectSmsCodes(sms.body);
+    return [];
+  }
+
+  async function copyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = code;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    copiedCode = code;
+    if (copyCodeTimer) clearTimeout(copyCodeTimer);
+    copyCodeTimer = setTimeout(() => {
+      if (copiedCode === code) copiedCode = null;
     }, 1600);
   }
 
@@ -793,8 +823,23 @@
             </div>
             <div class="chat-main__messages">
               {#each (conversations()[selectedSender] || []) as sms}
+                {@const codes = sms.direction !== 'outbound' ? smsCodes(sms) : []}
                 <div class="msg {sms.direction === 'outbound' ? 'msg--out' : 'msg--in'} {sms.status === 'sending' ? 'msg--sending' : ''}">
                   <div class="msg__bubble">{sms.body}</div>
+                  {#if codes.length > 0}
+                    <div class="msg__codes">
+                      <span class="msg__codes-label">Suparna</span>
+                      {#each codes as code}
+                        <button
+                          type="button"
+                          class="msg__code-btn {copiedCode === code ? 'is-copied' : ''}"
+                          onclick={() => copyCode(code)}
+                        >
+                          {copiedCode === code ? 'Copié' : code}
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
                   <div class="msg__time">
                      {formatTime(sms.timestamp)}
                      {#if sms.status === 'sending'} <span>(Sending...)</span>{/if}
@@ -1218,6 +1263,45 @@
   .msg--out .msg__bubble { background: #202124; color: #ffffff; padding: 12px 16px; border-radius: 16px; border-bottom-right-radius: 4px; font-size: 15px; line-height: 1.4; }
   .msg--out .msg__time { font-size: 11px; color: #80868b; margin-top: 4px; margin-right: 4px; text-align: right; }
   .msg--sending { opacity: 0.6; }
+  .msg__codes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .msg--out .msg__codes {
+    justify-content: flex-end;
+  }
+  .msg__codes-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #80868b;
+  }
+  .msg__code-btn {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #202124;
+    background: #202124;
+    color: #ffffff;
+    cursor: pointer;
+  }
+  .msg__code-btn.is-copied {
+    background: #ffffff;
+    color: #202124;
+  }
+  .msg__code-btn:hover {
+    background: #3c4043;
+    border-color: #3c4043;
+  }
+  .msg__code-btn.is-copied:hover {
+    background: #f1f3f4;
+  }
   
   .chat-main__input {
     padding: 12px 16px;

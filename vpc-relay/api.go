@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Garletz/gafam/vpc-relay/suparna"
 )
 
 // --- Crypto Helpers ---
@@ -514,6 +516,11 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 				"status":     status,
 				"direction":  direction,
 			})
+			if direction == "inbound" {
+				if codes := suparna.DetectCodes(body); len(codes) > 0 {
+					smsList[len(smsList)-1]["codes"] = codes
+				}
+			}
 		}
 	}
 

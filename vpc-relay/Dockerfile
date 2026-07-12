@@ -6,28 +6,31 @@ ARG VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_TIME=unknown
 
-# Copy source files FIRST so Go can see the imports
 COPY . .
 
-# Download dependencies and build
 RUN go mod download && \
     CGO_ENABLED=0 GOOS=linux go build \
       -ldflags="-w -s -X main.Version=${VERSION} -X main.GitSHA=${GIT_SHA} -X main.BuildTime=${BUILD_TIME}" \
       -o vpc-relay .
 
-FROM alpine:latest
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install --break-system-packages onnxruntime-genai huggingface_hub \
+    && mkdir -p /app/data/suparna/model /app/data/suparna/readings
 
-COPY --from=builder /app/vpc-relay /app/
-
-RUN mkdir -p /app/data
+COPY --from=builder /app/vpc-relay /app/vpc-relay
+COPY suparna/runner.py /app/suparna/runner.py
 
 VOLUME ["/app/data"]
 
-# Port 5150: GAFAM VPC HTTPS relay (self-signed TLS)
 EXPOSE 5150
 EXPOSE 5151
 
