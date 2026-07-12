@@ -32,6 +32,7 @@
     git_sha_short: string;
     published_at: string;
     image: string;
+    source?: string;
   };
 
   let guardians: Array<{ id: number; name: string; phone: string; keyword: string }> = $state([]);
@@ -79,7 +80,7 @@
   let updateStatus = $derived.by((): UpdateStatusInfo => {
     switch (updatePhase) {
       case 'checking':
-        return { label: 'Vérification…', detail: 'Comparaison avec GitHub main.', tone: 'info' };
+        return { label: 'Vérification…', detail: 'Comparaison avec la dernière image Docker publiée.', tone: 'info' };
       case 'up_to_date':
         return {
           label: 'À jour',
@@ -394,7 +395,7 @@
                   <code>{vpcInfo.git_sha_short}</code>
                 </div>
                 <div class="version-row">
-                  <span class="version-row__label">GitHub main</span>
+                  <span class="version-row__label">Image GHCR</span>
                   <code>{registryInfo.git_sha_short}</code>
                 </div>
               </div>
