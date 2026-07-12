@@ -53,7 +53,7 @@ docker run -d \
   -p 127.0.0.1:8080:8080 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e WATCHTOWER_HTTP_API_TOKEN="${WATCHTOWER_TOKEN}" \
-  containrrr/watchtower \
+  containrrr/watchtower:1.7.1 \
   --cleanup \
   --interval 300 \
   --http-api-update \
@@ -80,7 +80,7 @@ docker run -d \
   -e TLS_KEY="/app/certs/key.pem" \
   -e JWT_SECRET="${JWT_SECRET}" \
   -e WATCHTOWER_TOKEN="${WATCHTOWER_TOKEN}" \
-  -e WATCHTOWER_URL="http://host.docker.internal:8080/v1/update" \
+  -e WATCHTOWER_URL="http://watchtower:8080/v1/update" \
   ghcr.io/garletz/gafam:latest
 
 echo ""

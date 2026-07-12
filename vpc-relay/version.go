@@ -44,7 +44,7 @@ func checkWatchtowerReachable() bool {
 	}
 	watchtowerURL := os.Getenv("WATCHTOWER_URL")
 	if watchtowerURL == "" {
-		watchtowerURL = "http://host.docker.internal:8080/v1/update"
+		watchtowerURL = "http://watchtower:8080/v1/update"
 	}
 	// HEAD/GET may not be supported; a short POST with auth validates reachability.
 	req, err := http.NewRequest(http.MethodPost, watchtowerURL, nil)
