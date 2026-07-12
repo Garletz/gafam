@@ -25,11 +25,19 @@ if ! docker info > /dev/null 2>&1; then
     sudo systemctl start docker || true
 fi
 
-# 3. Generate a random JWT secret if not set
+# 3. Generate secrets if not set
 if [ -z "$JWT_SECRET" ]; then
     export JWT_SECRET=$(openssl rand -hex 32)
     echo "[+] Generated random JWT_SECRET for this node."
 fi
+
+if [ -z "$WATCHTOWER_TOKEN" ]; then
+    export WATCHTOWER_TOKEN=$(openssl rand -hex 16)
+    echo "[+] Generated WATCHTOWER_TOKEN for manual updates from gafam.cloud."
+fi
+
+# Shared Docker network (gafam-api ↔ watchtower)
+docker network create gafam-net 2>/dev/null || true
 
 # 4. Pull the pre-built GAFAM API image from GitHub Container Registry
 echo "[*] Downloading GAFAM API..."
@@ -45,6 +53,7 @@ docker rm -f gafam-api 2>/dev/null || true
 # Port 5151: HTTPS + SNI Spoofing (Android)
 docker run -d \
   --name gafam-api \
+  --network gafam-net \
   --restart always \
   -p 5150:5150 \
   -p 5151:5151 \
@@ -55,6 +64,8 @@ docker run -d \
   -e TLS_CERT="/app/certs/cert.pem" \
   -e TLS_KEY="/app/certs/key.pem" \
   -e JWT_SECRET="${JWT_SECRET}" \
+  -e WATCHTOWER_TOKEN="${WATCHTOWER_TOKEN}" \
+  -e WATCHTOWER_URL="http://watchtower:8080/v1/update" \
   ghcr.io/garletz/gafam:latest
 
 # 6. Auto-Update System (Watchtower)
@@ -62,11 +73,14 @@ echo "[*] Setting up Watchtower for automatic updates..."
 docker rm -f watchtower 2>/dev/null || true
 docker run -d \
   --name watchtower \
+  --network gafam-net \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   containrrr/watchtower \
   --cleanup \
   --interval 300 \
+  --http-api-update \
+  --http-api-token "${WATCHTOWER_TOKEN}" \
   gafam-api
 
 echo ""
@@ -75,5 +89,6 @@ echo "✅ GAFAM VPC successfully deployed!"
 echo "=========================================="
 echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
-echo "🔄 Auto-updates enabled: VPC will update automatically within 5 minutes of a new GitHub release."
+echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes."
+echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud (after pairing)."
 echo "=========================================="

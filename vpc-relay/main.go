@@ -238,6 +238,9 @@ func main() {
 	mux.HandleFunc("DELETE /api/settings/guardians", sessionMiddleware(deleteGuardianHandler))
 	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
 	
+	mux.HandleFunc("GET /api/web/vpc-info", sessionMiddleware(vpcInfoHandler))
+	mux.HandleFunc("POST /api/web/vpc-update", sessionMiddleware(triggerUpdateHandler))
+
 	mux.HandleFunc("GET /api/gafam/contacts", authMiddleware(getContactsHandler))
 
 	// Scrcpy Remote Control HTTP Streams (Manifest 14)

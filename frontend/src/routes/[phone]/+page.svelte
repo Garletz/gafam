@@ -34,6 +34,8 @@
   let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
   let selectedSender: string | null = $state(null);
+  let copiedPhone: string | null = $state(null);
+  let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Logs archive (days live in left sidebar)
   let logDays: Array<{ day: string; bytes: number; lines: number; updated_at: string }> = $state([]);
@@ -263,6 +265,29 @@
       }
     }
     return sender;
+  }
+
+  async function copyPhone(phoneNumber: string, event?: MouseEvent) {
+    event?.stopPropagation();
+    event?.preventDefault();
+    try {
+      await navigator.clipboard.writeText(phoneNumber);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = phoneNumber;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    copiedPhone = phoneNumber;
+    if (copyResetTimer) clearTimeout(copyResetTimer);
+    copyResetTimer = setTimeout(() => {
+      if (copiedPhone === phoneNumber) copiedPhone = null;
+    }, 1600);
   }
 
   async function processChallenge() {
@@ -668,13 +693,28 @@
               {/if}
             {:else if sidebarTab === 'contacts'}
               {#each filteredContacts() as [cPhone, cName]}
-                <button class="chat-item" onclick={() => { selectedSender = cPhone; sidebarTab = 'chats'; }}>
-                  <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
-                  <div class="chat-item__info">
-                    <div class="chat-item__name">{cName}</div>
-                    <div class="chat-item__preview contact-phone">{cPhone}</div>
-                  </div>
-                </button>
+                <div class="chat-item chat-item--contact {selectedSender === cPhone ? 'active' : ''}">
+                  <button
+                    type="button"
+                    class="chat-item__open"
+                    onclick={() => { selectedSender = cPhone; sidebarTab = 'chats'; }}
+                  >
+                    <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
+                    <div class="chat-item__info">
+                      <div class="chat-item__name">{cName}</div>
+                      <div class="chat-item__preview contact-phone">{cPhone}</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-copy {copiedPhone === cPhone ? 'is-copied' : ''}"
+                    title="Copy number"
+                    aria-label="Copy {cPhone}"
+                    onclick={(e) => copyPhone(cPhone, e)}
+                  >
+                    {copiedPhone === cPhone ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
               {/each}
             {:else}
               <div class="logs-sidebar-hint">
@@ -699,7 +739,21 @@
             />
           {:else if selectedSender}
             <div class="chat-main__header">
-              <h3>{getContactName(selectedSender)}</h3>
+              <div class="chat-main__identity">
+                <h3>{getContactName(selectedSender)}</h3>
+                <div class="chat-main__phone">
+                  <span class="chat-main__number" title={selectedSender}>{selectedSender}</span>
+                  <button
+                    type="button"
+                    class="btn-copy {copiedPhone === selectedSender ? 'is-copied' : ''}"
+                    title="Copy number"
+                    aria-label="Copy {selectedSender}"
+                    onclick={(e) => copyPhone(selectedSender!, e)}
+                  >
+                    {copiedPhone === selectedSender ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
             </div>
             <div class="chat-main__messages">
               {#each (conversations()[selectedSender] || []) as sms}
@@ -985,20 +1039,40 @@
   
   .chat-item {
     display: flex;
-    padding: 15px 20px;
+    padding: 0;
     border: none;
     background: transparent;
     width: 100%;
     text-align: left;
     cursor: pointer;
     border-bottom: 1px solid #f1f3f4;
-    gap: 12px;
+    gap: 8px;
     align-items: center;
     color: #202124;
   }
   .chat-item:hover, .chat-item.active { background: #e8eaed; }
+  .chat-item__open {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 12px;
+    padding: 15px 8px 15px 20px;
+    border: none;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+  }
+  .chat-item--contact .btn-copy {
+    flex-shrink: 0;
+    margin-right: 12px;
+  }
+  button.chat-item {
+    padding: 15px 20px;
+  }
   .chat-item__avatar {
-    width: 40px; height: 40px; border-radius: 50%; background: #dfe1e5; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #202124;
+    width: 40px; height: 40px; border-radius: 50%; background: #dfe1e5; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #202124; flex-shrink: 0;
   }
   .chat-item__info { flex: 1; overflow: hidden; }
   .chat-item__name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
@@ -1026,12 +1100,61 @@
     margin-top: 6px;
   }
   .chat-main__header {
-    padding: 14px 16px;
+    padding: 12px 16px;
     border-bottom: 1px solid #dfe1e5;
     background: #ffffff;
     flex-shrink: 0;
   }
-  .chat-main__header h3 { margin: 0; font-size: 18px; color: #202124; }
+  .chat-main__identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .chat-main__header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #202124;
+    flex-shrink: 0;
+  }
+  .chat-main__phone {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-left: auto;
+  }
+  .chat-main__number {
+    font-size: 13px;
+    font-weight: 500;
+    color: #5f6368;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .btn-copy {
+    flex-shrink: 0;
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid #dfe1e5;
+    background: #ffffff;
+    color: #202124;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .btn-copy:hover {
+    background: #f1f3f4;
+    border-color: #bdc1c6;
+  }
+  .btn-copy.is-copied {
+    background: #202124;
+    border-color: #202124;
+    color: #ffffff;
+  }
   .chat-main__messages {
     flex: 1 1 auto;
     min-height: 0;
@@ -1135,6 +1258,13 @@
     .tab {
       font-size: 12px;
       padding: 6px;
+    }
+    .chat-main__identity {
+      gap: 8px;
+    }
+    .chat-main__phone {
+      margin-left: 0;
+      width: 100%;
     }
   }
 </style>

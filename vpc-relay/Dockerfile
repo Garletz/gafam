@@ -2,12 +2,18 @@ FROM golang:alpine AS builder
 
 WORKDIR /app
 
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+
 # Copy source files FIRST so Go can see the imports
 COPY . .
 
 # Download dependencies and build
 RUN go mod download && \
-    CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o vpc-relay .
+    CGO_ENABLED=0 GOOS=linux go build \
+      -ldflags="-w -s -X main.Version=${VERSION} -X main.GitSHA=${GIT_SHA} -X main.BuildTime=${BUILD_TIME}" \
+      -o vpc-relay .
 
 FROM alpine:latest
 
