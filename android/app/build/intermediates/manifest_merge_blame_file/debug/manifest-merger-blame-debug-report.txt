@@ -1,8 +1,8 @@
 1<?xml version="1.0" encoding="utf-8"?>
 2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
 3    package="com.gafam.relay"
-4    android:versionCode="4"
-5    android:versionName="1.2-edge2c1c" >
+4    android:versionCode="5"
+5    android:versionName="1.3-edge2c2-onnx" >
 6
 7    <uses-sdk
 8        android:minSdkVersion="26"
@@ -118,7 +118,7 @@
 61        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
 61-->[androidx.core:core:1.12.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/dd84b74d38217640eb4484521e1803f2/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
 62        android:debuggable="true"
-63        android:extractNativeLibs="false"
+63        android:extractNativeLibs="true"
 64        android:label="GAFAM Relay"
 64-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:27:9-36
 65        android:supportsRtl="true"

@@ -4,6 +4,7 @@ ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidM
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-128:12
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-128:12
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-128:12
+MERGED from [onnxruntime-genai-android-0.8.1.aar] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/9ca1bef5d75ca88244583f0ba7f6d44f/transformed/jetified-onnxruntime-genai-android-0.8.1/AndroidManifest.xml:2:1-7:12
 MERGED from [com.google.android.material:material:1.11.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/01c0f5e7aa1b17abc850cb4814f6e7de/transformed/jetified-appcompat-resources-1.6.1/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/21dc041470e02ab583bc4f2c04cc223d/transformed/constraintlayout-2.0.1/AndroidManifest.xml:2:1-11:12
@@ -46,6 +47,7 @@ MERGED from [androidx.documentfile:documentfile:1.0.0] /private/var/folders/_s/6
 MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/de6f6031d58bbcb76d7520d43b04d3aa/transformed/localbroadcastmanager-1.0.0/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.print:print:1.0.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/db2087b8e275970ee4cd7dcb27b4a41e/transformed/print-1.0.0/AndroidManifest.xml:17:1-22:12
 MERGED from [com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:17:1-56:12
+MERGED from [com.microsoft.onnxruntime:onnxruntime-android:1.20.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/2c4895363f366f032eb6a54e1029d22a/transformed/jetified-onnxruntime-android-1.20.0/AndroidManifest.xml:2:1-7:12
 	package
 		INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml
 	android:versionName
@@ -293,6 +295,8 @@ uses-sdk
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml
+MERGED from [onnxruntime-genai-android-0.8.1.aar] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/9ca1bef5d75ca88244583f0ba7f6d44f/transformed/jetified-onnxruntime-genai-android-0.8.1/AndroidManifest.xml:5:5-44
+MERGED from [onnxruntime-genai-android-0.8.1.aar] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/9ca1bef5d75ca88244583f0ba7f6d44f/transformed/jetified-onnxruntime-genai-android-0.8.1/AndroidManifest.xml:5:5-44
 MERGED from [com.google.android.material:material:1.11.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:20:5-44
 MERGED from [com.google.android.material:material:1.11.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:20:5-44
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/01c0f5e7aa1b17abc850cb4814f6e7de/transformed/jetified-appcompat-resources-1.6.1/AndroidManifest.xml:20:5-44
@@ -377,6 +381,8 @@ MERGED from [androidx.print:print:1.0.0] /private/var/folders/_s/6ch9k3gd60s5xz2
 MERGED from [androidx.print:print:1.0.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/db2087b8e275970ee4cd7dcb27b4a41e/transformed/print-1.0.0/AndroidManifest.xml:20:5-44
 MERGED from [com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:20:5-44
 MERGED from [com.journeyapps:zxing-android-embedded:4.3.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/AndroidManifest.xml:20:5-44
+MERGED from [com.microsoft.onnxruntime:onnxruntime-android:1.20.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/2c4895363f366f032eb6a54e1029d22a/transformed/jetified-onnxruntime-android-1.20.0/AndroidManifest.xml:5:5-44
+MERGED from [com.microsoft.onnxruntime:onnxruntime-android:1.20.0] /private/var/folders/_s/6ch9k3gd60s5xz2r4xqsfzsr0000gn/T/cursor-sandbox-cache/9c8cead8d060d07d0c49cb0a403f0248/gradle/caches/8.14.3/transforms/2c4895363f366f032eb6a54e1029d22a/transformed/jetified-onnxruntime-android-1.20.0/AndroidManifest.xml:5:5-44
 	android:targetSdkVersion
 		INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml
 	android:minSdkVersion

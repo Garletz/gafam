@@ -64,7 +64,10 @@ class MainActivity : AppCompatActivity() {
                     EdgeInferenceService.statusMessage
             EdgeInferenceService.STATE_ERROR ->
                 "GAFAM Edge: erreur — ${EdgeInferenceService.statusMessage}"
-            EdgeInferenceService.STATE_WAKING -> "GAFAM Edge: waking…"
+            EdgeInferenceService.STATE_WAKING, EdgeInferenceService.STATE_LOADING ->
+                "GAFAM Edge: ${EdgeInferenceService.edgeService}… ${EdgeInferenceService.statusMessage}"
+            EdgeInferenceService.STATE_INFERRING ->
+                "GAFAM Edge: inferring… ${EdgeInferenceService.statusMessage}"
             EdgeInferenceService.STATE_STOPPING -> "GAFAM Edge: stopping…"
             else -> "GAFAM Edge: idle — cap ${snap.capMb} Mo, max livrable ${snap.maxDeliverableMb} Mo"
         }

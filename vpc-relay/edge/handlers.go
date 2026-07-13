@@ -23,10 +23,7 @@ func BuildStatus(hub StatusFunc) Status {
 	}
 	report := currentApkReport()
 	svc := edgeServiceForStatus()
-	phase := "2c"
-	if !apkReportFresh() {
-		phase = "2c_waiting_apk"
-	}
+	phase := edgePhaseForStatus()
 	return Status{
 		ApkRelayOnline:          snap.ApkRelayOnline,
 		ApkRelayLastSeen:        snap.ApkRelayLastSeen,
@@ -125,42 +122,40 @@ func InferHandler(hub StatusFunc) http.HandlerFunc {
 				})
 				return
 			}
-			svc := edgeServiceForStatus()
-			if svc == "awake" {
-				sendJSON(w, http.StatusOK, InferResponse{
-					Content: fmt.Sprintf(
-						"[edge awake] Service actif sur le tel, modèle pas encore chargé. Prompt : « %s ». Phase 2c-2 = GGUF + inférence.",
-						prompt,
-					),
-					Engine:    "edge-awake-no-model",
-					TierUsed:  tierUsed,
-					RamPeakMb: currentApkReport().RamReservedMb,
-					LatencyMs: latency,
-					Status:    "stub",
+			jobID := QueueInfer(prompt)
+			res, ok := WaitInferResult(jobID)
+			latency = int(time.Since(start).Milliseconds())
+			if !ok {
+				sendJSON(w, http.StatusGatewayTimeout, InferResponse{
+					Status:    "error",
+					Error:     "infer_wait_failed",
 					Prompt:    prompt,
+					TierUsed:  tierUsed,
+					Engine:    "qwen-phone-onnx",
+					LatencyMs: latency,
 				})
 				return
 			}
-			if svc == "waking" {
-				sendJSON(w, http.StatusAccepted, InferResponse{
-					Content:   "[edge waking] Le tel charge le service edge — réessaie dans quelques secondes.",
-					Engine:    "edge-waking",
-					TierUsed:  tierUsed,
-					LatencyMs: latency,
-					Status:    "stub",
+			if res.Error != "" {
+				sendJSON(w, http.StatusOK, InferResponse{
+					Status:    "error",
+					Error:     res.Error,
+					Content:   res.Content,
 					Prompt:    prompt,
+					TierUsed:  tierUsed,
+					Engine:    "qwen-phone-onnx",
+					RamPeakMb: currentApkReport().RamReservedMb,
+					LatencyMs: res.LatencyMs,
 				})
 				return
 			}
 			sendJSON(w, http.StatusOK, InferResponse{
-				Content: fmt.Sprintf(
-					"[edge idle] Clique Wake ou attends le poll APK. Prompt en attente : « %s ».",
-					prompt,
-				),
-				Engine:    "edge-idle",
+				Content:   res.Content,
+				Engine:    "qwen-phone-onnx",
 				TierUsed:  tierUsed,
-				LatencyMs: latency,
-				Status:    "stub",
+				RamPeakMb: currentApkReport().RamReservedMb,
+				LatencyMs: res.LatencyMs,
+				Status:    "ok",
 				Prompt:    prompt,
 			})
 			return

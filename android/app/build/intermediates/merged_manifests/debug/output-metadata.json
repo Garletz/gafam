@@ -11,8 +11,8 @@
       "type": "SINGLE",
       "filters": [],
       "attributes": [],
-      "versionCode": 4,
-      "versionName": "1.2-edge2c1c",
+      "versionCode": 5,
+      "versionName": "1.3-edge2c2-onnx",
       "outputFile": "AndroidManifest.xml"
     }
   ],

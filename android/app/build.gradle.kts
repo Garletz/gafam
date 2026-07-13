@@ -11,8 +11,11 @@ android {
         applicationId = "com.gafam.relay"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.2-edge2c1c"
+        versionCode = 5
+        versionName = "1.3-edge2c2-onnx"
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -31,6 +34,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
@@ -40,4 +48,6 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
+    implementation(files("libs/onnxruntime-genai-android-0.8.1.aar"))
 }
