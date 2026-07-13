@@ -31,6 +31,27 @@ export const DEFAULT_SUPARNA_RULES: SuparnaRules = {
 	showTimeline: true
 };
 
+export type EdgeStatus = {
+	phone_reachable: boolean;
+	edge_ready: boolean;
+	edge_service: string;
+	scrcpy_blocking: boolean;
+	ram_reserved_mb: number;
+	model_on_device: boolean;
+	phase?: string;
+};
+
+export type EdgeInferResult = {
+	content?: string;
+	engine?: string;
+	tier_used?: string;
+	ram_peak_mb?: number;
+	latency_ms?: number;
+	status?: string;
+	error?: string;
+	prompt?: string;
+};
+
 export type ModelCatalogEntry = {
 	id: string;
 	name: string;
@@ -67,3 +88,9 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
 		notes: 'Phone deep tier — full day logs (Phase 3)'
 	}
 ];
+
+export const EDGE_QUICK_PROMPTS = [
+	{ label: '1+1=?', prompt: '1+1=?' },
+	{ label: '2×3=?', prompt: 'What is 2 times 3?' },
+	{ label: 'Bonjour', prompt: 'Say hello in one short sentence.' }
+] as const;

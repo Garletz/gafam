@@ -4,6 +4,7 @@
   import SuparnaVpc from './SuparnaVpc.svelte';
   import SuparnaModels from './SuparnaModels.svelte';
   import SuparnaRules from './SuparnaRules.svelte';
+  import SuparnaPhone from './SuparnaPhone.svelte';
 
   let {
     vpcUrl,
@@ -12,7 +13,7 @@
     days = $bindable<LogDay[]>([]),
     totalBytes = $bindable(0),
     quotaBytes = $bindable(1 << 30),
-    section = $bindable<'vpc' | 'models' | 'rules'>('vpc')
+    section = $bindable<'vpc' | 'models' | 'rules' | 'phone'>('vpc')
   }: {
     vpcUrl: string;
     sessionToken: string;
@@ -20,7 +21,7 @@
     days?: LogDay[];
     totalBytes?: number;
     quotaBytes?: number;
-    section?: 'vpc' | 'models' | 'rules';
+    section?: 'vpc' | 'models' | 'rules' | 'phone';
   } = $props();
 
   async function refreshLogDays() {
@@ -72,6 +73,14 @@
       >
         Rules
       </button>
+      <button
+        type="button"
+        class="suparna__tab"
+        class:is-active={section === 'phone'}
+        onclick={() => (section = 'phone')}
+      >
+        Phone
+      </button>
     </nav>
   </header>
 
@@ -80,6 +89,8 @@
       <SuparnaVpc {vpcUrl} {sessionToken} {selectedDay} {days} />
     {:else if section === 'models'}
       <SuparnaModels {vpcUrl} {sessionToken} />
+    {:else if section === 'phone'}
+      <SuparnaPhone {vpcUrl} {sessionToken} />
     {:else}
       <SuparnaRules />
     {/if}

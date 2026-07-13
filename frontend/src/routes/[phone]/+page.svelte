@@ -33,7 +33,7 @@
   let contacts: Record<string, string> = $state({});
   let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
-  let suparnaSection: 'vpc' | 'models' | 'rules' = $state('vpc');
+  let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' = $state('vpc');
   let contactSearchQuery: string = $state('');
   let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
@@ -842,6 +842,17 @@
                 <div class="chat-item__info">
                   <div class="chat-item__name">Rules</div>
                   <div class="chat-item__preview">Local preferences</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                class="chat-item settings-nav {suparnaSection === 'phone' ? 'active' : ''}"
+                onclick={() => { suparnaSection = 'phone'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">P</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">Phone</div>
+                  <div class="chat-item__preview">One-shot edge tester</div>
                 </div>
               </button>
             {/if}

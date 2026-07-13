@@ -232,6 +232,10 @@ func main() {
 	mux.HandleFunc("GET /api/web/logs/suparna/reading", sessionMiddleware(suparnaReadingHandler))
 	mux.HandleFunc("POST /api/web/logs/suparna", sessionMiddleware(suparnaReadLogsHandler))
 	mux.HandleFunc("GET /api/web/suparna/status", sessionMiddleware(suparnaStatusHandler))
+	mux.HandleFunc("GET /api/web/edge/status", sessionMiddleware(edgeStatusHandler))
+	mux.HandleFunc("POST /api/web/edge/infer", sessionMiddleware(edgeInferHandler))
+	mux.HandleFunc("POST /api/web/edge/wake", sessionMiddleware(edgeWakeHandler))
+	mux.HandleFunc("POST /api/web/edge/stop", sessionMiddleware(edgeStopHandler))
 
 	mux.HandleFunc("GET /api/proxy/contacts", sessionMiddleware(getContactsHandler))
 	mux.HandleFunc("POST /api/proxy/contacts", sessionMiddleware(syncContactsHandler))
