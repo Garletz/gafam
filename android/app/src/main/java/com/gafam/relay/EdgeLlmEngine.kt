@@ -68,7 +68,7 @@ object EdgeLlmEngine {
 
         text = stripThinkBlocks(text)
         text = text.replace("<|im_start|>", "")
-        text = text.replace("<|im_end|>", "")
+        text = text.replace("<|" + "im_end|>", "")
         return text.trim()
     }
 
