@@ -17,7 +17,7 @@
   let savedServers = $state<SavedServer[]>([]);
   let currentView = $state<'dashboard' | 'add_choice' | 'digitalocean' | 'advanced' | 'paired'>('dashboard');
   
-  let generatedScript = $state('sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/TonRepo/GAFAM/main/deploy-vpc.sh)"');
+  let generatedScript = $state('sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/Garletz/gafam/main/deploy-vpc.sh)"');
   let jwtToken = $state("");
   let certFingerprint = $state("");
   let vpcUrl = $state("");

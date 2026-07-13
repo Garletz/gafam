@@ -342,7 +342,7 @@
     {#if !suparnaStatus?.model_on_disk}
       <div class="suparna-hint">Suparna: model not on VPC disk yet (run qwen-install on the node).</div>
     {:else if suparnaLoading}
-      <div class="suparna-hint">Loading model into RAM · analyzing · will auto-stop…</div>
+      <div class="suparna-hint">Loading Qwen into RAM (1–3 min on 1 Go VPS) · then analyzing · auto-stop after</div>
     {/if}
     {#if suparnaReading}
       <div class="suparna-panel">

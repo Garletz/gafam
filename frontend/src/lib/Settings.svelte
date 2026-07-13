@@ -171,6 +171,15 @@
 
       if (regRes.ok) {
         registryInfo = await regRes.json();
+      } else if (vpcInfo?.git_sha) {
+        // GH registry unreachable — don't block Settings on "Checking…"
+        registryInfo = {
+          git_sha: vpcInfo.git_sha,
+          git_sha_short: vpcInfo.git_sha_short,
+          published_at: vpcInfo.build_time,
+          image: vpcInfo.image,
+          source: 'vpc_only'
+        };
       }
     } catch {
       vpcError = 'Network error';

@@ -3,7 +3,7 @@
 
   let selectedCloud = "";
   let vpcIp = "";
-  let generatedScript = 'sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/TonRepo/GAFAM/main/deploy-vpc.sh)"';
+  let generatedScript = 'sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/Garletz/gafam/main/deploy-vpc.sh)"';
   let jwtToken = "";
   let doConnecting = false;
 

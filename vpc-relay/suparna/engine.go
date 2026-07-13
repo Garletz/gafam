@@ -60,7 +60,7 @@ func AnalyzeDay(day string, lines []LogLine, force bool, heavyBusy HeavyBusyFunc
 		_ = startedByUs
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	if err := waitQwenReady(ctx); err != nil {
 		return nil, err

@@ -1,17 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
-type GitHubCommit = {
-	sha: string;
-	commit: { committer: { date: string } };
-};
-
 type WorkflowRuns = {
 	workflow_runs: Array<{
 		head_sha: string;
-		head_branch: string;
 		updated_at: string;
-		conclusion: string | null;
 	}>;
 };
 
@@ -20,10 +13,13 @@ const GH_HEADERS = {
 	'User-Agent': 'gafam-relay-worker'
 };
 
+// Last known good docker-publish on main (fallback when GitHub rate-limits the Worker).
+const FALLBACK_SHA = '50660a54064ae70a2dfd3323d72a29d06f1f267d';
+
 async function latestDockerPublishSha(): Promise<{
 	git_sha: string;
 	published_at: string;
-	source: 'docker_publish' | 'main_fallback';
+	source: string;
 } | null> {
 	const runsRes = await fetch(
 		'https://api.github.com/repos/Garletz/gafam/actions/workflows/docker-publish.yml/runs?status=success&branch=main&per_page=1',
@@ -42,19 +38,6 @@ async function latestDockerPublishSha(): Promise<{
 	};
 }
 
-async function latestMainCommit(): Promise<{ git_sha: string; published_at: string } | null> {
-	const res = await fetch('https://api.github.com/repos/Garletz/gafam/commits/main', {
-		headers: GH_HEADERS
-	});
-	if (!res.ok) return null;
-
-	const data = (await res.json()) as GitHubCommit;
-	return {
-		git_sha: data.sha,
-		published_at: data.commit.committer.date
-	};
-}
-
 export const GET: RequestHandler = async () => {
 	try {
 		const docker = await latestDockerPublishSha();
@@ -70,30 +53,25 @@ export const GET: RequestHandler = async () => {
 			});
 		}
 
-		const main = await latestMainCommit();
-		if (!main) {
-			// Fallback if GitHub rate-limits us (common on Cloudflare Workers without auth)
-			return json({
-				repo: 'Garletz/gafam',
-				branch: 'main',
-				git_sha: '0000000000000000000000000000000000000000',
-				git_sha_short: '0000000',
-				published_at: new Date().toISOString(),
-				image: 'ghcr.io/garletz/gafam:latest',
-				source: 'rate_limit_fallback'
-			});
-		}
-
+		// Never 502 — GH rate limit from Cloudflare is common; use static fallback so Settings UI works.
 		return json({
 			repo: 'Garletz/gafam',
 			branch: 'main',
-			git_sha: main.git_sha,
-			git_sha_short: main.git_sha.slice(0, 7),
-			published_at: main.published_at,
+			git_sha: FALLBACK_SHA,
+			git_sha_short: FALLBACK_SHA.slice(0, 7),
+			published_at: new Date().toISOString(),
 			image: 'ghcr.io/garletz/gafam:latest',
-			source: 'main_fallback'
+			source: 'rate_limit_fallback'
 		});
-	} catch (err: any) {
-		return json({ error: err.message }, { status: 500 });
+	} catch {
+		return json({
+			repo: 'Garletz/gafam',
+			branch: 'main',
+			git_sha: FALLBACK_SHA,
+			git_sha_short: FALLBACK_SHA.slice(0, 7),
+			published_at: new Date().toISOString(),
+			image: 'ghcr.io/garletz/gafam:latest',
+			source: 'error_fallback'
+		});
 	}
 };

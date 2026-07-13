@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	dockerSock     = "/var/run/docker.sock"
-	qwenContainer  = "gafam-qwen"
-	dockerAPIBase  = "http://localhost"
+	dockerSock    = "/var/run/docker.sock"
+	qwenContainer = "gafam-qwen"
+	dockerAPIBase = "http://localhost"
 )
 
 func dockerHTTP() *http.Client {
@@ -32,7 +32,7 @@ func dockerHTTP() *http.Client {
 
 func dockerSockPresent() bool {
 	st, err := os.Stat(dockerSock)
-	return err == nil && (st.Mode()&os.ModeSocket != 0 || st.Mode().IsRegular())
+	return err == nil && st.Mode()&os.ModeSocket != 0
 }
 
 func containerState() (running bool, err error) {
@@ -50,7 +50,7 @@ func containerState() (running bool, err error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusNotFound {
-		return false, fmt.Errorf("container %s missing — run vpc-relay/scripts/qwen-install.sh", qwenContainer)
+		return false, fmt.Errorf("container %s missing — run deploy-vpc.sh or qwen-install.sh", qwenContainer)
 	}
 	if resp.StatusCode >= 400 {
 		return false, fmt.Errorf("docker inspect: %s", strings.TrimSpace(string(body)))
@@ -77,7 +77,6 @@ func startContainer() error {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	// 204 No Content = ok; 304 = already started
 	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified {
 		return nil
 	}
@@ -114,32 +113,81 @@ func qwenBaseURL() string {
 	return "http://gafam-qwen:8080"
 }
 
+// waitQwenReady blocks until llama.cpp reports the model is loaded (not just the HTTP server up).
 func waitQwenReady(ctx context.Context) error {
-	client := &http.Client{Timeout: 3 * time.Second}
-	url := qwenBaseURL() + "/health"
-	fallback := qwenBaseURL() + "/completion"
-	ticker := time.NewTicker(2 * time.Second)
+	client := &http.Client{Timeout: 8 * time.Second}
+	healthURL := qwenBaseURL() + "/health"
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
-	for {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp, err := client.Do(req)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
-			// If 503, model is still loading. Wait and retry.
-		}
 
+	for {
+		if qwenHealthOK(ctx, client, healthURL) {
+			return nil
+		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("qwen not ready: %w", ctx.Err())
+			return fmt.Errorf("qwen model load timeout (1 Go VPS can take 2–3 min): %w", ctx.Err())
 		case <-ticker.C:
 		}
 	}
 }
 
+func qwenHealthOK(ctx context.Context, client *http.Client, healthURL string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	// llama.cpp returns 503 {"error":{"message":"Loading model"...}} while weights load into RAM
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	// Optional JSON body: {"status":"ok"} or similar
+	var probe struct {
+		Status string `json:"status"`
+	}
+	if json.Unmarshal(body, &probe) == nil && probe.Status != "" {
+		return strings.EqualFold(probe.Status, "ok")
+	}
+	return true
+}
+
 func complete(ctx context.Context, prompt string, nPredict int) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < 40; attempt++ {
+		content, err := completeOnce(ctx, prompt, nPredict)
+		if err == nil {
+			return content, nil
+		}
+		lastErr = err
+		if !isQwenLoadingErr(err) {
+			return "", err
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(3 * time.Second):
+		}
+	}
+	return "", lastErr
+}
+
+func isQwenLoadingErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "Loading model") ||
+		strings.Contains(s, "unavailable_error") ||
+		strings.Contains(s, "qwen completion 503")
+}
+
+func completeOnce(ctx context.Context, prompt string, nPredict int) (string, error) {
 	payload := map[string]interface{}{
 		"prompt":      prompt,
 		"n_predict":   nPredict,
