@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { EDGE_QUICK_PROMPTS, type EdgeInferResult, type EdgeModelStatus, type EdgeStatus } from './types';
+  import { EDGE_QUICK_PROMPTS, type EdgeInferResult, type EdgeModelStatus, type EdgeQuickPrompt, type EdgeStatus } from './types';
   import {
     edgeStop,
     edgeWake,
@@ -11,6 +11,7 @@
     setRamRequestMb,
     startEdgeModelInstall
   } from './edgeApi';
+  import { buildTodayLogsPrompt, EDGE_INFER_PROMPT_MAX, type PhoneLogEntry } from './edgeLogsPrompt';
 
   let { vpcUrl, sessionToken }: { vpcUrl: string; sessionToken: string } = $props();
 
@@ -56,10 +57,10 @@
     const r = await startEdgeModelInstall(vpcUrl, sessionToken);
     modelInstalling = false;
     if (!r.ok) {
-      modelMsg = r.error || 'Échec lancement téléchargement';
+      modelMsg = r.error || 'Failed to start VPC download';
       return;
     }
-    modelMsg = 'Téléchargement lancé sur le VPC (HuggingFace → disque)…';
+    modelMsg = 'Download started on VPC (HuggingFace → disk)…';
     await refreshModelStatus();
     await refreshStatus();
   }
@@ -92,9 +93,59 @@
     }, 45_000);
   }
 
-  async function fire(prompt: string) {
+  async function fetchTodayLogsForInfer() {
+    const today = new Date().toISOString().slice(0, 10);
+    let day = today;
+    const listParams = new URLSearchParams({ vpcUrl, token: sessionToken });
+    const listRes = await fetch(`/api/proxy/logs?${listParams}`);
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const days: Array<{ day: string; lines: number }> = listData.days || [];
+      const pick = days.find((d) => d.day === today) ?? days[0];
+      if (pick?.day) day = pick.day;
+      else if (days.length === 0) return null;
+    }
+    const params = new URLSearchParams({
+      vpcUrl,
+      token: sessionToken,
+      day,
+      offset: '0',
+      limit: '120'
+    });
+    const res = await fetch(`/api/proxy/logs?${params}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const entries: PhoneLogEntry[] = data.entries || [];
+    if (entries.length === 0) return null;
+    return buildTodayLogsPrompt(entries, day, data.total_lines ?? entries.length);
+  }
+
+  async function fireQuick(q: EdgeQuickPrompt) {
+    if (q.action === 'today_logs') {
+      actionMsg = "Loading today's logs from VPC…";
+      const built = await fetchTodayLogsForInfer();
+      if (!built) {
+        actionMsg = 'No logs found — ship logs from the phone first (Logs tab).';
+        return;
+      }
+      actionMsg = '';
+      await fire(built.prompt, built.displayLabel);
+      return;
+    }
+    if (q.action === 'edge_ping') {
+      await fire('Reply with exactly the text EDGE_OK and nothing else.');
+      return;
+    }
+    await fire(q.prompt);
+  }
+
+  async function fire(prompt: string, displayPrompt?: string) {
     const text = prompt.trim();
     if (!text || running) return;
+    if (text.length > EDGE_INFER_PROMPT_MAX) {
+      actionMsg = `Prompt too long (${text.length}/${EDGE_INFER_PROMPT_MAX}) — trim logs and retry.`;
+      return;
+    }
     running = true;
     actionMsg = '';
     if (clearTimer) {
@@ -107,7 +158,7 @@
     running = false;
 
     if (result) {
-      lastShot = { prompt: text, result };
+      lastShot = { prompt: displayPrompt ?? text, result };
       scheduleClear();
     }
     if (!ok && error) actionMsg = error;
@@ -158,8 +209,8 @@
 <section class="panel">
   <div class="panel__intro">
     <p>
-      One-shot tester — pas d’historique. L’edge L2 utilise le <strong>relay APK</strong> (HTTP), pas le bridge ADB/scrcpy.
-      Le plafond RAM est réglé une fois sur le téléphone ; ici tu choisis combien utiliser pour <strong>cette tâche</strong>.
+      One-shot tester — no history. Edge L2 uses the <strong>APK relay</strong> (HTTP), not the ADB/scrcpy bridge.
+      RAM cap is set once on the phone; here you pick how much to use for <strong>this task</strong>.
     </p>
   </div>
 
@@ -188,26 +239,26 @@
       {/if}
     </div>
     <div class="status-card">
-      <span class="label">Cap tel</span>
+      <span class="label">Phone cap</span>
       <span class="value mono">{status?.edge_ram_cap_mb ? `${status.edge_ram_cap_mb} MB` : '—'}</span>
       {#if status?.device_ram_avail_mb}
-        <span class="sub">dispo {status.device_ram_avail_mb} / {status.device_ram_total_mb ?? '?'} MB</span>
+        <span class="sub">free {status.device_ram_avail_mb} / {status.device_ram_total_mb ?? '?'} MB</span>
       {/if}
     </div>
     <div class="status-card">
-      <span class="label">Max livrable</span>
+      <span class="label">Max deliverable</span>
       <span class="value mono">
         {status?.edge_ram_max_deliverable_mb ? `${status.edge_ram_max_deliverable_mb} MB` : '—'}
       </span>
     </div>
     <div class="status-card">
-      <span class="label">Modèle VPC</span>
+      <span class="label">VPC model</span>
       <span class="value mono" class:on={modelReadyOnVpc}>
         {modelReadyOnVpc ? 'on disk' : installState === 'downloading' ? 'downloading…' : 'missing'}
       </span>
     </div>
     <div class="status-card">
-      <span class="label">Modèle tel</span>
+      <span class="label">Phone model</span>
       <span class="value mono" class:on={modelOnPhone}>
         {modelOnPhone ? 'on device' : 'not loaded'}
       </span>
@@ -224,13 +275,13 @@
 
   <div class="model-panel" class:model-panel--ready={modelReadyOnVpc}>
     <div class="model-panel__head">
-      <h3>Qwen3 0.6B ONNX (VPC → tel)</h3>
+      <h3>Qwen3 0.6B ONNX (VPC → phone)</h3>
       <span class="model-badge" class:on={modelReadyOnVpc}>
-        {modelReadyOnVpc ? 'Prêt à envoyer' : installState === 'downloading' ? 'Téléchargement…' : 'Absent sur VPC'}
+        {modelReadyOnVpc ? 'Ready to push' : installState === 'downloading' ? 'Downloading…' : 'Missing on VPC'}
       </span>
     </div>
     <p class="model-panel__hint">
-      Le modèle doit d’abord être sur le disque du VPC (~525 Mo). Au <strong>Wake</strong>, le tel le télécharge depuis le VPC (pas HuggingFace direct).
+      Model must be on VPC disk first (~525 MB). On <strong>Wake</strong>, the phone downloads from VPC (not HuggingFace direct).
     </p>
     {#if modelStatus?.files?.length}
       <ul class="model-files">
@@ -242,7 +293,7 @@
         {/each}
       </ul>
       {#if modelStatus.total_bytes > 0}
-        <p class="model-total">Total sur disque : {formatBytes(modelStatus.total_bytes)}</p>
+        <p class="model-total">Total on disk: {formatBytes(modelStatus.total_bytes)}</p>
       {/if}
     {/if}
     {#if installState === 'downloading'}
@@ -262,7 +313,7 @@
         disabled={modelInstalling || installState === 'downloading'}
         onclick={doInstallModel}
       >
-        {modelInstalling ? 'Lancement…' : 'Télécharger sur le VPC'}
+        {modelInstalling ? 'Starting…' : 'Download to VPC'}
       </button>
     {/if}
     {#if modelStatus?.install?.error}
@@ -274,7 +325,7 @@
   </div>
 
   <div class="ram-row">
-    <label for="ram-request">RAM pour cette tâche</label>
+    <label for="ram-request">RAM for this task</label>
     <input
       id="ram-request"
       type="range"
@@ -298,14 +349,14 @@
   {/if}
 
   {#if status?.scrcpy_blocking}
-    <p class="scrcpy-warn">scrcpy/shell actif — l’inférence L2 est bloquée, mais Wake/Stop edge fonctionne.</p>
+    <p class="scrcpy-warn">scrcpy/shell active — L2 infer is blocked, but Wake/Stop still work.</p>
   {/if}
 
   <div class="quick-tests">
     <span class="quick-label">Quick tests</span>
     <div class="quick-btns">
       {#each EDGE_QUICK_PROMPTS as q}
-        <button type="button" class="btn btn-quick" disabled={running} onclick={() => fire(q.prompt)}>
+        <button type="button" class="btn btn-quick" disabled={running} onclick={() => fireQuick(q)}>
           {q.label}
         </button>
       {/each}
@@ -315,7 +366,7 @@
   <div class="prompt-row">
     <input
       type="text"
-      placeholder="Ton prompt (ex. 1+1=?)"
+      placeholder="Your prompt (e.g. 1+1=?)"
       bind:value={customPrompt}
       disabled={running}
       onkeydown={(e) => e.key === 'Enter' && fire(customPrompt)}
@@ -342,7 +393,7 @@
       </footer>
     </div>
   {:else if !running}
-    <p class="shot-hint">La dernière réponse s’affiche ici puis disparaît (~45 s).</p>
+    <p class="shot-hint">Last reply shows here then clears (~45 s).</p>
   {/if}
 </section>
 

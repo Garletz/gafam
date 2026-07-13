@@ -123,8 +123,14 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
 	}
 ];
 
-export const EDGE_QUICK_PROMPTS = [
+export type EdgeQuickPrompt =
+	| { label: string; prompt: string; action?: undefined }
+	| { label: string; action: 'today_logs' | 'edge_ping'; prompt?: undefined };
+
+export const EDGE_QUICK_PROMPTS: EdgeQuickPrompt[] = [
 	{ label: '1+1=?', prompt: '1+1=?' },
-	{ label: '2×3=?', prompt: 'What is 2 times 3?' },
-	{ label: 'Bonjour', prompt: 'Say hello in one short sentence.' }
-] as const;
+	{ label: '2×3=?', prompt: 'What is 2 times 3? Answer with the number only.' },
+	{ label: 'Hello', prompt: 'Say hello in one short sentence.' },
+	{ label: 'Today logs', action: 'today_logs' },
+	{ label: 'EDGE ping', action: 'edge_ping' }
+];
