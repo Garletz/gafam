@@ -96,11 +96,11 @@ class EdgeInferenceService : Service() {
                     }
                     edgeService = STATE_INFERRING
                     statusMessage = "Inferring: ${prompt.take(40)}"
-                    val answer = EdgeLlmEngine.complete(prompt, maxTokens = 64)
+                    val answer = EdgeLlmEngine.complete(prompt, maxTokens = 128)
                     lastInferContent = answer
                     lastInferLatencyMs = (System.currentTimeMillis() - start).toInt()
                     statusMessage = "Infer done (${lastInferLatencyMs} ms)"
-                    Log.i(TAG, "Infer job=$jobId answer=$answer")
+                    Log.i(TAG, "Infer job=$jobId answer=${answer.take(120)}")
                 } catch (e: Exception) {
                     lastInferError = e.message ?: "infer_failed"
                     lastInferLatencyMs = (System.currentTimeMillis() - start).toInt()
@@ -118,6 +118,9 @@ class EdgeInferenceService : Service() {
 
         fun takeInferReport(): InferReport? {
             if (inferReported || lastInferJobId.isBlank()) return null
+            // Poll loop can sync while inferring — never ship an empty early report to VPC.
+            if (edgeService == STATE_INFERRING) return null
+            if (lastInferContent.isBlank() && lastInferError.isBlank()) return null
             inferReported = true
             return InferReport(
                 jobId = lastInferJobId,

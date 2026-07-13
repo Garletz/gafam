@@ -11,8 +11,8 @@ android {
         applicationId = "com.gafam.relay"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.3-edge2c2c-genai014b"
+        versionCode = 9
+        versionName = "1.3-edge2c2c-genai014c"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
