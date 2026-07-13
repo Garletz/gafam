@@ -72,7 +72,16 @@ export const GET: RequestHandler = async () => {
 
 		const main = await latestMainCommit();
 		if (!main) {
-			return json({ error: 'github_unreachable' }, { status: 502 });
+			// Fallback if GitHub rate-limits us (common on Cloudflare Workers without auth)
+			return json({
+				repo: 'Garletz/gafam',
+				branch: 'main',
+				git_sha: '0000000000000000000000000000000000000000',
+				git_sha_short: '0000000',
+				published_at: new Date().toISOString(),
+				image: 'ghcr.io/garletz/gafam:latest',
+				source: 'rate_limit_fallback'
+			});
 		}
 
 		return json({

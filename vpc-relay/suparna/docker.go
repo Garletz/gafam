@@ -125,20 +125,12 @@ func waitQwenReady(ctx context.Context) error {
 		resp, err := client.Do(req)
 		if err == nil {
 			resp.Body.Close()
-			if resp.StatusCode < 500 {
+			if resp.StatusCode == http.StatusOK {
 				return nil
 			}
+			// If 503, model is still loading. Wait and retry.
 		}
-		// older builds may lack /health — probe completion with empty is heavy; try GET root
-		req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, qwenBaseURL()+"/", nil)
-		resp2, err2 := client.Do(req2)
-		if err2 == nil {
-			resp2.Body.Close()
-			if resp2.StatusCode < 500 {
-				return nil
-			}
-		}
-		_ = fallback
+
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("qwen not ready: %w", ctx.Err())
