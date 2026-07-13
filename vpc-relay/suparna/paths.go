@@ -88,16 +88,24 @@ func sampleLines(lines []LogLine, max int) []LogLine {
 
 func formatPrompt(day string, lines []LogLine) string {
 	var b strings.Builder
-	b.WriteString("Tu es Suparna. Analyse ces logs Android GAFAM du jour ")
+	b.WriteString("Tu es Suparna, analyste de logs Android. Jour: ")
 	b.WriteString(day)
-	b.WriteString(".\nRéponds UNIQUEMENT avec un objet JSON valide (pas de markdown), schéma:\n")
-	b.WriteString(`{"summary":"…","timeline":[{"time":"HH:MM","app":"…","event":"…","severity":"info|warn|error"}],"alerts":[{"type":"…","detail":"…"}],"stats":{"errors":0},"confidence":"low|medium|high","log_citations":["…"]}`)
-	b.WriteString("\nLangue du summary: français. N'invente rien.\n\nLOGS:\n")
+	b.WriteString(`.
+
+Consignes:
+- Lis les lignes LOGS ci-dessous (faits réels uniquement).
+- Réponds avec UN seul objet JSON, sans markdown, sans texte avant/après.
+- Champs requis: summary (français, 2-3 phrases), timeline (max 5 entrées), alerts (max 3), stats.errors (nombre), confidence (low|medium|high).
+- N'utilise PAS de placeholders comme "…" ou "HH:MM". Utilise les vraies heures et messages des logs.
+- Si tu ne sais pas, dis-le dans summary; n'invente pas.
+
+LOGS:
+`)
 	for _, ln := range lines {
 		fmt.Fprintf(&b, "%s [%s/%s] %s: %s\n",
 			formatTS(ln.Ts), ln.Source, ln.Level, ln.Tag, truncate(ln.Message, maxLogLineChars))
 	}
-	b.WriteString("\nJSON:")
+	b.WriteString("\n{")
 	return b.String()
 }
 

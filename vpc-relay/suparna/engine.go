@@ -83,7 +83,6 @@ func analyzeDaySync(day string, lines []LogLine, force bool, heavyBusy HeavyBusy
 
 func parseReading(day, content string) (*Reading, error) {
 	raw := strings.TrimSpace(content)
-	// Strip optional markdown fence
 	if strings.HasPrefix(raw, "```") {
 		if i := strings.Index(raw[3:], "```"); i >= 0 {
 			inner := raw[3 : 3+i]
@@ -93,7 +92,10 @@ func parseReading(day, content string) (*Reading, error) {
 			raw = strings.TrimSpace(inner)
 		}
 	}
-
+	// Model continues after prompt suffix "{" — generation may omit opening brace.
+	if !strings.HasPrefix(raw, "{") {
+		raw = "{" + raw
+	}
 	m := extractJSONObject(raw)
 	if m == "" {
 		return nil, fmt.Errorf("no json in model output: %s", truncate(content, 200))
@@ -103,8 +105,8 @@ func parseReading(day, content string) (*Reading, error) {
 		return nil, fmt.Errorf("invalid json from model: %w (snippet: %s)", err, truncate(m, 120))
 	}
 	r.Day = day
-	if r.Summary == "" {
-		r.Summary = "(empty summary)"
+	if r.Summary == "" || strings.Contains(r.Summary, "…") || strings.Contains(r.Summary, "HH:MM") {
+		return nil, fmt.Errorf("model echoed template instead of analyzing logs")
 	}
 	return &r, nil
 }
