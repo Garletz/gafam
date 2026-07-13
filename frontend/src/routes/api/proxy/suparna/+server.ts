@@ -71,9 +71,12 @@ async function vpcRequest(
 export const GET: RequestHandler = async ({ url }) => {
 	const vpcUrl = url.searchParams.get('vpcUrl');
 	const token = url.searchParams.get('token');
+	const day = url.searchParams.get('day');
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
 
-	const path = `/api/web/suparna/status?token=${encodeURIComponent(token)}`;
+	const path = day
+		? `/api/web/logs/suparna/reading?token=${encodeURIComponent(token)}&day=${encodeURIComponent(day)}`
+		: `/api/web/suparna/status?token=${encodeURIComponent(token)}`;
 	const result = await vpcRequest(vpcUrl, token, 'GET', path);
 	return json(result.data, { status: result.status });
 };

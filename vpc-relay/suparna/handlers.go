@@ -3,7 +3,6 @@ package suparna
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 )
 
 func sendJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -16,7 +15,21 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, Status())
 }
 
-// ReadDayHandler expects query: day=, refresh=0|1
+// ReadingHandler GET ?day= — poll async analysis result (fast, Cloudflare-safe).
+func ReadingHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	day := r.URL.Query().Get("day")
+	if day == "" {
+		http.Error(w, "Missing day", http.StatusBadRequest)
+		return
+	}
+	sendJSON(w, http.StatusOK, ReadingJob(day))
+}
+
+// ReadDayHandler POST ?day=, refresh=0|1 — starts analysis, returns immediately.
 func ReadDayHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -50,20 +63,23 @@ func ReadDayHandler(
 		return
 	}
 
-	reading, err := AnalyzeDay(day, lines, force, heavyBusy)
-	if err != nil {
-		code := http.StatusBadGateway
-		msg := err.Error()
-		switch {
-		case msg == "analysis_in_progress":
-			code = http.StatusConflict
-		case strings.Contains(msg, "heavy_job_busy"):
-			code = http.StatusConflict
-		case strings.Contains(msg, "model_missing"):
-			code = http.StatusPreconditionFailed
-		}
-		sendJSON(w, code, map[string]string{"error": msg})
+	if heavyBusy != nil && heavyBusy() {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": "heavy_job_busy: stop scrcpy/remote session before analyzing"})
 		return
 	}
-	sendJSON(w, http.StatusOK, reading)
+	if !ModelOnDisk() {
+		sendJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "model_missing: download GGUF via vpc-relay/scripts/qwen-install.sh"})
+		return
+	}
+
+	reading, status, err := StartAnalyzeDay(day, lines, force, heavyBusy)
+	if err != nil {
+		sendJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	if reading != nil {
+		sendJSON(w, http.StatusOK, reading)
+		return
+	}
+	sendJSON(w, http.StatusAccepted, map[string]string{"status": status})
 }

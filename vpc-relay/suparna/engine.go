@@ -20,7 +20,7 @@ var (
 // HeavyBusy reports whether a remote-control session is active (caller supplies).
 type HeavyBusyFunc func() bool
 
-func AnalyzeDay(day string, lines []LogLine, force bool, heavyBusy HeavyBusyFunc) (*Reading, error) {
+func analyzeDaySync(day string, lines []LogLine, force bool, heavyBusy HeavyBusyFunc) (*Reading, error) {
 	if !analyzeMu.TryLock() {
 		return nil, fmt.Errorf("analysis_in_progress")
 	}
@@ -67,7 +67,7 @@ func AnalyzeDay(day string, lines []LogLine, force bool, heavyBusy HeavyBusyFunc
 	}
 
 	prompt := buildPrompt(day, lines)
-	raw, err := complete(ctx, prompt, 512)
+	raw, err := complete(ctx, prompt, 256)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +134,17 @@ func Status() map[string]interface{} {
 	} else {
 		dockerErr = "docker.sock not mounted"
 	}
+
+	jobsMu.Lock()
+	analyzeRunning := false
+	for _, j := range jobs {
+		if j.Running {
+			analyzeRunning = true
+			break
+		}
+	}
+	jobsMu.Unlock()
+
 	return map[string]interface{}{
 		"model_on_disk":    ModelOnDisk(),
 		"model_path":       ModelPath(),
@@ -143,5 +154,6 @@ func Status() map[string]interface{} {
 		"docker_error":     dockerErr,
 		"passive":          true,
 		"auto_stop":        true,
+		"analyze_running":  analyzeRunning,
 	}
 }

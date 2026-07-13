@@ -236,20 +236,43 @@
     suparnaLoading = true;
     suparnaError = '';
     try {
-      const params = new URLSearchParams({
+      const baseParams = new URLSearchParams({
         vpcUrl,
         token: sessionToken,
         day: selectedDay,
         refresh: refresh ? '1' : '0'
       });
-      const res = await fetch(`/api/proxy/suparna?${params}`, { method: 'POST' });
+      const res = await fetch(`/api/proxy/suparna?${baseParams}`, { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) {
+      if (res.status === 200 && data.summary) {
+        suparnaReading = data;
+        return;
+      }
+      if (!res.ok && res.status !== 202) {
         suparnaError = data.error || 'Suparna failed';
         return;
       }
-      suparnaReading = data;
-      await fetchSuparnaStatus();
+
+      // Async on VPC: poll every 3s (Cloudflare Worker cannot hold 3+ min connections).
+      for (let i = 0; i < 120; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const pollParams = new URLSearchParams({
+          vpcUrl,
+          token: sessionToken,
+          day: selectedDay
+        });
+        const pollRes = await fetch(`/api/proxy/suparna?${pollParams}`);
+        const poll = await pollRes.json();
+        if (poll.status === 'done' && poll.reading) {
+          suparnaReading = poll.reading;
+          return;
+        }
+        if (poll.status === 'error') {
+          suparnaError = poll.error || 'Suparna failed';
+          return;
+        }
+      }
+      suparnaError = 'Analysis timeout (6 min) — retry in a moment';
     } catch {
       suparnaError = 'Network error';
     } finally {

@@ -10,6 +10,10 @@ func suparnaStatusHandler(w http.ResponseWriter, r *http.Request) {
 	suparna.StatusHandler(w, r)
 }
 
+func suparnaReadingHandler(w http.ResponseWriter, r *http.Request) {
+	suparna.ReadingHandler(w, r)
+}
+
 func suparnaReadLogsHandler(w http.ResponseWriter, r *http.Request) {
 	suparna.ReadDayHandler(w, r,
 		func(day string, offset, limit int) ([]suparna.LogLine, int, error) {
