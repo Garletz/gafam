@@ -1,20 +1,26 @@
 package edge
 
-// HubSnapshot is filled by vpc-relay from scrcpy / relay state.
+// HubSnapshot is filled by vpc-relay from APK relay + scrcpy state.
 type HubSnapshot struct {
-	PhoneReachable bool
-	ScrcpyBlocking bool
+	ApkRelayOnline        bool
+	ApkRelayLastSeen      string
+	ScrcpyBridgeConnected bool
+	ScrcpyBlocking        bool
 }
 
 // Status is returned by GET /api/web/edge/status.
 type Status struct {
-	PhoneReachable bool   `json:"phone_reachable"`
-	EdgeReady      bool   `json:"edge_ready"`
-	EdgeService    string `json:"edge_service"` // not_deployed | idle | loading | inferring
-	ScrcpyBlocking bool   `json:"scrcpy_blocking"`
-	RamReservedMb  int    `json:"ram_reserved_mb"`
-	ModelOnDevice  bool   `json:"model_on_device"`
-	Phase          string `json:"phase"`
+	ApkRelayOnline        bool   `json:"apk_relay_online"`
+	ApkRelayLastSeen      string `json:"apk_relay_last_seen,omitempty"`
+	ScrcpyBridgeConnected bool   `json:"scrcpy_bridge_connected"`
+	EdgeReady             bool   `json:"edge_ready"`
+	EdgeService           string `json:"edge_service"` // not_deployed | idle | loading | inferring
+	ScrcpyBlocking        bool   `json:"scrcpy_blocking"`
+	RamReservedMb         int    `json:"ram_reserved_mb"`
+	ModelOnDevice         bool   `json:"model_on_device"`
+	Phase                 string `json:"phase"`
+	// Deprecated: use apk_relay_online. Kept for older front builds.
+	PhoneReachable bool `json:"phone_reachable"`
 }
 
 // InferRequest POST /api/web/edge/infer

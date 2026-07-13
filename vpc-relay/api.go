@@ -227,6 +227,7 @@ func getOutboxHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	touchApkRelay()
 	sendJSON(w, http.StatusOK, EncryptedPayload{
 		EncryptedData: encryptedBase64,
 		IV:            ivBase64,
@@ -246,6 +247,7 @@ func deleteOutboxHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	touchApkRelay()
 	sendJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -419,6 +421,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 	db.Exec(`DELETE FROM gafam_sms WHERE id NOT IN (SELECT id FROM gafam_sms ORDER BY id DESC LIMIT 50000)`)
 
 	id, _ := res.LastInsertId()
+	touchApkRelay()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"status":      "saved",
 		"id":          id,
@@ -481,6 +484,7 @@ func syncSmsHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("SMS history sync: %d new / %d received", inserted, len(wrap.Messages))
+	touchApkRelay()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "synced",
 		"received": len(wrap.Messages),
@@ -1073,6 +1077,11 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, "Encryption error", http.StatusInternalServerError)
 			return
+		}
+
+		// APK relay polls GET /api/settings every second (not the web session route).
+		if r.URL.Path == "/api/settings" {
+			touchApkRelay()
 		}
 
 		sendJSON(w, http.StatusOK, EncryptedPayload{

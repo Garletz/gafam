@@ -10,8 +10,10 @@ func edgeHubSnapshot() edge.HubSnapshot {
 	scrcpyHub.mu.RLock()
 	defer scrcpyHub.mu.RUnlock()
 	return edge.HubSnapshot{
-		PhoneReachable: scrcpyHub.bridgeReady,
-		ScrcpyBlocking: len(scrcpyHub.viewers) > 0 || len(scrcpyHub.shellViewers) > 0,
+		ApkRelayOnline:        apkRelayOnline(),
+		ApkRelayLastSeen:      apkRelayLastSeenUTC(),
+		ScrcpyBridgeConnected: scrcpyHub.bridgeReady,
+		ScrcpyBlocking:        len(scrcpyHub.viewers) > 0 || len(scrcpyHub.shellViewers) > 0,
 	}
 }
 

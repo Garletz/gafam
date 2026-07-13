@@ -89,15 +89,27 @@
 <section class="panel">
   <div class="panel__intro">
     <p>
-      One-shot tester — pas d’historique. Envoie un prompt, lis la réponse, ça s’efface tout seul.
-      Phase 2b : le VPC répond en stub jusqu’à l’APK EdgeInferenceService.
+      One-shot tester — pas d’historique. L’edge L2 utilise le <strong>relay APK</strong> (HTTP), pas le bridge ADB/scrcpy.
+      Le bridge scrcpy sert uniquement au remote control.
     </p>
   </div>
 
   <div class="status-grid">
     <div class="status-card">
-      <span class="label">Phone relay</span>
-      <span class="value" class:on={status?.phone_reachable}>{status?.phone_reachable ? 'online' : 'offline'}</span>
+      <span class="label">APK relay</span>
+      <span class="value" class:on={status?.apk_relay_online ?? status?.phone_reachable}>
+        {(status?.apk_relay_online ?? status?.phone_reachable) ? 'online' : 'offline'}
+      </span>
+      {#if status?.apk_relay_last_seen}
+        <span class="sub">last {new Date(status.apk_relay_last_seen).toLocaleTimeString()}</span>
+      {/if}
+    </div>
+    <div class="status-card">
+      <span class="label">Bridge scrcpy</span>
+      <span class="value" class:on={status?.scrcpy_bridge_connected}>
+        {status?.scrcpy_bridge_connected ? 'connected' : 'offline'}
+      </span>
+      <span class="sub">remote / ADB only</span>
     </div>
     <div class="status-card">
       <span class="label">Edge service</span>
@@ -225,6 +237,13 @@
   }
   .status-card .value.mono {
     font-size: 11px;
+  }
+  .status-card .sub {
+    display: block;
+    margin-top: 4px;
+    font-size: 10px;
+    color: #9aa0a6;
+    font-family: ui-monospace, monospace;
   }
   .ram-row {
     display: flex;

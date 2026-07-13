@@ -362,6 +362,8 @@ func postLogsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	touchApkRelay()
+
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":      true,
 		"stored":  len(entries),

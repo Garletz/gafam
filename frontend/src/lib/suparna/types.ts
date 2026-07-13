@@ -32,13 +32,17 @@ export const DEFAULT_SUPARNA_RULES: SuparnaRules = {
 };
 
 export type EdgeStatus = {
-	phone_reachable: boolean;
+	apk_relay_online: boolean;
+	apk_relay_last_seen?: string;
+	scrcpy_bridge_connected: boolean;
 	edge_ready: boolean;
 	edge_service: string;
 	scrcpy_blocking: boolean;
 	ram_reserved_mb: number;
 	model_on_device: boolean;
 	phase?: string;
+	/** @deprecated use apk_relay_online */
+	phone_reachable?: boolean;
 };
 
 export type EdgeInferResult = {

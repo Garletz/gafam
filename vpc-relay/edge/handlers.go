@@ -22,13 +22,16 @@ func BuildStatus(hub StatusFunc) Status {
 		snap = hub()
 	}
 	return Status{
-		PhoneReachable: snap.PhoneReachable,
-		EdgeReady:      false,
-		EdgeService:    "not_deployed",
-		ScrcpyBlocking: snap.ScrcpyBlocking,
-		RamReservedMb:  0,
-		ModelOnDevice:  false,
-		Phase:          "2b_stub",
+		ApkRelayOnline:        snap.ApkRelayOnline,
+		ApkRelayLastSeen:      snap.ApkRelayLastSeen,
+		ScrcpyBridgeConnected: snap.ScrcpyBridgeConnected,
+		PhoneReachable:        snap.ApkRelayOnline,
+		EdgeReady:             false,
+		EdgeService:           "not_deployed",
+		ScrcpyBlocking:        snap.ScrcpyBlocking,
+		RamReservedMb:         0,
+		ModelOnDevice:         false,
+		Phase:                 "2b_stub",
 	}
 }
 
@@ -48,7 +51,7 @@ func resolveTier(reqTier string, snap HubSnapshot) string {
 	case "light", "deep":
 		return t
 	default:
-		if snap.PhoneReachable && !snap.ScrcpyBlocking {
+		if snap.ApkRelayOnline && !snap.ScrcpyBlocking {
 			return "deep"
 		}
 		return "light"
@@ -98,10 +101,10 @@ func InferHandler(hub StatusFunc) http.HandlerFunc {
 		latency := int(time.Since(start).Milliseconds())
 
 		if tierUsed == "deep" {
-			if !snap.PhoneReachable {
+			if !snap.ApkRelayOnline {
 				sendJSON(w, http.StatusServiceUnavailable, InferResponse{
 					Status:    "error",
-					Error:     "phone_offline: APK relay not connected to VPC",
+					Error:     "apk_relay_offline: no recent APK HTTP activity (outbox/logs). Open the relay app on the phone.",
 					Prompt:    prompt,
 					TierUsed:  tierUsed,
 					Engine:    "none",
@@ -153,8 +156,8 @@ func WakeHandler(hub StatusFunc) http.HandlerFunc {
 			sendJSON(w, http.StatusConflict, map[string]string{"error": "heavy_job_busy"})
 			return
 		}
-		if !snap.PhoneReachable {
-			sendJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "phone_offline"})
+		if !snap.ApkRelayOnline {
+			sendJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "apk_relay_offline"})
 			return
 		}
 		sendJSON(w, http.StatusAccepted, map[string]string{
