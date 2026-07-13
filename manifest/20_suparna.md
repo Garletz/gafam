@@ -212,22 +212,13 @@ Session web confirmée · pas d'endpoint public · sanitize prompt injection · 
 
 | Fichier | Rôle |
 | :--- | :--- |
-| `deploy-vpc.sh` (racine) | Déploie `gafam-api` + appelle les scripts **vpc-relay** |
+| `deploy-vpc.sh` (racine) | **Auto-install** Manager (`curl \| bash`) : **swap 4 Go inline**, `gafam-api` + sock, Qwen via scripts GitHub raw |
 | `vpc-relay/docker-compose.qwen.yml` | Sidecar `gafam-qwen`, `mem_limit: 520m`, `-c 2048 --parallel 1` |
-| `vpc-relay/scripts/setup-vpc-swap.sh` | `/swapfile` 4 Go, `swappiness=40` |
+| `vpc-relay/scripts/setup-vpc-swap.sh` | Même logique swap (manuel / debug) — le deploy n’en dépend plus |
 | `vpc-relay/scripts/qwen-install.sh` | GGUF → `/root/gafam_data/qwen/` + crée le conteneur |
 | `vpc-relay/scripts/qwen-ctl.sh` | `start` / `stop` / `status` |
 
-**Règle 1 Go :** jamais Qwen + scrcpy en parallèle. Wake → analyse → stop.
-
-```bash
-bash deploy-vpc.sh
-bash vpc-relay/scripts/qwen-ctl.sh start
-# gafam-api (env QWEN_URL) → http://gafam-qwen:8080
-bash vpc-relay/scripts/qwen-ctl.sh stop
-```
-
-Modèle : `unsloth/Qwen3-0.6B-GGUF` · `Qwen3-0.6B-Q4_K_M.gguf` (~380 Mo).
+**Install auto (Manager) :** `curl …/deploy-vpc.sh | bash` → swap + API + Qwen (stoppé), sans fichiers locaux.
 
 ---
 

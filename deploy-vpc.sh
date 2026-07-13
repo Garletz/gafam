@@ -2,11 +2,14 @@
 set -e
 
 # GAFAM VPC Installation Script
-# Inspired by Outline Server deployment logic
+# Auto-install (Manager): curl -sSL …/deploy-vpc.sh | bash
+# Tout le nécessaire (swap, Qwen) est auto-contenu ou tiré depuis GitHub raw.
 
 echo "=========================================="
 echo "🚀 GAFAM VPC Node Deployment"
 echo "=========================================="
+
+REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/Garletz/gafam/main}"
 
 # 1. Check for Docker
 if ! command -v docker &> /dev/null; then
@@ -39,12 +42,54 @@ fi
 # Shared Docker network (gafam-api ↔ watchtower ↔ gafam-qwen)
 docker network create gafam-net 2>/dev/null || true
 
-# 3b. Swap 4 Go (rêve 1 Go — filet pour sidecar Qwen dans vpc-relay)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RELAY_SCRIPTS="$SCRIPT_DIR/vpc-relay/scripts"
-if [ "${SKIP_SWAP:-0}" != "1" ] && [ -f "$RELAY_SCRIPTS/setup-vpc-swap.sh" ]; then
-    echo "[*] Ensuring 4G swap (1 Go VPS + Qwen)..."
-    bash "$RELAY_SCRIPTS/setup-vpc-swap.sh" || echo "[!] Swap setup skipped/failed (non-fatal)."
+# 3b. Swap 4 Go — INLINE (obligatoire pour curl|bash : pas de scripts/ locaux)
+# Rêve 1 Go RAM + Qwen : filet OOM, idempotent, persisté dans fstab.
+ensure_vpc_swap() {
+    local SWAPFILE="${SWAPFILE:-/swapfile}"
+    local SWAP_SIZE="${SWAP_SIZE:-4G}"
+
+    if swapon --show 2>/dev/null | grep -q .; then
+        echo "[+] Swap already active:"
+        swapon --show
+        return 0
+    fi
+
+    if [ ! -f "$SWAPFILE" ]; then
+        echo "[*] Creating ${SWAP_SIZE} swap at ${SWAPFILE}..."
+        if ! fallocate -l "$SWAP_SIZE" "$SWAPFILE" 2>/dev/null; then
+            local mb=4096
+            case "$SWAP_SIZE" in
+                *G|*g) mb=$(( ${SWAP_SIZE%[Gg]} * 1024 )) ;;
+                *M|*m) mb=${SWAP_SIZE%[Mm]} ;;
+            esac
+            dd if=/dev/zero of="$SWAPFILE" bs=1M count="$mb" status=progress
+        fi
+        chmod 600 "$SWAPFILE"
+        mkswap "$SWAPFILE"
+    fi
+
+    swapon "$SWAPFILE" || true
+
+    if ! grep -qE "^${SWAPFILE}[[:space:]]" /etc/fstab 2>/dev/null; then
+        echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+        echo "[+] Swap persisted in /etc/fstab"
+    fi
+
+    mkdir -p /etc/sysctl.d
+    cat > /etc/sysctl.d/99-gafam-swap.conf <<'SYSCTL'
+vm.swappiness=40
+vm.vfs_cache_pressure=50
+SYSCTL
+    sysctl -p /etc/sysctl.d/99-gafam-swap.conf >/dev/null 2>&1 || true
+
+    echo "[+] Swap ready for 1 Go VPC + Qwen"
+    swapon --show || true
+    free -h || true
+}
+
+if [ "${SKIP_SWAP:-0}" != "1" ]; then
+    echo "[*] Ensuring 4G swap (auto VPC config)..."
+    ensure_vpc_swap || echo "[!] Swap setup failed (non-fatal)."
 fi
 
 # 4. Pull the pre-built GAFAM API image from GitHub Container Registry
@@ -94,10 +139,33 @@ docker run -d \
   -e QWEN_MODEL_PATH="/app/data/qwen/Qwen3-0.6B-Q4_K_M.gguf" \
   ghcr.io/garletz/gafam:latest
 
-# 7. Sidecar Qwen (vpc-relay) — conteneur STOPPÉ, wake à la demande
-if [ "${INSTALL_QWEN:-1}" = "1" ] && [ -f "$RELAY_SCRIPTS/qwen-install.sh" ]; then
-    echo "[*] Installing Qwen sidecar via vpc-relay (stopped until analysis)..."
-    bash "$RELAY_SCRIPTS/qwen-install.sh" || echo "[!] Qwen install skipped/failed (non-fatal)."
+# 7. Sidecar Qwen — scripts depuis le clone local OU GitHub raw (curl|bash)
+install_qwen_sidecar() {
+    local work="/root/gafam-setup"
+    mkdir -p "$work/vpc-relay/scripts"
+
+    local SCRIPT_DIR
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/scripts/qwen-install.sh" ]; then
+        echo "[*] Using local vpc-relay/scripts..."
+        cp -f "$SCRIPT_DIR/vpc-relay/scripts/"*.sh "$work/vpc-relay/scripts/" 2>/dev/null || true
+        cp -f "$SCRIPT_DIR/vpc-relay/docker-compose.qwen.yml" "$work/vpc-relay/" 2>/dev/null || true
+    else
+        echo "[*] Fetching Qwen install scripts from GitHub..."
+        curl -fsSL "$REPO_RAW/vpc-relay/scripts/qwen-install.sh" -o "$work/vpc-relay/scripts/qwen-install.sh"
+        curl -fsSL "$REPO_RAW/vpc-relay/scripts/qwen-ctl.sh" -o "$work/vpc-relay/scripts/qwen-ctl.sh"
+        curl -fsSL "$REPO_RAW/vpc-relay/docker-compose.qwen.yml" -o "$work/vpc-relay/docker-compose.qwen.yml"
+    fi
+
+    chmod +x "$work/vpc-relay/scripts/"*.sh
+    # qwen-install résout RELAY_DIR = parent de scripts/
+    bash "$work/vpc-relay/scripts/qwen-install.sh"
+}
+
+if [ "${INSTALL_QWEN:-1}" = "1" ]; then
+    echo "[*] Installing Qwen sidecar (stopped until analysis)..."
+    install_qwen_sidecar || echo "[!] Qwen install skipped/failed (non-fatal)."
 fi
 
 echo ""
@@ -108,7 +176,6 @@ echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
 echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes."
 echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
-echo "🪶 Qwen (vpc-relay): stopped by default. Wake:"
-echo "   bash vpc-relay/scripts/qwen-ctl.sh start"
-echo "   Skip Qwen: INSTALL_QWEN=0 bash deploy-vpc.sh"
+echo "🪶 Qwen: stopped by default (1 Go). Auto wake via Suparna API."
+echo "   Swap 4G: enabled by this script (SKIP_SWAP=1 to skip)."
 echo "=========================================="
