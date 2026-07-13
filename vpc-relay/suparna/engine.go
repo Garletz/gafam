@@ -66,8 +66,7 @@ func AnalyzeDay(day string, lines []LogLine, force bool, heavyBusy HeavyBusyFunc
 		return nil, err
 	}
 
-	sample := sampleLines(lines, 400)
-	prompt := formatPrompt(day, sample)
+	prompt := buildPrompt(day, lines)
 	raw, err := complete(ctx, prompt, 512)
 	if err != nil {
 		return nil, err

@@ -39,6 +39,23 @@ func readingPath(day string, llm bool) string {
 	return filepath.Join(readingsDir(), name)
 }
 
+// llama.cpp -c 2048 on 1 Go VPS: ~512 reserved for output, rest for prompt.
+const (
+	qwenContextTokens = 2048
+	qwenPredictTokens = 512
+	promptOverheadTok = 320 // instructions + JSON schema
+	maxLogLineChars   = 96
+)
+
+func maxPromptTokens() int {
+	return qwenContextTokens - qwenPredictTokens - promptOverheadTok
+}
+
+func estimateTokens(s string) int {
+	// Conservative for Qwen tokenizer on mixed log text.
+	return (len(s)*2 + 5) / 6
+}
+
 func sampleLines(lines []LogLine, max int) []LogLine {
 	if len(lines) <= max {
 		return lines
@@ -78,10 +95,23 @@ func formatPrompt(day string, lines []LogLine) string {
 	b.WriteString("\nLangue du summary: français. N'invente rien.\n\nLOGS:\n")
 	for _, ln := range lines {
 		fmt.Fprintf(&b, "%s [%s/%s] %s: %s\n",
-			formatTS(ln.Ts), ln.Source, ln.Level, ln.Tag, truncate(ln.Message, 180))
+			formatTS(ln.Ts), ln.Source, ln.Level, ln.Tag, truncate(ln.Message, maxLogLineChars))
 	}
 	b.WriteString("\nJSON:")
 	return b.String()
+}
+
+// buildPrompt fits log sample into Qwen context (2048 on 1 Go VPS).
+func buildPrompt(day string, lines []LogLine) string {
+	budget := maxPromptTokens()
+	for max := 80; max >= 8; max -= 4 {
+		sample := sampleLines(lines, max)
+		prompt := formatPrompt(day, sample)
+		if estimateTokens(prompt) <= budget {
+			return prompt
+		}
+	}
+	return formatPrompt(day, sampleLines(lines, 8))
 }
 
 func formatTS(ts int64) string {
