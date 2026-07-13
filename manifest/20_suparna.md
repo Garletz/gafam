@@ -82,11 +82,11 @@ Conformément à la [philosophie](1_core_philosophy.md) (pilier B — le VPC com
 
 | Option deploy | Description | RAM pic |
 | :--- | :--- | :--- |
-| **A — Sidecar** `gafam-suparna` | Container ONNX dédié | ~400–600 Mo |
-| **B — Subprocess** | `onnxruntime-genai` spawné par `vpc-relay` | À la demande |
+| **A — Sidecar** `gafam-qwen` (`llama.cpp` + GGUF) | Conteneur dédié, wake/stop | ~500 Mo actif, **0** stoppé |
+| **B — Subprocess ONNX** | `onnxruntime-genai` (abandonné sur 1 Go — OOM torch) | trop lourd |
 | **C — Ollama** | Dev seulement | ~800 Mo+ |
 
-**Recommandation Phase 1 :** **B** — une invocation à la fois, timeout 60s.
+**Recommandation Phase 1 :** **A** — sidecar GGUF, **une invocation à la fois**, stop après usage.
 
 ---
 
@@ -206,10 +206,28 @@ Session web confirmée · pas d'endpoint public · sanitize prompt injection · 
 
 ---
 
-## Déploiement
+## Déploiement VPS (rêve 1 Go + swap)
 
-- Modèle : `models/qwen3-0.6b-suparna-q4.onnx` (volume persistant).
-- Settings → VPS Node : **Suparna model** (version, date).
+**Stack retenue :** sidecar `llama.cpp` + GGUF Q4_K_M — **pas** de build ONNX/torch sur le droplet.
+
+| Fichier | Rôle |
+| :--- | :--- |
+| `deploy-vpc.sh` (racine) | Déploie `gafam-api` + appelle les scripts **vpc-relay** |
+| `vpc-relay/docker-compose.qwen.yml` | Sidecar `gafam-qwen`, `mem_limit: 520m`, `-c 2048 --parallel 1` |
+| `vpc-relay/scripts/setup-vpc-swap.sh` | `/swapfile` 4 Go, `swappiness=40` |
+| `vpc-relay/scripts/qwen-install.sh` | GGUF → `/root/gafam_data/qwen/` + crée le conteneur |
+| `vpc-relay/scripts/qwen-ctl.sh` | `start` / `stop` / `status` |
+
+**Règle 1 Go :** jamais Qwen + scrcpy en parallèle. Wake → analyse → stop.
+
+```bash
+bash deploy-vpc.sh
+bash vpc-relay/scripts/qwen-ctl.sh start
+# gafam-api (env QWEN_URL) → http://gafam-qwen:8080
+bash vpc-relay/scripts/qwen-ctl.sh stop
+```
+
+Modèle : `unsloth/Qwen3-0.6B-GGUF` · `Qwen3-0.6B-Q4_K_M.gguf` (~380 Mo).
 
 ---
 
@@ -229,7 +247,7 @@ Session web confirmée · pas d'endpoint public · sanitize prompt injection · 
 
 | Contexte | Nom |
 | :--- | :--- |
-| Code / Docker | `suparna`, `gafam-suparna` |
+| Code / Docker | `vpc-relay/` · `gafam-qwen` · `vpc-relay/scripts/qwen-*.sh` |
 | API | `/api/web/logs/suparna` |
 | UI (bouton) | **Invoquer Suparna** ou icône 🪶 (plume) |
 | Settings | **Suparna** — modèle & statut |
@@ -250,6 +268,6 @@ Session web confirmée · pas d'endpoint public · sanitize prompt injection · 
 
 > **Les logs sont le murmure du corps. Suparna est l'oiseau sur le VPC qui, pour l'instant, traduit — et peut-être un jour suggère — sans jamais quitter ton ciel.**
 
-On ne promet pas un oracle ni un pilote automatique. On installe une **présence légère**, un nom qu'on ne comprend pas tout de suite, et on verra ce qu'elle devient quand Qwen3-0.6B ONNX aura lu assez de journées.
+On ne promet pas un oracle ni un pilote automatique. On installe une **présence légère**, un nom qu'on ne comprend pas tout de suite, et on verra ce qu'elle devient quand Qwen3-0.6B GGUF aura lu assez de journées.
 
-*Prochaine étape : `POST /api/web/logs/suparna` + POC ONNX sur droplet de test.*
+*Infra : modèle GGUF sur disque VPC, wake RAM à la demande, auto-stop. Endpoint `POST /api/web/logs/suparna` + bouton Logs.*

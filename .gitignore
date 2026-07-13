@@ -22,6 +22,10 @@ data/
 *.log
 *.zip
 
+# LLM weights (download on VPS via scripts/qwen-install.sh)
+*.gguf
+*.gguf.partial
+
 # Wrangler / Cloudflare
 .wrangler/
 wrangler.toml.local

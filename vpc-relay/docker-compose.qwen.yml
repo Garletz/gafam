@@ -1,0 +1,28 @@
+# Sidecar Qwen — vpc-relay / GAFAM VPC (rêve 1 Go + swap)
+# Conteneur STOPPÉ par défaut. Wake: scripts/qwen-ctl.sh start
+services:
+  gafam-qwen:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: gafam-qwen
+    mem_limit: 520m
+    memswap_limit: 2g
+    expose:
+      - "8080"
+    volumes:
+      - /root/gafam_data/qwen/Qwen3-0.6B-Q4_K_M.gguf:/models/model.gguf:ro
+    command: >
+      -m /models/model.gguf
+      -c 2048
+      --parallel 1
+      -t 1
+      -ngl 0
+      --host 0.0.0.0
+      --port 8080
+    restart: "no"
+    networks:
+      - gafam-net
+
+networks:
+  gafam-net:
+    external: true
+    name: gafam-net

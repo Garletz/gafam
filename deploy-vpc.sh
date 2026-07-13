@@ -36,8 +36,16 @@ if [ -z "$WATCHTOWER_TOKEN" ]; then
     echo "[+] Generated WATCHTOWER_TOKEN for manual updates from gafam.cloud."
 fi
 
-# Shared Docker network (gafam-api ↔ watchtower)
+# Shared Docker network (gafam-api ↔ watchtower ↔ gafam-qwen)
 docker network create gafam-net 2>/dev/null || true
+
+# 3b. Swap 4 Go (rêve 1 Go — filet pour sidecar Qwen dans vpc-relay)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RELAY_SCRIPTS="$SCRIPT_DIR/vpc-relay/scripts"
+if [ "${SKIP_SWAP:-0}" != "1" ] && [ -f "$RELAY_SCRIPTS/setup-vpc-swap.sh" ]; then
+    echo "[*] Ensuring 4G swap (1 Go VPS + Qwen)..."
+    bash "$RELAY_SCRIPTS/setup-vpc-swap.sh" || echo "[!] Swap setup skipped/failed (non-fatal)."
+fi
 
 # 4. Pull the pre-built GAFAM API image from GitHub Container Registry
 echo "[*] Downloading GAFAM API..."
@@ -74,6 +82,7 @@ docker run -d \
   -p 5151:5151 \
   -v /root/vpc-relay:/app/certs \
   -v /root/gafam_data:/app/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -e PORT="5150" \
   -e TLS_PORT="5151" \
   -e TLS_CERT="/app/certs/cert.pem" \
@@ -81,7 +90,15 @@ docker run -d \
   -e JWT_SECRET="${JWT_SECRET}" \
   -e WATCHTOWER_TOKEN="${WATCHTOWER_TOKEN}" \
   -e WATCHTOWER_URL="http://watchtower:8080/v1/update" \
+  -e QWEN_URL="http://gafam-qwen:8080" \
+  -e QWEN_MODEL_PATH="/app/data/qwen/Qwen3-0.6B-Q4_K_M.gguf" \
   ghcr.io/garletz/gafam:latest
+
+# 7. Sidecar Qwen (vpc-relay) — conteneur STOPPÉ, wake à la demande
+if [ "${INSTALL_QWEN:-1}" = "1" ] && [ -f "$RELAY_SCRIPTS/qwen-install.sh" ]; then
+    echo "[*] Installing Qwen sidecar via vpc-relay (stopped until analysis)..."
+    bash "$RELAY_SCRIPTS/qwen-install.sh" || echo "[!] Qwen install skipped/failed (non-fatal)."
+fi
 
 echo ""
 echo "=========================================="
@@ -91,4 +108,7 @@ echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
 echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes."
 echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
+echo "🪶 Qwen (vpc-relay): stopped by default. Wake:"
+echo "   bash vpc-relay/scripts/qwen-ctl.sh start"
+echo "   Skip Qwen: INSTALL_QWEN=0 bash deploy-vpc.sh"
 echo "=========================================="
