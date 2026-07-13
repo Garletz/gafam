@@ -19,17 +19,24 @@ type Status struct {
 	RamReservedMb         int    `json:"ram_reserved_mb"`
 	ModelOnDevice         bool   `json:"model_on_device"`
 	Phase                 string `json:"phase"`
-	EdgeMessage           string `json:"edge_message,omitempty"`
-	RamBudgetMb           int    `json:"ram_budget_mb,omitempty"`
+	EdgeMessage             string `json:"edge_message,omitempty"`
+	RamRequestMb            int    `json:"ram_request_mb,omitempty"`
+	EdgeRamCapMb            int    `json:"edge_ram_cap_mb,omitempty"`
+	DeviceRamTotalMb        int    `json:"device_ram_total_mb,omitempty"`
+	DeviceRamAvailMb        int    `json:"device_ram_avail_mb,omitempty"`
+	EdgeRamMaxDeliverableMb int    `json:"edge_ram_max_deliverable_mb,omitempty"`
+	// Deprecated: use ram_request_mb.
+	RamBudgetMb int `json:"ram_budget_mb,omitempty"`
 	// Deprecated: use apk_relay_online. Kept for older front builds.
 	PhoneReachable bool `json:"phone_reachable"`
 }
 
 // InferRequest POST /api/web/edge/infer
 type InferRequest struct {
-	Prompt      string `json:"prompt"`
-	Tier        string `json:"tier"` // auto | light | deep
-	RamBudgetMb int    `json:"ram_budget_mb"`
+	Prompt       string `json:"prompt"`
+	Tier         string `json:"tier"` // auto | light | deep
+	RamRequestMb int    `json:"ram_request_mb"`
+	RamBudgetMb  int    `json:"ram_budget_mb"` // legacy
 }
 
 // InferResponse one-shot test reply (no session history).

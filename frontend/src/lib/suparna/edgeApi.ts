@@ -1,19 +1,32 @@
 import type { EdgeInferResult, EdgeStatus } from './types';
 
-const RAM_BUDGET_KEY = 'gafam_edge_ram_budget_mb';
+const RAM_REQUEST_KEY = 'gafam_edge_ram_request_mb';
 
-export function getRamBudgetMb(): number {
+export function getRamRequestMb(maxDeliverable?: number): number {
+	const ceiling = maxDeliverable && maxDeliverable >= 512 ? maxDeliverable : 4096;
 	try {
-		const raw = localStorage.getItem(RAM_BUDGET_KEY);
-		const n = raw ? parseInt(raw, 10) : 2048;
-		return Number.isFinite(n) ? Math.min(4096, Math.max(512, n)) : 2048;
+		const raw = localStorage.getItem(RAM_REQUEST_KEY);
+		const n = raw ? parseInt(raw, 10) : Math.min(2048, ceiling);
+		return Number.isFinite(n) ? Math.min(ceiling, Math.max(512, n)) : Math.min(2048, ceiling);
 	} catch {
-		return 2048;
+		return Math.min(2048, ceiling);
 	}
 }
 
+export function setRamRequestMb(mb: number, maxDeliverable?: number) {
+	const ceiling = maxDeliverable && maxDeliverable >= 512 ? maxDeliverable : 4096;
+	const clamped = Math.min(ceiling, Math.max(512, mb));
+	localStorage.setItem(RAM_REQUEST_KEY, String(clamped));
+}
+
+/** @deprecated use getRamRequestMb */
+export function getRamBudgetMb(): number {
+	return getRamRequestMb();
+}
+
+/** @deprecated use setRamRequestMb */
 export function setRamBudgetMb(mb: number) {
-	localStorage.setItem(RAM_BUDGET_KEY, String(mb));
+	setRamRequestMb(mb);
 }
 
 export async function fetchEdgeStatus(
@@ -34,7 +47,8 @@ export async function runEdgeInfer(
 	vpcUrl: string,
 	sessionToken: string,
 	prompt: string,
-	tier: 'auto' | 'deep' | 'light' = 'deep'
+	tier: 'auto' | 'deep' | 'light' = 'deep',
+	ramRequestMb?: number
 ): Promise<{ ok: boolean; result?: EdgeInferResult; error?: string }> {
 	try {
 		const params = new URLSearchParams({ vpcUrl, token: sessionToken });
@@ -44,7 +58,7 @@ export async function runEdgeInfer(
 			body: JSON.stringify({
 				prompt,
 				tier,
-				ram_budget_mb: getRamBudgetMb()
+				ram_request_mb: ramRequestMb ?? getRamRequestMb()
 			})
 		});
 		const data: EdgeInferResult = await res.json();
@@ -60,14 +74,14 @@ export async function runEdgeInfer(
 export async function edgeWake(
 	vpcUrl: string,
 	sessionToken: string,
-	ramBudgetMb?: number
+	ramRequestMb?: number
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
 	try {
 		const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'wake' });
 		const res = await fetch(`/api/proxy/edge?${params}`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ ram_budget_mb: ramBudgetMb ?? getRamBudgetMb() })
+			body: JSON.stringify({ ram_request_mb: ramRequestMb ?? getRamRequestMb() })
 		});
 		const data = await res.json();
 		if (!res.ok) return { ok: false, error: data.error || 'Wake failed' };

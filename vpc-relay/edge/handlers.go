@@ -28,18 +28,23 @@ func BuildStatus(hub StatusFunc) Status {
 		phase = "2c_waiting_apk"
 	}
 	return Status{
-		ApkRelayOnline:        snap.ApkRelayOnline,
-		ApkRelayLastSeen:      snap.ApkRelayLastSeen,
-		ScrcpyBridgeConnected: snap.ScrcpyBridgeConnected,
-		PhoneReachable:        snap.ApkRelayOnline,
-		EdgeReady:             edgeReadyForStatus(),
-		EdgeService:           svc,
-		ScrcpyBlocking:        snap.ScrcpyBlocking,
-		RamReservedMb:         report.RamReservedMb,
-		ModelOnDevice:         report.ModelOnDevice,
-		Phase:                 phase,
-		EdgeMessage:           report.Message,
-		RamBudgetMb:           report.RamBudgetMb,
+		ApkRelayOnline:          snap.ApkRelayOnline,
+		ApkRelayLastSeen:        snap.ApkRelayLastSeen,
+		ScrcpyBridgeConnected:   snap.ScrcpyBridgeConnected,
+		PhoneReachable:          snap.ApkRelayOnline,
+		EdgeReady:               edgeReadyForStatus(),
+		EdgeService:             svc,
+		ScrcpyBlocking:          snap.ScrcpyBlocking,
+		RamReservedMb:           report.RamReservedMb,
+		ModelOnDevice:           report.ModelOnDevice,
+		Phase:                   phase,
+		EdgeMessage:             report.Message,
+		RamRequestMb:            report.RamRequestMb,
+		EdgeRamCapMb:            report.EdgeRamCapMb,
+		DeviceRamTotalMb:        report.DeviceRamTotalMb,
+		DeviceRamAvailMb:        report.DeviceRamAvailMb,
+		EdgeRamMaxDeliverableMb: report.EdgeRamMaxDeliverableMb,
+		RamBudgetMb:             report.RamRequestMb,
 	}
 }
 
@@ -192,14 +197,23 @@ func WakeHandler(hub StatusFunc) http.HandlerFunc {
 		}
 		ram := 2048
 		var body WakeRequest
-		if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.RamBudgetMb > 0 {
-			ram = body.RamBudgetMb
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			if body.RamRequestMb > 0 {
+				ram = body.RamRequestMb
+			} else if body.RamBudgetMb > 0 {
+				ram = body.RamBudgetMb
+			}
 		}
-		QueueWake(ram)
+		effective, capped := QueueWake(ram)
+		msg := "wake queued for APK — poll within ~2s"
+		if capped && apkReportFresh() {
+			report := currentApkReport()
+			msg = fmt.Sprintf("requested %d MB → queued %d MB (tel max %d MB)", ram, effective, report.EdgeRamMaxDeliverableMb)
+		}
 		sendJSON(w, http.StatusAccepted, map[string]interface{}{
-			"status":        "queued",
-			"message":       "wake queued for APK — poll within ~2s",
-			"ram_budget_mb": ram,
+			"status":         "queued",
+			"message":        msg,
+			"ram_request_mb": effective,
 		})
 	}
 }

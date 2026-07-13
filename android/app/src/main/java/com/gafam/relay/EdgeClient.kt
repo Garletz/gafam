@@ -8,7 +8,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 /**
- * Polls VPC for edge wake/stop commands and reports local edge service state.
+ * Polls VPC for edge wake/stop commands and reports local edge + RAM policy state.
  */
 object EdgeClient {
     private const val TAG = "GAFAM_EdgeClient"
@@ -19,10 +19,16 @@ object EdgeClient {
         val jwtSecret = prefs.getString("jwtSecret", null) ?: return
         val client = ApiClient.getClient(context) ?: return
 
+        val snap = EdgeRamPolicy.snapshot(context)
+
         val body = JSONObject().apply {
             put("edge_service", EdgeInferenceService.edgeService)
-            put("ram_budget_mb", EdgeInferenceService.ramBudgetMb)
+            put("ram_request_mb", EdgeInferenceService.ramRequestMb)
             put("ram_reserved_mb", EdgeInferenceService.ramReservedMb)
+            put("edge_ram_cap_mb", snap.capMb)
+            put("device_ram_total_mb", snap.totalMb)
+            put("device_ram_avail_mb", snap.availMb)
+            put("edge_ram_max_deliverable_mb", snap.maxDeliverableMb)
             put("model_on_device", false)
             put("message", EdgeInferenceService.statusMessage)
         }
@@ -45,10 +51,10 @@ object EdgeClient {
                 val command = resp.optString("command", "none")
                 when (command) {
                     "wake" -> {
-                        val budget = resp.optInt("ram_budget_mb", EdgeInferenceService.ramBudgetMb)
-                        Log.i(TAG, "VPC command: wake budget=$budget")
-                        LogShipper.event(context, "I", "edge", "Wake command from VPC ($budget MB)")
-                        EdgeInferenceService.startWake(context.applicationContext, budget)
+                        val requestMb = resp.optInt("ram_request_mb", 512)
+                        Log.i(TAG, "VPC command: wake request=$requestMb")
+                        LogShipper.event(context, "I", "edge", "Wake from VPC ($requestMb MB requested)")
+                        EdgeInferenceService.startWake(context.applicationContext, requestMb)
                     }
                     "stop" -> {
                         Log.i(TAG, "VPC command: stop")

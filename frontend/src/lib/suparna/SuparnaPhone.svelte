@@ -5,15 +5,15 @@
     edgeStop,
     edgeWake,
     fetchEdgeStatus,
-    getRamBudgetMb,
+    getRamRequestMb,
     runEdgeInfer,
-    setRamBudgetMb
+    setRamRequestMb
   } from './edgeApi';
 
   let { vpcUrl, sessionToken }: { vpcUrl: string; sessionToken: string } = $props();
 
   let status: EdgeStatus | null = $state(null);
-  let ramBudget = $state(2048);
+  let ramRequest = $state(2048);
   let customPrompt = $state('');
   let running = $state(false);
   let actionMsg = $state('');
@@ -21,8 +21,24 @@
   let clearTimer: ReturnType<typeof setTimeout> | null = null;
   let pollId: ReturnType<typeof setInterval> | null = null;
 
+  const ramMax = $derived(
+    status?.edge_ram_max_deliverable_mb && status.edge_ram_max_deliverable_mb >= 512
+      ? status.edge_ram_max_deliverable_mb
+      : 4096
+  );
+
   async function refreshStatus() {
+    const prev = status;
     status = await fetchEdgeStatus(vpcUrl, sessionToken);
+    const max = status?.edge_ram_max_deliverable_mb && status.edge_ram_max_deliverable_mb >= 512
+      ? status.edge_ram_max_deliverable_mb
+      : 4096;
+    if (ramRequest > max) {
+      ramRequest = max;
+      setRamRequestMb(ramRequest, max);
+    } else if (!prev && status) {
+      ramRequest = getRamRequestMb(max);
+    }
   }
 
   function scheduleClear() {
@@ -44,7 +60,7 @@
     }
     lastShot = null;
 
-    const { ok, result, error } = await runEdgeInfer(vpcUrl, sessionToken, text, 'deep');
+    const { ok, result, error } = await runEdgeInfer(vpcUrl, sessionToken, text, 'deep', ramRequest);
     running = false;
 
     if (result) {
@@ -57,7 +73,7 @@
 
   async function doWake() {
     actionMsg = '';
-    const r = await edgeWake(vpcUrl, sessionToken, ramBudget);
+    const r = await edgeWake(vpcUrl, sessionToken, ramRequest);
     actionMsg = r.ok
       ? (r.message || 'Wake queued — check phone notif in ~2s')
       : (r.error || 'Wake failed');
@@ -76,11 +92,11 @@
   }
 
   function onRamChange() {
-    setRamBudgetMb(ramBudget);
+    setRamRequestMb(ramRequest, ramMax);
   }
 
   onMount(() => {
-    ramBudget = getRamBudgetMb();
+    ramRequest = getRamRequestMb();
     refreshStatus();
     pollId = setInterval(refreshStatus, 10_000);
   });
@@ -95,7 +111,7 @@
   <div class="panel__intro">
     <p>
       One-shot tester — pas d’historique. L’edge L2 utilise le <strong>relay APK</strong> (HTTP), pas le bridge ADB/scrcpy.
-      Le bridge scrcpy sert uniquement au remote control.
+      Le plafond RAM est réglé une fois sur le téléphone ; ici tu choisis combien utiliser pour <strong>cette tâche</strong>.
     </p>
   </div>
 
@@ -124,6 +140,19 @@
       {/if}
     </div>
     <div class="status-card">
+      <span class="label">Cap tel</span>
+      <span class="value mono">{status?.edge_ram_cap_mb ? `${status.edge_ram_cap_mb} MB` : '—'}</span>
+      {#if status?.device_ram_avail_mb}
+        <span class="sub">dispo {status.device_ram_avail_mb} / {status.device_ram_total_mb ?? '?'} MB</span>
+      {/if}
+    </div>
+    <div class="status-card">
+      <span class="label">Max livrable</span>
+      <span class="value mono">
+        {status?.edge_ram_max_deliverable_mb ? `${status.edge_ram_max_deliverable_mb} MB` : '—'}
+      </span>
+    </div>
+    <div class="status-card">
       <span class="label">scrcpy block</span>
       <span class="value" class:warn={status?.scrcpy_blocking}>{status?.scrcpy_blocking ? 'yes' : 'no'}</span>
     </div>
@@ -134,17 +163,17 @@
   </div>
 
   <div class="ram-row">
-    <label for="ram-budget">RAM budget (consentement local)</label>
+    <label for="ram-request">RAM pour cette tâche</label>
     <input
-      id="ram-budget"
+      id="ram-request"
       type="range"
       min="512"
-      max="4096"
+      max={ramMax}
       step="256"
-      bind:value={ramBudget}
+      bind:value={ramRequest}
       onchange={onRamChange}
     />
-    <span class="ram-val">{ramBudget} MB</span>
+    <span class="ram-val">{ramRequest} / {ramMax} MB</span>
   </div>
 
   <div class="actions-row">
@@ -273,7 +302,7 @@
     font-family: ui-monospace, monospace;
     font-size: 12px;
     color: #5f6368;
-    min-width: 64px;
+    min-width: 96px;
   }
   .actions-row,
   .quick-btns,

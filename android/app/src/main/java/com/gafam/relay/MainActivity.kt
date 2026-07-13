@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private var vfyReceiver: BroadcastReceiver? = null
     private var smsUiReceiver: BroadcastReceiver? = null
     private var syncSwitchRef: android.widget.Switch? = null
+    private var edgeCapLabelRef: TextView? = null
     private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val statusRefreshRunnable = object : Runnable {
         override fun run() {
@@ -55,12 +56,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun edgeStatusLine(): String {
+        val snap = EdgeRamPolicy.snapshot(this)
         return when (EdgeInferenceService.edgeService) {
             EdgeInferenceService.STATE_AWAKE ->
-                "GAFAM Edge: AWAKE (${EdgeInferenceService.ramBudgetMb} MB budget)\n${EdgeInferenceService.statusMessage}"
+                "GAFAM Edge: AWAKE (${EdgeInferenceService.ramRequestMb} Mo tâche)\n" +
+                    "Cap tel ${snap.capMb} Mo · dispo ${snap.availMb} Mo · max ${snap.maxDeliverableMb} Mo\n" +
+                    EdgeInferenceService.statusMessage
+            EdgeInferenceService.STATE_ERROR ->
+                "GAFAM Edge: erreur — ${EdgeInferenceService.statusMessage}"
             EdgeInferenceService.STATE_WAKING -> "GAFAM Edge: waking…"
             EdgeInferenceService.STATE_STOPPING -> "GAFAM Edge: stopping…"
-            else -> "GAFAM Edge: idle — use Wake in Suparna → Phone"
+            else -> "GAFAM Edge: idle — cap ${snap.capMb} Mo, max livrable ${snap.maxDeliverableMb} Mo"
         }
     }
 
@@ -200,6 +206,39 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(syncContactsSwitch)
 
+        val edgeCapTitle = TextView(this)
+        edgeCapTitle.text = "\nMax RAM Edge (plafond tel)"
+        edgeCapTitle.textSize = 16f
+        edgeCapTitle.setTextColor(android.graphics.Color.WHITE)
+        edgeCapTitle.setTypeface(null, android.graphics.Typeface.BOLD)
+        layout.addView(edgeCapTitle)
+
+        val memSnap = EdgeRamPolicy.snapshot(this)
+        val edgeCapLabel = TextView(this)
+        edgeCapLabel.textSize = 13f
+        edgeCapLabel.setTextColor(android.graphics.Color.LTGRAY)
+        edgeCapLabel.text =
+            "Cap ${memSnap.capMb} Mo · RAM dispo ${memSnap.availMb}/${memSnap.totalMb} Mo · max livrable ${memSnap.maxDeliverableMb} Mo"
+        layout.addView(edgeCapLabel)
+        edgeCapLabelRef = edgeCapLabel
+
+        val edgeCapSeek = android.widget.SeekBar(this)
+        edgeCapSeek.max = ((8192 - 512) / 256)
+        edgeCapSeek.progress = ((EdgeRamPolicy.getCapMb(this) - 512) / 256)
+        edgeCapSeek.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val capMb = 512 + progress * 256
+                EdgeRamPolicy.setCapMb(this@MainActivity, capMb)
+                val snap = EdgeRamPolicy.snapshot(this@MainActivity)
+                edgeCapLabel.text =
+                    "Cap ${snap.capMb} Mo · RAM dispo ${snap.availMb}/${snap.totalMb} Mo · max livrable ${snap.maxDeliverableMb} Mo"
+            }
+            override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+        })
+        layout.addView(edgeCapSeek)
+
         // Store a reference to update it from the poller
         syncSwitchRef = syncContactsSwitch
 
@@ -283,6 +322,9 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         val url = prefs.getString("apiUrl", null)
         val phone = prefs.getString("myPhoneNumber", "Not Set")
+        val snap = EdgeRamPolicy.snapshot(this)
+        edgeCapLabelRef?.text =
+            "Cap ${snap.capMb} Mo · RAM dispo ${snap.availMb}/${snap.totalMb} Mo · max livrable ${snap.maxDeliverableMb} Mo"
         if (url != null) {
             statusText.text =
                 "Relay Agent is ACTIVE\n\nPhone: $phone\nConnected to:\n$url\n\n${edgeStatusLine()}\n\nWaiting for SMS...\nKeep the GAFAM notification ON (like a VPN)."

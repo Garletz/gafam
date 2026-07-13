@@ -11,8 +11,8 @@ android {
         applicationId = "com.gafam.relay"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2-edge2c1b"
+        versionCode = 4
+        versionName = "1.2-edge2c1c"
     }
 
     buildTypes {
