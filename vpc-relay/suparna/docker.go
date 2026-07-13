@@ -193,7 +193,7 @@ func completeOnce(ctx context.Context, prompt string, nPredict int) (string, err
 		"n_predict":   nPredict,
 		"temperature": 0.3,
 		"top_p":       0.9,
-		"stop":        []string{"```", "\n\n\n"},
+		"stop":        []string{"```", "\n\n\n", "\nLOGS:", "\nLangue"},
 		"stream":      false,
 	}
 	body, _ := json.Marshal(payload)

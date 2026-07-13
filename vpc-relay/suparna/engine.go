@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +13,6 @@ import (
 
 var (
 	analyzeMu sync.Mutex
-	jsonObjRe = regexp.MustCompile(`\{[\s\S]*\}`)
 )
 
 // HeavyBusy reports whether a remote-control session is active (caller supplies).
@@ -84,23 +82,69 @@ func analyzeDaySync(day string, lines []LogLine, force bool, heavyBusy HeavyBusy
 }
 
 func parseReading(day, content string) (*Reading, error) {
-	m := jsonObjRe.FindString(content)
+	raw := strings.TrimSpace(content)
+	// Strip optional markdown fence
+	if strings.HasPrefix(raw, "```") {
+		if i := strings.Index(raw[3:], "```"); i >= 0 {
+			inner := raw[3 : 3+i]
+			if j := strings.Index(inner, "\n"); j >= 0 {
+				inner = inner[j+1:]
+			}
+			raw = strings.TrimSpace(inner)
+		}
+	}
+
+	m := extractJSONObject(raw)
 	if m == "" {
 		return nil, fmt.Errorf("no json in model output: %s", truncate(content, 200))
 	}
 	var r Reading
 	if err := json.Unmarshal([]byte(m), &r); err != nil {
-		// try to fix trailing commas lightly
-		clean := strings.TrimSpace(m)
-		if err2 := json.Unmarshal([]byte(clean), &r); err2 != nil {
-			return nil, fmt.Errorf("invalid json from model: %w", err)
-		}
+		return nil, fmt.Errorf("invalid json from model: %w (snippet: %s)", err, truncate(m, 120))
 	}
 	r.Day = day
 	if r.Summary == "" {
 		r.Summary = "(empty summary)"
 	}
 	return &r, nil
+}
+
+// extractJSONObject returns the first balanced {...} object (stops before trailing LOGS:/Langue/etc.).
+func extractJSONObject(s string) string {
+	start := strings.Index(s, "{")
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escape := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if escape {
+			escape = false
+			continue
+		}
+		if inString {
+			if c == '\\' {
+				escape = true
+			} else if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return ""
 }
 
 func loadReading(day string, llm bool) *Reading {
