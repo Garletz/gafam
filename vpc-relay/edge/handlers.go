@@ -34,6 +34,7 @@ func BuildStatus(hub StatusFunc) Status {
 		ScrcpyBlocking:          snap.ScrcpyBlocking,
 		RamReservedMb:           report.RamReservedMb,
 		ModelOnDevice:           report.ModelOnDevice,
+		EdgeModelOnVpc:          EdgeModelOnDisk(),
 		Phase:                   phase,
 		EdgeMessage:             report.Message,
 		RamRequestMb:            report.RamRequestMb,

@@ -42,6 +42,7 @@ export type EdgeStatus = {
 	model_on_device: boolean;
 	phase?: string;
 	edge_message?: string;
+	edge_model_on_vpc?: boolean;
 	ram_request_mb?: number;
 	edge_ram_cap_mb?: number;
 	device_ram_total_mb?: number;
@@ -62,6 +63,27 @@ export type EdgeInferResult = {
 	status?: string;
 	error?: string;
 	prompt?: string;
+};
+
+export type EdgeModelFile = {
+	name: string;
+	size: number;
+};
+
+export type EdgeModelInstall = {
+	status: 'idle' | 'downloading' | 'ready' | 'error';
+	progress: number;
+	current_file?: string;
+	message?: string;
+	error?: string;
+};
+
+export type EdgeModelStatus = {
+	ready: boolean;
+	dir?: string;
+	files: EdgeModelFile[];
+	total_bytes: number;
+	install: EdgeModelInstall;
 };
 
 export type ModelCatalogEntry = {

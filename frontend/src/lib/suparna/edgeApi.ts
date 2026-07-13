@@ -1,4 +1,4 @@
-import type { EdgeInferResult, EdgeStatus } from './types';
+import type { EdgeInferResult, EdgeModelStatus, EdgeStatus } from './types';
 
 const RAM_REQUEST_KEY = 'gafam_edge_ram_request_mb';
 
@@ -40,6 +40,39 @@ export async function fetchEdgeStatus(
 		return await res.json();
 	} catch {
 		return null;
+	}
+}
+
+export async function fetchEdgeModelStatus(
+	vpcUrl: string,
+	sessionToken: string
+): Promise<EdgeModelStatus | null> {
+	try {
+		const params = new URLSearchParams({ vpcUrl, token: sessionToken, resource: 'model' });
+		const res = await fetch(`/api/proxy/edge?${params}`);
+		if (!res.ok) return null;
+		return await res.json();
+	} catch {
+		return null;
+	}
+}
+
+export async function startEdgeModelInstall(
+	vpcUrl: string,
+	sessionToken: string
+): Promise<{ ok: boolean; error?: string }> {
+	try {
+		const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'install-model' });
+		const res = await fetch(`/api/proxy/edge?${params}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: '{}'
+		});
+		const data = await res.json();
+		if (!res.ok) return { ok: false, error: data.error || 'Install failed' };
+		return { ok: true };
+	} catch {
+		return { ok: false, error: 'Network error' };
 	}
 }
 

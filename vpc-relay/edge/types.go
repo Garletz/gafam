@@ -18,6 +18,7 @@ type Status struct {
 	ScrcpyBlocking        bool   `json:"scrcpy_blocking"`
 	RamReservedMb         int    `json:"ram_reserved_mb"`
 	ModelOnDevice         bool   `json:"model_on_device"`
+	EdgeModelOnVpc        bool   `json:"edge_model_on_vpc"`
 	Phase                 string `json:"phase"`
 	EdgeMessage             string `json:"edge_message,omitempty"`
 	RamRequestMb            int    `json:"ram_request_mb,omitempty"`

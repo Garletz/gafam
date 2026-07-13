@@ -216,6 +216,8 @@ func main() {
 	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))
 	mux.HandleFunc("POST /api/auth/logs", authMiddleware(postLogsHandler))
 	mux.HandleFunc("POST /api/auth/edge/sync", authMiddleware(edgeApkSyncHandler))
+	mux.HandleFunc("GET /api/auth/edge/model", authMiddleware(edgeModelManifestHandler))
+	mux.HandleFunc("GET /api/auth/edge/model/{file}", authMiddleware(edgeModelFileHandler))
 
 	// Auth Routes for Web Client handshake
 	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
@@ -237,6 +239,8 @@ func main() {
 	mux.HandleFunc("POST /api/web/edge/infer", sessionMiddleware(edgeInferHandler))
 	mux.HandleFunc("POST /api/web/edge/wake", sessionMiddleware(edgeWakeHandler))
 	mux.HandleFunc("POST /api/web/edge/stop", sessionMiddleware(edgeStopHandler))
+	mux.HandleFunc("GET /api/web/edge/model", sessionMiddleware(edgeWebModelStatusHandler))
+	mux.HandleFunc("POST /api/web/edge/model", sessionMiddleware(edgeWebModelInstallHandler))
 
 	mux.HandleFunc("GET /api/proxy/contacts", sessionMiddleware(getContactsHandler))
 	mux.HandleFunc("POST /api/proxy/contacts", sessionMiddleware(syncContactsHandler))

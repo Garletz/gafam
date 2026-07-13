@@ -37,3 +37,19 @@ func edgeApkSyncHandler(w http.ResponseWriter, r *http.Request) {
 	touchApkRelay()
 	edge.ApkSyncHandler()(w, r)
 }
+
+func edgeModelManifestHandler(w http.ResponseWriter, r *http.Request) {
+	edge.ModelManifestHandler()(w, r)
+}
+
+func edgeModelFileHandler(w http.ResponseWriter, r *http.Request) {
+	edge.ModelFileHandler()(w, r)
+}
+
+func edgeWebModelStatusHandler(w http.ResponseWriter, r *http.Request) {
+	edge.WebModelStatusHandler()(w, r)
+}
+
+func edgeWebModelInstallHandler(w http.ResponseWriter, r *http.Request) {
+	edge.WebModelInstallHandler()(w, r)
+}

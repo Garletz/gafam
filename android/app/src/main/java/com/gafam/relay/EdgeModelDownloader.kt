@@ -2,10 +2,10 @@ package com.gafam.relay
 
 import android.content.Context
 import android.util.Log
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 object EdgeModelDownloader {
     private const val TAG = "GAFAM_EdgeDL"
@@ -22,62 +22,93 @@ object EdgeModelDownloader {
         context: Context,
         onProgress: ((Int) -> Unit)? = null
     ) {
+        val prefs = context.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val apiUrl = prefs.getString("apiUrl", null)
+            ?: throw IllegalStateException("APK not paired with VPC")
+        val jwt = prefs.getString("jwtSecret", null)
+            ?: throw IllegalStateException("Missing JWT secret")
+        val client = ApiClient.getDownloadClient(context)
+            ?: throw IllegalStateException("Cannot build HTTP client")
+
         val dir = modelDir(context)
         if (!dir.exists()) dir.mkdirs()
 
         val missing = EdgeModelConfig.FILES.filter { !File(dir, it).exists() }
-        if (missing.isEmpty()) return
-
-        val pairs = missing.map { name ->
-            EdgeModelConfig.BASE_URL + name to File(dir, name)
+        if (missing.isEmpty()) {
+            onProgress?.invoke(100)
+            return
         }
 
-        var totalSize = 0L
-        val sizes = pairs.map { (url, _) ->
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                requestMethod = "HEAD"
-                connectTimeout = 30_000
-                readTimeout = 30_000
+        val manifestUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/edge/model")
+        val manifestReq = Request.Builder()
+            .url(manifestUrl)
+            .addHeader("Authorization", "Bearer $jwt")
+            .get()
+            .build()
+        client.newCall(manifestReq).execute().use { manifestResp ->
+            if (!manifestResp.isSuccessful) {
+                throw IllegalStateException("VPC model manifest HTTP ${manifestResp.code}")
             }
-            try {
-                val len = conn.getHeaderFieldLong("Content-Length", -1)
-                if (len > 0) len else 0L
-            } finally {
-                conn.disconnect()
+            val manifestBody = manifestResp.body?.string() ?: throw IllegalStateException("empty manifest")
+            val manifest = JSONObject(manifestBody)
+            if (!manifest.optBoolean("ready", false)) {
+                throw IllegalStateException(
+                    "Modèle ONNX absent sur le VPC — lance edge-model-install.sh sur le serveur"
+                )
             }
-        }
-        totalSize = sizes.sum().coerceAtLeast(1L)
 
-        var downloaded = 0L
-        pairs.forEachIndexed { idx, (url, dest) ->
-            Log.i(TAG, "Downloading ${dest.name}")
-            downloadFile(url, dest)
-            downloaded += sizes.getOrElse(idx) { dest.length() }
-            onProgress?.invoke(((100 * downloaded) / totalSize).toInt().coerceIn(0, 99))
-        }
-        onProgress?.invoke(100)
-        Log.i(TAG, "Model files ready in ${dir.absolutePath}")
-    }
+            val sizes = mutableMapOf<String, Long>()
+            val filesArr = manifest.optJSONArray("files") ?: throw IllegalStateException("bad manifest")
+            for (i in 0 until filesArr.length()) {
+                val entry = filesArr.getJSONObject(i)
+                sizes[entry.getString("name")] = entry.optLong("size", 0)
+            }
 
-    private fun downloadFile(url: String, dest: File) {
-        val tmp = File(dest.parentFile, dest.name + ".partial")
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 60_000
-            readTimeout = 300_000
-        }
-        conn.inputStream.use { input ->
-            FileOutputStream(tmp).use { output ->
-                val buf = ByteArray(8192)
-                while (true) {
-                    val n = input.read(buf)
-                    if (n <= 0) break
-                    output.write(buf, 0, n)
+            val totalBytes = missing.sumOf { sizes[it] ?: 0L }.coerceAtLeast(1L)
+            var doneBytes = 0L
+            onProgress?.invoke(0)
+
+            for (name in missing) {
+                val dest = File(dir, name)
+                val fileUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/edge/model/$name")
+                Log.i(TAG, "Downloading $name from VPC")
+                val req = Request.Builder()
+                    .url(fileUrl)
+                    .addHeader("Authorization", "Bearer $jwt")
+                    .get()
+                    .build()
+                client.newCall(req).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException("Download $name failed HTTP ${response.code}")
+                    }
+                    val body = response.body ?: throw IllegalStateException("empty body for $name")
+                    val tmp = File(dir, "$name.partial")
+                    val fileSize = sizes[name] ?: body.contentLength().coerceAtLeast(0L)
+                    FileOutputStream(tmp).use { output ->
+                        body.byteStream().use { input ->
+                            val buf = ByteArray(8192)
+                            var fileDone = 0L
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n <= 0) break
+                                output.write(buf, 0, n)
+                                fileDone += n
+                                doneBytes += n
+                                val pct = ((100 * doneBytes) / totalBytes).toInt().coerceIn(0, 99)
+                                onProgress?.invoke(pct)
+                            }
+                            if (fileSize > 0 && fileDone < fileSize) {
+                                Log.w(TAG, "$name: expected $fileSize got $fileDone")
+                            }
+                        }
+                    }
+                    if (!tmp.renameTo(dest)) {
+                        throw IllegalStateException("Failed to finalize $name")
+                    }
                 }
             }
         }
-        conn.disconnect()
-        if (!tmp.renameTo(dest)) {
-            throw IllegalStateException("Failed to finalize download: ${dest.name}")
-        }
+        onProgress?.invoke(100)
+        Log.i(TAG, "Model files ready in ${dir.absolutePath}")
     }
 }

@@ -1,18 +1,23 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { EDGE_QUICK_PROMPTS, type EdgeInferResult, type EdgeStatus } from './types';
+  import { EDGE_QUICK_PROMPTS, type EdgeInferResult, type EdgeModelStatus, type EdgeStatus } from './types';
   import {
     edgeStop,
     edgeWake,
+    fetchEdgeModelStatus,
     fetchEdgeStatus,
     getRamRequestMb,
     runEdgeInfer,
-    setRamRequestMb
+    setRamRequestMb,
+    startEdgeModelInstall
   } from './edgeApi';
 
   let { vpcUrl, sessionToken }: { vpcUrl: string; sessionToken: string } = $props();
 
   let status: EdgeStatus | null = $state(null);
+  let modelStatus: EdgeModelStatus | null = $state(null);
+  let modelMsg = $state('');
+  let modelInstalling = $state(false);
   let ramRequest = $state(2048);
   let customPrompt = $state('');
   let running = $state(false);
@@ -20,6 +25,44 @@
   let lastShot: { prompt: string; result: EdgeInferResult } | null = $state(null);
   let clearTimer: ReturnType<typeof setTimeout> | null = null;
   let pollId: ReturnType<typeof setInterval> | null = null;
+  let modelPollId: ReturnType<typeof setInterval> | null = null;
+
+  const modelReadyOnVpc = $derived(modelStatus?.ready ?? status?.edge_model_on_vpc ?? false);
+  const modelOnPhone = $derived(status?.model_on_device ?? false);
+  const installProgress = $derived(modelStatus?.install?.progress ?? 0);
+  const installState = $derived(modelStatus?.install?.status ?? 'idle');
+
+  function formatBytes(n: number): string {
+    if (!n) return '0 B';
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  async function refreshModelStatus() {
+    modelStatus = await fetchEdgeModelStatus(vpcUrl, sessionToken);
+    const downloading = modelStatus?.install?.status === 'downloading';
+    if (downloading && !modelPollId) {
+      modelPollId = setInterval(refreshModelStatus, 3000);
+    } else if (!downloading && modelPollId) {
+      clearInterval(modelPollId);
+      modelPollId = null;
+    }
+  }
+
+  async function doInstallModel() {
+    if (modelInstalling || modelReadyOnVpc) return;
+    modelInstalling = true;
+    modelMsg = '';
+    const r = await startEdgeModelInstall(vpcUrl, sessionToken);
+    modelInstalling = false;
+    if (!r.ok) {
+      modelMsg = r.error || 'Échec lancement téléchargement';
+      return;
+    }
+    modelMsg = 'Téléchargement lancé sur le VPC (HuggingFace → disque)…';
+    await refreshModelStatus();
+    await refreshStatus();
+  }
 
   const ramMax = $derived(
     status?.edge_ram_max_deliverable_mb && status.edge_ram_max_deliverable_mb >= 512
@@ -98,11 +141,16 @@
   onMount(() => {
     ramRequest = getRamRequestMb();
     refreshStatus();
-    pollId = setInterval(refreshStatus, 10_000);
+    refreshModelStatus();
+    pollId = setInterval(() => {
+      refreshStatus();
+      refreshModelStatus();
+    }, 10_000);
   });
 
   onDestroy(() => {
     if (pollId) clearInterval(pollId);
+    if (modelPollId) clearInterval(modelPollId);
     if (clearTimer) clearTimeout(clearTimer);
   });
 </script>
@@ -153,6 +201,18 @@
       </span>
     </div>
     <div class="status-card">
+      <span class="label">Modèle VPC</span>
+      <span class="value mono" class:on={modelReadyOnVpc}>
+        {modelReadyOnVpc ? 'on disk' : installState === 'downloading' ? 'downloading…' : 'missing'}
+      </span>
+    </div>
+    <div class="status-card">
+      <span class="label">Modèle tel</span>
+      <span class="value mono" class:on={modelOnPhone}>
+        {modelOnPhone ? 'on device' : 'not loaded'}
+      </span>
+    </div>
+    <div class="status-card">
       <span class="label">scrcpy block</span>
       <span class="value" class:warn={status?.scrcpy_blocking}>{status?.scrcpy_blocking ? 'yes' : 'no'}</span>
     </div>
@@ -160,6 +220,57 @@
       <span class="label">Phase</span>
       <span class="value mono">{status?.phase ?? '—'}</span>
     </div>
+  </div>
+
+  <div class="model-panel" class:model-panel--ready={modelReadyOnVpc}>
+    <div class="model-panel__head">
+      <h3>Qwen3 0.6B ONNX (VPC → tel)</h3>
+      <span class="model-badge" class:on={modelReadyOnVpc}>
+        {modelReadyOnVpc ? 'Prêt à envoyer' : installState === 'downloading' ? 'Téléchargement…' : 'Absent sur VPC'}
+      </span>
+    </div>
+    <p class="model-panel__hint">
+      Le modèle doit d’abord être sur le disque du VPC (~525 Mo). Au <strong>Wake</strong>, le tel le télécharge depuis le VPC (pas HuggingFace direct).
+    </p>
+    {#if modelStatus?.files?.length}
+      <ul class="model-files">
+        {#each modelStatus.files as f}
+          <li class:ok={f.size > 0}>
+            <span class="fname">{f.name}</span>
+            <span class="fsize">{f.size > 0 ? formatBytes(f.size) : '—'}</span>
+          </li>
+        {/each}
+      </ul>
+      {#if modelStatus.total_bytes > 0}
+        <p class="model-total">Total sur disque : {formatBytes(modelStatus.total_bytes)}</p>
+      {/if}
+    {/if}
+    {#if installState === 'downloading'}
+      <div class="model-progress">
+        <div class="model-progress__bar" style="width: {installProgress}%"></div>
+      </div>
+      <p class="model-progress__msg">
+        {installProgress}% — {modelStatus?.install?.current_file ?? '…'}
+        {#if modelStatus?.install?.message}
+          <span class="sub">({modelStatus.install.message})</span>
+        {/if}
+      </p>
+    {:else if !modelReadyOnVpc}
+      <button
+        type="button"
+        class="btn btn-primary model-install-btn"
+        disabled={modelInstalling || installState === 'downloading'}
+        onclick={doInstallModel}
+      >
+        {modelInstalling ? 'Lancement…' : 'Télécharger sur le VPC'}
+      </button>
+    {/if}
+    {#if modelStatus?.install?.error}
+      <p class="model-error">{modelStatus.install.error}</p>
+    {/if}
+    {#if modelMsg}
+      <p class="model-msg">{modelMsg}</p>
+    {/if}
   </div>
 
   <div class="ram-row">
@@ -284,6 +395,104 @@
     margin-top: 4px;
     font-size: 10px;
     color: #9aa0a6;
+    font-family: ui-monospace, monospace;
+  }
+  .model-panel {
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    background: #fff;
+  }
+  .model-panel--ready {
+    border-color: #ceead6;
+    background: #f6fff8;
+  }
+  .model-panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .model-panel__head h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .model-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: #fce8e6;
+    color: #c5221f;
+    font-family: ui-monospace, monospace;
+  }
+  .model-badge.on {
+    background: #ceead6;
+    color: #188038;
+  }
+  .model-panel__hint {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #5f6368;
+  }
+  .model-files {
+    list-style: none;
+    margin: 0 0 8px;
+    padding: 0;
+    font-size: 12px;
+    font-family: ui-monospace, monospace;
+  }
+  .model-files li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 0;
+    color: #9aa0a6;
+  }
+  .model-files li.ok {
+    color: #188038;
+  }
+  .model-total {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: #5f6368;
+    font-family: ui-monospace, monospace;
+  }
+  .model-progress {
+    height: 8px;
+    background: #e8eaed;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .model-progress__bar {
+    height: 100%;
+    background: #1a73e8;
+    transition: width 0.3s ease;
+  }
+  .model-progress__msg {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: #5f6368;
+    font-family: ui-monospace, monospace;
+  }
+  .model-install-btn {
+    margin-bottom: 8px;
+  }
+  .model-error {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #d93025;
+  }
+  .model-msg {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #188038;
     font-family: ui-monospace, monospace;
   }
   .ram-row {

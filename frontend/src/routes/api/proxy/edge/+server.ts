@@ -89,6 +89,13 @@ export const GET: RequestHandler = async ({ url }) => {
 	const token = url.searchParams.get('token');
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
 
+	const resource = url.searchParams.get('resource');
+	if (resource === 'model') {
+		const path = `/api/web/edge/model?token=${encodeURIComponent(token)}`;
+		const result = await vpcRequest(vpcUrl, token, 'GET', path);
+		return json(result.data, { status: result.status });
+	}
+
 	const path = `/api/web/edge/status?token=${encodeURIComponent(token)}`;
 	const result = await vpcRequest(vpcUrl, token, 'GET', path);
 	return json(result.data, { status: result.status });
@@ -109,6 +116,11 @@ export const POST: RequestHandler = async ({ url, request }) => {
 	if (action === 'stop') {
 		const path = `/api/web/edge/stop?token=${encodeURIComponent(token)}`;
 		const result = await vpcRequest(vpcUrl, token, 'POST', path);
+		return json(result.data, { status: result.status });
+	}
+	if (action === 'install-model') {
+		const path = `/api/web/edge/model?token=${encodeURIComponent(token)}`;
+		const result = await vpcRequest(vpcUrl, token, 'POST', path, '{}');
 		return json(result.data, { status: result.status });
 	}
 

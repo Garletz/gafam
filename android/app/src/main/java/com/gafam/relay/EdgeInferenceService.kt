@@ -130,7 +130,7 @@ class EdgeInferenceService : Service() {
         private fun ensureModelLoaded(context: Context) {
             if (EdgeLlmEngine.isLoaded()) return
             edgeService = STATE_LOADING
-            statusMessage = "Downloading / loading Qwen3-0.6B ONNX…"
+            statusMessage = "Downloading Qwen3 ONNX from VPC…"
             EdgeModelDownloader.ensureDownloaded(context.applicationContext) { pct ->
                 statusMessage = "Model download $pct%"
             }

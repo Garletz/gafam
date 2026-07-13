@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit
 object ApiClient {
 
     private var cachedClient: OkHttpClient? = null
+    private var cachedDownloadClient: OkHttpClient? = null
     private var cachedUrl: String? = null
     private var cachedFingerprint: String? = null
 
@@ -26,10 +27,44 @@ object ApiClient {
             return cachedClient
         }
 
+        val builder = buildBaseClient(apiUrl, fingerprint)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+
+        cachedClient = builder.build()
+        cachedDownloadClient = null
+            
+        cachedUrl = apiUrl
+        cachedFingerprint = fingerprint
+            
+        return cachedClient
+    }
+
+    /** Long-timeout client for large edge model downloads from VPC. */
+    fun getDownloadClient(context: Context): OkHttpClient? {
+        val prefs = context.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val apiUrl = prefs.getString("apiUrl", null) ?: return null
+        val fingerprint = prefs.getString("certFingerprint", null) ?: return null
+
+        if (cachedDownloadClient != null && apiUrl == cachedUrl && fingerprint == cachedFingerprint) {
+            return cachedDownloadClient
+        }
+        if (cachedClient == null) {
+            getClient(context)
+        }
+        cachedDownloadClient = buildBaseClient(apiUrl, fingerprint)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(600, TimeUnit.SECONDS)
+            .writeTimeout(600, TimeUnit.SECONDS)
+            .build()
+        return cachedDownloadClient
+    }
+
+    private fun buildBaseClient(apiUrl: String, fingerprint: String): OkHttpClient.Builder {
         val hostIp = try {
             URL(apiUrl).host
         } catch (e: Exception) {
-            return null
+            throw IllegalStateException("invalid apiUrl", e)
         }
 
         val trustManager = object : X509TrustManager {
@@ -49,9 +84,9 @@ object ApiClient {
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(null, arrayOf(trustManager), java.security.SecureRandom())
 
-        cachedClient = OkHttpClient.Builder()
+        return OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, trustManager)
-            .hostnameVerifier { _, _ -> true } // Trust any hostname because we pin the fingerprint
+            .hostnameVerifier { _, _ -> true }
             .dns(object : Dns {
                 override fun lookup(hostname: String): List<InetAddress> {
                     if (hostname == "wikipedia.org") {
@@ -60,14 +95,6 @@ object ApiClient {
                     return Dns.SYSTEM.lookup(hostname)
                 }
             })
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .build()
-            
-        cachedUrl = apiUrl
-        cachedFingerprint = fingerprint
-            
-        return cachedClient
     }
     
     fun getSpoofedUrl(apiUrl: String, path: String): String {
