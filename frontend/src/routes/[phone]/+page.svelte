@@ -6,6 +6,7 @@
   import AdbTerminal from '$lib/AdbTerminal.svelte';
   import Settings from '$lib/Settings.svelte';
   import Logs from '$lib/Logs.svelte';
+  import SuparnaPanel from '$lib/suparna/SuparnaPanel.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
@@ -30,8 +31,9 @@
   let certFingerprint: string = $state((data as any).certFingerprint || '');
   let smsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' = $state('chats');
+  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
+  let suparnaSection: 'vpc' | 'models' | 'rules' = $state('vpc');
   let contactSearchQuery: string = $state('');
   let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
@@ -656,15 +658,31 @@
       </div>
 
     {:else}
-      <div class="messenger-container is-connected {sidebarTab === 'logs' ? 'is-logs' : ''}">
+      <div class="messenger-container is-connected {sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc') ? 'is-logs' : ''}">
         <div class="messenger-ui">
           <aside class="sidebar">
           <div class="sidebar__header">
             <div class="sidebar__tabs">
-              <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
-              <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
-              <button class="tab {sidebarTab === 'logs' ? 'active' : ''}" onclick={() => sidebarTab = 'logs'}>Logs</button>
-              <button class="tab {sidebarTab === 'settings' ? 'active' : ''}" onclick={() => sidebarTab = 'settings'}>Settings</button>
+              <div class="sidebar__tabs-main">
+                <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
+                <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
+                <button class="tab {sidebarTab === 'logs' ? 'active' : ''}" onclick={() => sidebarTab = 'logs'}>Logs</button>
+              </div>
+              <div class="sidebar__tabs-end">
+                <button class="tab {sidebarTab === 'suparna' ? 'active' : ''}" onclick={() => sidebarTab = 'suparna'}>Suparna</button>
+                <button
+                  type="button"
+                  class="tab tab--icon {sidebarTab === 'settings' ? 'active' : ''}"
+                  title="Settings"
+                  aria-label="Settings"
+                  onclick={() => sidebarTab = 'settings'}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="sidebar__actions">
               {#if sidebarTab === 'chats'}
@@ -677,13 +695,13 @@
                   <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
                 </div>
               {/if}
-              {#if sidebarTab !== 'logs' && sidebarTab !== 'settings'}
+              {#if sidebarTab !== 'logs' && sidebarTab !== 'settings' && sidebarTab !== 'suparna'}
               <label class="toggle-sync" title="Sync Contacts with Android">
                 <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
                 <span>Sync Contacts</span>
               </label>
               {/if}
-              {#if sidebarTab === 'logs'}
+              {#if sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc')}
                 <div class="logs-quota-mini">
                   <span>{(logTotalBytes / 1024).toFixed(0)} KB / {(logQuotaBytes / (1024 * 1024)).toFixed(0)} MB</span>
                   <div class="quota-bar"><div class="quota-fill" style="width: {Math.min(100, (logTotalBytes / logQuotaBytes) * 100)}%"></div></div>
@@ -692,7 +710,7 @@
             </div>
           </div>
           <div class="sidebar__list">
-            {#if sidebarTab === 'logs'}
+            {#if sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc')}
               <div class="logs-archive-label">Phone activity archive</div>
               {#each logDays as d}
                 <button
@@ -758,11 +776,11 @@
                   </button>
                 </div>
               {/each}
-            {:else}
+            {:else if sidebarTab === 'settings'}
               <button
                 type="button"
                 class="chat-item settings-nav {settingsSection === 'node' ? 'active' : ''}"
-                onclick={() => { sidebarTab = 'settings'; settingsSection = 'node'; }}
+                onclick={() => { settingsSection = 'node'; }}
               >
                 <div class="chat-item__avatar settings-nav__icon">V</div>
                 <div class="chat-item__info">
@@ -773,7 +791,7 @@
               <button
                 type="button"
                 class="chat-item settings-nav {settingsSection === 'recovery' ? 'active' : ''}"
-                onclick={() => { sidebarTab = 'settings'; settingsSection = 'recovery'; }}
+                onclick={() => { settingsSection = 'recovery'; }}
               >
                 <div class="chat-item__avatar settings-nav__icon">R</div>
                 <div class="chat-item__info">
@@ -784,7 +802,7 @@
               <button
                 type="button"
                 class="chat-item settings-nav {settingsSection === 'contacts' ? 'active' : ''}"
-                onclick={() => { sidebarTab = 'settings'; settingsSection = 'contacts'; }}
+                onclick={() => { settingsSection = 'contacts'; }}
               >
                 <div class="chat-item__avatar settings-nav__icon">C</div>
                 <div class="chat-item__info">
@@ -792,11 +810,45 @@
                   <div class="chat-item__preview">Sync from Android</div>
                 </div>
               </button>
+            {:else if sidebarTab === 'suparna'}
+              <button
+                type="button"
+                class="chat-item settings-nav {suparnaSection === 'vpc' ? 'active' : ''}"
+                onclick={() => { suparnaSection = 'vpc'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">V</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">VPC 1 RAM</div>
+                  <div class="chat-item__preview">Wake & analyze logs</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                class="chat-item settings-nav {suparnaSection === 'models' ? 'active' : ''}"
+                onclick={() => { suparnaSection = 'models'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">M</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">Models</div>
+                  <div class="chat-item__preview">GGUF catalog</div>
+                </div>
+              </button>
+              <button
+                type="button"
+                class="chat-item settings-nav {suparnaSection === 'rules' ? 'active' : ''}"
+                onclick={() => { suparnaSection = 'rules'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">R</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">Rules</div>
+                  <div class="chat-item__preview">Local preferences</div>
+                </div>
+              </button>
             {/if}
           </div>
         </aside>
 
-        <main class="chat-main {sidebarTab === 'logs' ? 'chat-main--logs' : ''}">
+        <main class="chat-main {sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc') ? 'chat-main--logs' : ''}">
           {#if sidebarTab === 'settings'}
             <Settings
               {sessionToken}
@@ -804,6 +856,16 @@
               bind:section={settingsSection}
               bind:syncContacts
               onContactSyncChange={toggleContactSync}
+            />
+          {:else if sidebarTab === 'suparna'}
+            <SuparnaPanel
+              {sessionToken}
+              {vpcUrl}
+              bind:selectedDay={selectedLogDay}
+              bind:days={logDays}
+              bind:totalBytes={logTotalBytes}
+              bind:quotaBytes={logQuotaBytes}
+              bind:section={suparnaSection}
             />
           {:else if sidebarTab === 'logs'}
             <Logs
@@ -1031,7 +1093,20 @@
   }
   .sidebar__tabs {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 8px;
+  }
+  .sidebar__tabs-main,
+  .sidebar__tabs-end {
+    display: flex;
+    gap: 8px;
+  }
+  .sidebar__tabs-main .tab {
+    flex: 1;
+  }
+  .sidebar__tabs-end .tab {
+    flex: 0 0 auto;
   }
   .tab {
     flex: 1;
@@ -1047,6 +1122,12 @@
   .tab.active {
     color: #202124;
     border-bottom-color: #202124;
+  }
+  .tab--icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 10px;
   }
   .sidebar__actions {
     display: flex;
