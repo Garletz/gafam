@@ -58,7 +58,12 @@
   async function doWake() {
     actionMsg = '';
     const r = await edgeWake(vpcUrl, sessionToken, ramBudget);
-    actionMsg = r.ok ? r.message || 'Wake sent' : r.error || 'Wake failed';
+    actionMsg = r.ok
+      ? (r.message || 'Wake queued — check phone notif in ~2s')
+      : (r.error || 'Wake failed');
+    if (status?.scrcpy_blocking) {
+      actionMsg += ' (scrcpy active: infer blocked, wake OK)';
+    }
     await refreshStatus();
   }
 
@@ -149,7 +154,11 @@
   </div>
 
   {#if actionMsg}
-    <p class="action-msg">{actionMsg}</p>
+    <p class="action-msg" class:is-error={actionMsg.includes('failed') || actionMsg.includes('offline') || actionMsg.includes('busy')}>{actionMsg}</p>
+  {/if}
+
+  {#if status?.scrcpy_blocking}
+    <p class="scrcpy-warn">scrcpy/shell actif — l’inférence L2 est bloquée, mais Wake/Stop edge fonctionne.</p>
   {/if}
 
   <div class="quick-tests">
@@ -280,8 +289,16 @@
   .action-msg {
     margin: 0 0 12px;
     font-size: 12px;
-    color: #5f6368;
+    color: #188038;
     font-family: ui-monospace, monospace;
+  }
+  .action-msg.is-error {
+    color: #d93025;
+  }
+  .scrcpy-warn {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: #ea8600;
   }
   .quick-tests {
     margin-bottom: 14px;

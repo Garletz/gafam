@@ -47,10 +47,12 @@ object EdgeClient {
                     "wake" -> {
                         val budget = resp.optInt("ram_budget_mb", EdgeInferenceService.ramBudgetMb)
                         Log.i(TAG, "VPC command: wake budget=$budget")
+                        LogShipper.event(context, "I", "edge", "Wake command from VPC ($budget MB)")
                         EdgeInferenceService.startWake(context.applicationContext, budget)
                     }
                     "stop" -> {
                         Log.i(TAG, "VPC command: stop")
+                        LogShipper.event(context, "I", "edge", "Stop command from VPC")
                         EdgeInferenceService.requestStop(context.applicationContext)
                     }
                 }

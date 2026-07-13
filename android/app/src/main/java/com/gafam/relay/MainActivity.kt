@@ -46,6 +46,34 @@ class MainActivity : AppCompatActivity() {
     private var vfyReceiver: BroadcastReceiver? = null
     private var smsUiReceiver: BroadcastReceiver? = null
     private var syncSwitchRef: android.widget.Switch? = null
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val statusRefreshRunnable = object : Runnable {
+        override fun run() {
+            updateStatus()
+            uiHandler.postDelayed(this, 2000)
+        }
+    }
+
+    private fun edgeStatusLine(): String {
+        return when (EdgeInferenceService.edgeService) {
+            EdgeInferenceService.STATE_AWAKE ->
+                "GAFAM Edge: AWAKE (${EdgeInferenceService.ramBudgetMb} MB budget)\n${EdgeInferenceService.statusMessage}"
+            EdgeInferenceService.STATE_WAKING -> "GAFAM Edge: waking…"
+            EdgeInferenceService.STATE_STOPPING -> "GAFAM Edge: stopping…"
+            else -> "GAFAM Edge: idle — use Wake in Suparna → Phone"
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateStatus()
+        uiHandler.post(statusRefreshRunnable)
+    }
+
+    override fun onPause() {
+        uiHandler.removeCallbacks(statusRefreshRunnable)
+        super.onPause()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -256,7 +284,8 @@ class MainActivity : AppCompatActivity() {
         val url = prefs.getString("apiUrl", null)
         val phone = prefs.getString("myPhoneNumber", "Not Set")
         if (url != null) {
-            statusText.text = "Relay Agent is ACTIVE\n\nPhone: $phone\nConnected to:\n$url\n\nWaiting for SMS...\nKeep the GAFAM notification ON (like a VPN)."
+            statusText.text =
+                "Relay Agent is ACTIVE\n\nPhone: $phone\nConnected to:\n$url\n\n${edgeStatusLine()}\n\nWaiting for SMS...\nKeep the GAFAM notification ON (like a VPN)."
         } else {
             statusText.text = "Relay Agent is INACTIVE\nPhone: $phone\n\nPlease scan a VPC QR Code to connect."
         }

@@ -186,10 +186,6 @@ func WakeHandler(hub StatusFunc) http.HandlerFunc {
 		if hub != nil {
 			snap = hub()
 		}
-		if snap.ScrcpyBlocking {
-			sendJSON(w, http.StatusConflict, map[string]string{"error": "heavy_job_busy"})
-			return
-		}
 		if !snap.ApkRelayOnline {
 			sendJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "apk_relay_offline"})
 			return
