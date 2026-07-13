@@ -11,8 +11,8 @@ android {
         applicationId = "com.gafam.relay"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.3-edge2c2b-vpc"
+        versionCode = 7
+        versionName = "1.3-edge2c2c-genai014"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -48,6 +48,6 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
-    implementation(files("libs/onnxruntime-genai-android-0.8.1.aar"))
+    // GenAI 0.14 bundles ORT with GatherBlockQuantized bits=4 (Qwen3 INT4 mobile)
+    implementation(files("libs/onnxruntime-genai-android-0.14.0.aar"))
 }
