@@ -97,18 +97,49 @@ func parseReading(day, content string) (*Reading, error) {
 		raw = "{" + raw
 	}
 	m := extractJSONObject(raw)
-	if m == "" {
-		return nil, fmt.Errorf("no json in model output: %s", truncate(content, 200))
+	if m != "" {
+		var r Reading
+		if err := json.Unmarshal([]byte(m), &r); err == nil {
+			r.Day = day
+			if r.Summary != "" && !strings.Contains(r.Summary, "HH:MM") {
+				return &r, nil
+			}
+		}
 	}
-	var r Reading
-	if err := json.Unmarshal([]byte(m), &r); err != nil {
-		return nil, fmt.Errorf("invalid json from model: %w (snippet: %s)", err, truncate(m, 120))
+	// Fallback: JSON parsing failed → show raw Qwen output as summary
+	cleaned := stripHTMLTags(content)
+	if len(cleaned) > 800 {
+		cleaned = cleaned[:800] + "…"
 	}
-	r.Day = day
-	if r.Summary == "" || strings.Contains(r.Summary, "…") || strings.Contains(r.Summary, "HH:MM") {
-		return nil, fmt.Errorf("model echoed template instead of analyzing logs")
+	if cleaned == "" {
+		return nil, fmt.Errorf("empty model output")
 	}
-	return &r, nil
+	return &Reading{
+		Day:        day,
+		Summary:    cleaned,
+		Engine:     "qwen-raw",
+		Confidence: "low",
+	}, nil
+}
+
+// stripHTMLTags removes <b>, </b>, etc. from model output.
+func stripHTMLTags(s string) string {
+	var out strings.Builder
+	inTag := false
+	for _, c := range s {
+		if c == '<' {
+			inTag = true
+			continue
+		}
+		if c == '>' {
+			inTag = false
+			continue
+		}
+		if !inTag {
+			out.WriteRune(c)
+		}
+	}
+	return strings.TrimSpace(out.String())
 }
 
 // extractJSONObject returns the first balanced {...} object (stops before trailing LOGS:/Langue/etc.).
