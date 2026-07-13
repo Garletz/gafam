@@ -32,3 +32,8 @@ func edgeWakeHandler(w http.ResponseWriter, r *http.Request) {
 func edgeStopHandler(w http.ResponseWriter, r *http.Request) {
 	edge.StopHandler(edgeHubSnapshot)(w, r)
 }
+
+func edgeApkSyncHandler(w http.ResponseWriter, r *http.Request) {
+	touchApkRelay()
+	edge.ApkSyncHandler()(w, r)
+}

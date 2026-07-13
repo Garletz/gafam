@@ -19,6 +19,8 @@ type Status struct {
 	RamReservedMb         int    `json:"ram_reserved_mb"`
 	ModelOnDevice         bool   `json:"model_on_device"`
 	Phase                 string `json:"phase"`
+	EdgeMessage           string `json:"edge_message,omitempty"`
+	RamBudgetMb           int    `json:"ram_budget_mb,omitempty"`
 	// Deprecated: use apk_relay_online. Kept for older front builds.
 	PhoneReachable bool `json:"phone_reachable"`
 }

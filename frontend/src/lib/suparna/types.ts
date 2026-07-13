@@ -41,6 +41,8 @@ export type EdgeStatus = {
 	ram_reserved_mb: number;
 	model_on_device: boolean;
 	phase?: string;
+	edge_message?: string;
+	ram_budget_mb?: number;
 	/** @deprecated use apk_relay_online */
 	phone_reachable?: boolean;
 };

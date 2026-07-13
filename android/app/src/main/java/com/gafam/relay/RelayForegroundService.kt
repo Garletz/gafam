@@ -52,6 +52,7 @@ class RelayForegroundService : Service() {
 
     private var pollThread: Thread? = null
     private val pollAlive = AtomicBoolean(false)
+    private var edgePollTick = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -120,6 +121,10 @@ class RelayForegroundService : Service() {
             while (pollAlive.get()) {
                 try {
                     pollOutboxOnce()
+                    edgePollTick++
+                    if (edgePollTick % 2 == 0) {
+                        EdgeClient.syncOnce(applicationContext)
+                    }
                 } catch (e: Exception) {
                     Log.w(TAG, "outbox poll error", e)
                 }

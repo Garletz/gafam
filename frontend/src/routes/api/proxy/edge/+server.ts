@@ -101,8 +101,9 @@ export const POST: RequestHandler = async ({ url, request }) => {
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
 
 	if (action === 'wake') {
+		const payload = await request.text();
 		const path = `/api/web/edge/wake?token=${encodeURIComponent(token)}`;
-		const result = await vpcRequest(vpcUrl, token, 'POST', path);
+		const result = await vpcRequest(vpcUrl, token, 'POST', path, payload || '{}');
 		return json(result.data, { status: result.status });
 	}
 	if (action === 'stop') {

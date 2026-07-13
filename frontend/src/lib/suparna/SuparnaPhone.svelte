@@ -57,7 +57,7 @@
 
   async function doWake() {
     actionMsg = '';
-    const r = await edgeWake(vpcUrl, sessionToken);
+    const r = await edgeWake(vpcUrl, sessionToken, ramBudget);
     actionMsg = r.ok ? r.message || 'Wake sent' : r.error || 'Wake failed';
     await refreshStatus();
   }
@@ -113,7 +113,10 @@
     </div>
     <div class="status-card">
       <span class="label">Edge service</span>
-      <span class="value">{status?.edge_service ?? '—'}</span>
+      <span class="value" class:on={status?.edge_service === 'awake'}>{status?.edge_service ?? '—'}</span>
+      {#if status?.edge_message}
+        <span class="sub" title={status.edge_message}>{status.edge_message}</span>
+      {/if}
     </div>
     <div class="status-card">
       <span class="label">scrcpy block</span>

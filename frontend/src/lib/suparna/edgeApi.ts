@@ -59,11 +59,16 @@ export async function runEdgeInfer(
 
 export async function edgeWake(
 	vpcUrl: string,
-	sessionToken: string
+	sessionToken: string,
+	ramBudgetMb?: number
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
 	try {
 		const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'wake' });
-		const res = await fetch(`/api/proxy/edge?${params}`, { method: 'POST' });
+		const res = await fetch(`/api/proxy/edge?${params}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ ram_budget_mb: ramBudgetMb ?? getRamBudgetMb() })
+		});
 		const data = await res.json();
 		if (!res.ok) return { ok: false, error: data.error || 'Wake failed' };
 		return { ok: true, message: data.message };

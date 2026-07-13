@@ -215,7 +215,8 @@ func main() {
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
 	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))
 	mux.HandleFunc("POST /api/auth/logs", authMiddleware(postLogsHandler))
-	
+	mux.HandleFunc("POST /api/auth/edge/sync", authMiddleware(edgeApkSyncHandler))
+
 	// Auth Routes for Web Client handshake
 	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
 	mux.HandleFunc("DELETE /api/auth/logout", logoutHandler)
