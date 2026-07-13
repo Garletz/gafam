@@ -19,15 +19,9 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    python3 \
-    python3-pip \
-    python3-venv \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip3 install --break-system-packages onnxruntime-genai huggingface_hub \
-    && mkdir -p /app/data/suparna/model /app/data/suparna/readings
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/vpc-relay /app/vpc-relay
-COPY suparna/runner.py /app/suparna/runner.py
 
 VOLUME ["/app/data"]
 

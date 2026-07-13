@@ -1,4 +1,4 @@
-/** Client-side OTP/code detection (mirrors VPC suparna.DetectCodes). */
+/** Client-side OTP/code detection (mirrors VPC detectSmsCodes). */
 export function detectSmsCodes(text: string): string[] {
   if (!text?.trim()) return [];
   const lower = text.toLowerCase();

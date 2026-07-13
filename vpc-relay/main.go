@@ -229,10 +229,6 @@ func main() {
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
 	mux.HandleFunc("GET /api/web/logs", sessionMiddleware(getWebLogsHandler))
 	mux.HandleFunc("DELETE /api/web/logs", sessionMiddleware(deleteWebLogsHandler))
-	mux.HandleFunc("POST /api/web/logs/suparna", sessionMiddleware(suparnaReadLogsHandler))
-	mux.HandleFunc("GET /api/web/suparna/status", sessionMiddleware(suparnaStatusHandler))
-	mux.HandleFunc("POST /api/web/suparna/model", sessionMiddleware(suparnaDownloadModelHandler))
-	mux.HandleFunc("GET /api/web/suparna/sms-codes", sessionMiddleware(suparnaScanSmsHandler))
 	
 	mux.HandleFunc("GET /api/proxy/contacts", sessionMiddleware(getContactsHandler))
 	mux.HandleFunc("POST /api/proxy/contacts", sessionMiddleware(syncContactsHandler))

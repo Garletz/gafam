@@ -80,31 +80,31 @@
   let updateStatus = $derived.by((): UpdateStatusInfo => {
     switch (updatePhase) {
       case 'checking':
-        return { label: 'Vérification…', detail: 'Comparaison avec la dernière image Docker publiée.', tone: 'info' };
+        return { label: 'Checking…', detail: 'Comparing against the latest published Docker image.', tone: 'info' };
       case 'up_to_date':
         return {
-          label: 'À jour',
+          label: 'Up to date',
           detail: vpcInfo?.watchtower
-            ? 'Watchtower vérifie GHCR toutes les ~5 min.'
-            : 'Watchtower injoignable — les mises à jour auto peuvent échouer.',
+            ? 'Watchtower polls GHCR every ~5 minutes.'
+            : 'Watchtower unreachable — auto-updates may fail.',
           tone: 'ok'
         };
       case 'rolling':
         return {
-          label: 'Mise à jour en cours…',
-          detail: 'Redémarrage du conteneur (~30 s). Pairing et données conservés.',
+          label: 'Update in progress…',
+          detail: 'Container restart (~30 s). Pairing and data are kept.',
           tone: 'busy'
         };
       case 'available':
         return {
-          label: 'Nouvelle version disponible',
-          detail: 'Watchtower l’appliquera sous ~5 min, ou clique pour lancer maintenant.',
+          label: 'New build available',
+          detail: 'Watchtower will apply it within ~5 min, or click to run now.',
           tone: 'warn'
         };
       case 'available_no_wt':
         return {
-          label: 'Nouvelle version disponible',
-          detail: 'Watchtower injoignable depuis le VPC — attends le poll auto ou corrige le déploiement.',
+          label: 'New build available',
+          detail: 'Watchtower unreachable from the VPC — wait for auto poll or fix deploy.',
           tone: 'warn'
         };
     }
@@ -115,11 +115,11 @@
   );
 
   let updateButtonLabel = $derived.by(() => {
-    if (updateLoading || updatePhase === 'rolling') return 'Mise à jour…';
-    if (updatePhase === 'available') return 'Mettre à jour maintenant';
-    if (updatePhase === 'up_to_date' && vpcInfo?.watchtower) return 'Vérifier GHCR';
-    if (updatePhase === 'available_no_wt') return 'Watchtower injoignable';
-    return 'Indisponible';
+    if (updateLoading || updatePhase === 'rolling') return 'Updating…';
+    if (updatePhase === 'available') return 'Update now';
+    if (updatePhase === 'up_to_date' && vpcInfo?.watchtower) return 'Check GHCR';
+    if (updatePhase === 'available_no_wt') return 'Watchtower unreachable';
+    return 'Unavailable';
   });
 
   function formatUptime(seconds: number) {
@@ -190,18 +190,18 @@
       const res = await fetch(`/api/proxy/vpc-info?${params.toString()}`, { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        updateMsg = data.message || 'Mise à jour lancée. Redémarrage dans ~30 s.';
+        updateMsg = data.message || 'Update started. Restart in ~30 s.';
         setTimeout(fetchVpcStatus, 8000);
       } else {
         const hint =
           data.error === 'watchtower_unreachable'
-            ? ' Relance deploy-vpc.sh sur le serveur (garde JWT_SECRET).'
+            ? ' Re-run deploy-vpc.sh on the server (keep JWT_SECRET).'
             : '';
-        updateMsg = (data.message || data.error || 'Échec de la mise à jour') + hint;
+        updateMsg = (data.message || data.error || 'Update failed') + hint;
         updateTriggeredAt = 0;
       }
     } catch {
-      updateMsg = 'Erreur réseau';
+      updateMsg = 'Network error';
       updateTriggeredAt = 0;
     } finally {
       updateLoading = false;
@@ -356,12 +356,8 @@
             </div>
             <div class="stat">
               <span class="stat__label">Watchtower</span>
-              <span
-                class="stat__value"
-                class:stat__value--ok={vpcInfo.watchtower}
-                class:stat__value--warn={!vpcInfo.watchtower}
-              >
-                {vpcInfo.watchtower ? 'Actif' : 'Injoignable'}
+              <span class="stat__value">
+                {vpcInfo.watchtower ? 'Reachable' : 'Unreachable'}
               </span>
             </div>
           </div>
@@ -372,7 +368,7 @@
             class:subpanel--busy={updatePhase === 'rolling'}
           >
             <div class="subpanel__head">
-              <h3>Mise à jour logicielle</h3>
+              <h3>Software update</h3>
               {#if registryInfo}
                 <span class="subpanel__badge" class:subpanel__badge--ok={updatePhase === 'up_to_date'}>
                   {updateStatus.label}
@@ -391,11 +387,11 @@
             {#if registryInfo}
               <div class="version-compare">
                 <div class="version-row">
-                  <span class="version-row__label">Ce nœud</span>
+                  <span class="version-row__label">This node</span>
                   <code>{vpcInfo.git_sha_short}</code>
                 </div>
                 <div class="version-row">
-                  <span class="version-row__label">Image GHCR</span>
+                  <span class="version-row__label">GHCR image</span>
                   <code>{registryInfo.git_sha_short}</code>
                 </div>
               </div>
@@ -417,7 +413,7 @@
                 onclick={fetchVpcStatus}
                 disabled={vpcLoading}
               >
-                {vpcLoading ? 'Actualisation…' : 'Actualiser le statut'}
+                {vpcLoading ? 'Refreshing…' : 'Refresh status'}
               </button>
             </div>
 
@@ -669,13 +665,9 @@
     font-size: 13px;
   }
 
-  .stat__value--ok {
-    color: #188038;
-    font-weight: 600;
-  }
-
+  .stat__value--ok,
   .stat__value--warn {
-    color: #e37400;
+    color: #202124;
     font-weight: 600;
   }
 
@@ -693,8 +685,8 @@
   }
 
   .subpanel--busy {
-    border-color: #1a73e8;
-    box-shadow: inset 3px 0 0 #1a73e8;
+    border-color: #202124;
+    box-shadow: inset 3px 0 0 #202124;
   }
 
   .update-status {
@@ -708,21 +700,9 @@
     background: #f8f9fa;
   }
 
-  .update-status--ok {
-    background: #f1f8f3;
-    border-color: #ceead6;
-  }
-
-  .update-status--warn {
-    background: #fef7e0;
-    border-color: #fdd663;
-  }
-
-  .update-status--busy {
-    background: #e8f0fe;
-    border-color: #aecbfa;
-  }
-
+  .update-status--ok,
+  .update-status--warn,
+  .update-status--busy,
   .update-status--info {
     background: #f8f9fa;
     border-color: #dfe1e5;
@@ -737,16 +717,8 @@
     background: #80868b;
   }
 
-  .update-status--ok .update-status__dot {
-    background: #188038;
-  }
-
-  .update-status--warn .update-status__dot {
-    background: #e37400;
-  }
-
   .update-status--busy .update-status__dot {
-    background: #1a73e8;
+    background: #202124;
     animation: update-pulse 1.2s ease-in-out infinite;
   }
 
@@ -808,9 +780,9 @@
   }
 
   .subpanel__badge--ok {
-    color: #188038;
-    border-color: #ceead6;
-    background: #f1f8f3;
+    color: #202124;
+    border-color: #202124;
+    background: #ffffff;
   }
 
   .version-compare {
@@ -852,8 +824,8 @@
   }
 
   .btn-primary--busy {
-    background: #1a73e8;
-    border-color: #1a73e8;
+    background: #202124;
+    border-color: #202124;
   }
 
   .subpanel__msg {

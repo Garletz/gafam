@@ -34,24 +34,6 @@
   let streamEl: HTMLDivElement | undefined = $state();
   let loadGen = 0;
 
-  type SuparnaReading = {
-    day: string;
-    summary: string;
-    timeline?: Array<{ time: string; app: string; event: string; severity: string }>;
-    alerts?: Array<{ type: string; detail: string; codes?: string[] }>;
-    stats?: Record<string, unknown>;
-    confidence?: string;
-    engine?: string;
-    model_ready?: boolean;
-  };
-
-  let suparnaLoading = $state(false);
-  let qwenLoading = $state(false);
-  let suparnaReading: SuparnaReading | null = $state(null);
-  let suparnaError = $state('');
-  let suparnaStatus: { model_ready?: boolean; download?: { status?: string } } | null = $state(null);
-  let modelDownloading = $state(false);
-
   const limit = 800;
   const LIVE_MS = 2000;
 
@@ -221,99 +203,7 @@
 
   onMount(() => {
     refreshDays();
-    fetchSuparnaStatus();
   });
-
-  async function fetchSuparnaStatus() {
-    try {
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'status' });
-      const res = await fetch(`/api/proxy/suparna?${params}`);
-      if (res.ok) suparnaStatus = await res.json();
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async function invokeSuparnaHeuristic(refresh = false) {
-    if (!selectedDay) return;
-    suparnaLoading = true;
-    suparnaError = '';
-    try {
-      const params = new URLSearchParams({
-        vpcUrl,
-        token: sessionToken,
-        action: 'read-logs',
-        day: selectedDay,
-        refresh: refresh ? '1' : '0',
-        llm: '0'
-      });
-      const res = await fetch(`/api/proxy/suparna?${params}`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        suparnaError = data.error || 'Suparna failed';
-        return;
-      }
-      suparnaReading = data;
-    } catch {
-      suparnaError = 'Network error';
-    } finally {
-      suparnaLoading = false;
-    }
-  }
-
-  async function invokeSuparnaLLM(refresh = false) {
-    if (!selectedDay || !suparnaStatus?.model_ready) return;
-    qwenLoading = true;
-    suparnaError = '';
-    try {
-      const params = new URLSearchParams({
-        vpcUrl,
-        token: sessionToken,
-        action: 'read-logs',
-        day: selectedDay,
-        refresh: refresh ? '1' : '0',
-        llm: '1'
-      });
-      const res = await fetch(`/api/proxy/suparna?${params}`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        suparnaError = data.error || 'Analyse Qwen impossible';
-        return;
-      }
-      suparnaReading = data;
-    } catch {
-      suparnaError = 'Network error';
-    } finally {
-      qwenLoading = false;
-    }
-  }
-
-  async function downloadSuparnaModel() {
-    modelDownloading = true;
-    suparnaError = '';
-    try {
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'download-model' });
-      const res = await fetch(`/api/proxy/suparna?${params}`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) {
-        suparnaError = data.error || 'Download failed';
-        return;
-      }
-      await fetchSuparnaStatus();
-    } catch {
-      suparnaError = 'Network error';
-    } finally {
-      modelDownloading = false;
-    }
-  }
-
-  async function copyText(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      /* ignore */
-    }
-  }
 </script>
 
 <section class="logs-viewer">
@@ -352,15 +242,6 @@
       <input type="search" placeholder="grep…" bind:value={filterText} />
       <button
         type="button"
-        class="btn btn-suparna"
-        disabled={!selectedDay || suparnaLoading || qwenLoading}
-        onclick={() => invokeSuparnaHeuristic(false)}
-        title="Aperçu rapide (heuristique, sans Qwen)"
-      >
-        {suparnaLoading ? '…' : 'Suparna'}
-      </button>
-      <button
-        type="button"
         class="btn"
         disabled={loading}
         onclick={() => {
@@ -393,84 +274,8 @@
   </header>
 
   {#if errorMsg}<div class="error">{errorMsg}</div>{/if}
-  {#if suparnaError}<div class="error">{suparnaError}</div>{/if}
 
   {#if selectedDay}
-    <div class="suparna-bar">
-      <span class="suparna-label">सुपर्ण</span>
-      {#if suparnaStatus?.model_ready}
-        <span class="suparna-meta">Qwen prêt · analyse manuelle</span>
-        <button
-          type="button"
-          class="btn btn-qwen"
-          disabled={qwenLoading || suparnaLoading}
-          onclick={() => invokeSuparnaLLM(false)}
-          title="Lance Qwen une fois — rien ne tourne en arrière-plan"
-        >
-          {qwenLoading ? 'Analyse…' : 'Analyser la journée (Qwen)'}
-        </button>
-      {:else}
-        <span class="suparna-meta">aperçu heuristique</span>
-        <button type="button" class="btn btn-ghost" disabled={modelDownloading} onclick={downloadSuparnaModel}>
-          {modelDownloading ? 'Téléchargement…' : 'Télécharger Qwen'}
-        </button>
-      {/if}
-      {#if suparnaStatus?.download?.status === 'downloading'}
-        <span class="suparna-meta">build ONNX en cours…</span>
-      {/if}
-    </div>
-
-    {#if suparnaReading}
-      <div class="suparna-panel">
-        <p class="suparna-summary">{suparnaReading.summary}</p>
-        {#if suparnaReading.alerts && suparnaReading.alerts.length > 0}
-          <ul class="suparna-alerts">
-            {#each suparnaReading.alerts as a}
-              <li>
-                <strong>{a.type}</strong> — {a.detail}
-                {#if a.codes}
-                  <span class="code-chips">
-                    {#each a.codes as code}
-                      <button type="button" class="code-chip" onclick={() => copyText(code)}>{code}</button>
-                    {/each}
-                  </span>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        {#if suparnaReading.timeline && suparnaReading.timeline.length > 0}
-          <div class="suparna-timeline">
-            {#each suparnaReading.timeline as t}
-              <div class="tl-row"><span>{t.time}</span><span>{t.app}</span><span>{t.event}</span></div>
-            {/each}
-          </div>
-        {/if}
-        <div class="suparna-foot">
-          <span>{suparnaReading.engine} · {suparnaReading.confidence}</span>
-          {#if suparnaReading.engine === 'qwen-onnx'}
-            <button
-              type="button"
-              class="btn btn-ghost"
-              disabled={qwenLoading}
-              onclick={() => invokeSuparnaLLM(true)}
-            >
-              Relancer analyse Qwen
-            </button>
-          {:else}
-            <button
-              type="button"
-              class="btn btn-ghost"
-              disabled={suparnaLoading}
-              onclick={() => invokeSuparnaHeuristic(true)}
-            >
-              Actualiser aperçu
-            </button>
-          {/if}
-        </div>
-      </div>
-    {/if}
-
     <div class="logs-stream" bind:this={streamEl}>
       {#each filteredEntries as e}
         <div class="log-line level-{e.level}">
@@ -713,102 +518,5 @@
     font-size: 12px;
     background: #fce8e6;
     border-bottom: 1px solid #f5c2c0;
-  }
-  .btn-suparna {
-    background: #202124;
-    color: #fff;
-    border-color: #202124;
-  }
-  .btn-suparna:hover:not(:disabled) {
-    background: #3c4043;
-  }
-  .btn-qwen {
-    background: #1a73e8;
-    color: #fff;
-    border-color: #1a73e8;
-  }
-  .btn-qwen:hover:not(:disabled) {
-    background: #1557b0;
-  }
-  .suparna-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 16px;
-    border-bottom: 1px solid #e8eaed;
-    background: #f8f9fa;
-    flex-shrink: 0;
-  }
-  .suparna-label {
-    font-weight: 600;
-    font-size: 14px;
-    color: #202124;
-  }
-  .suparna-meta {
-    font-size: 11px;
-    color: #80868b;
-  }
-  .suparna-panel {
-    margin: 0;
-    padding: 12px 16px;
-    border-bottom: 1px solid #dfe1e5;
-    background: #ffffff;
-    flex-shrink: 0;
-    max-height: 220px;
-    overflow-y: auto;
-  }
-  .suparna-summary {
-    margin: 0 0 10px;
-    font-size: 13px;
-    line-height: 1.5;
-    color: #202124;
-  }
-  .suparna-alerts {
-    margin: 0 0 10px;
-    padding-left: 18px;
-    font-size: 12px;
-    color: #5f6368;
-  }
-  .suparna-alerts li {
-    margin-bottom: 6px;
-  }
-  .code-chips {
-    display: inline-flex;
-    gap: 6px;
-    margin-left: 8px;
-    flex-wrap: wrap;
-  }
-  .code-chip {
-    font-family: ui-monospace, monospace;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 6px;
-    border: 1px solid #202124;
-    background: #202124;
-    color: #fff;
-    cursor: pointer;
-  }
-  .code-chip:hover {
-    background: #3c4043;
-  }
-  .suparna-timeline {
-    font-size: 11px;
-    font-family: ui-monospace, monospace;
-    color: #5f6368;
-    margin-bottom: 8px;
-  }
-  .tl-row {
-    display: grid;
-    grid-template-columns: 48px 64px 1fr;
-    gap: 8px;
-    padding: 2px 0;
-  }
-  .suparna-foot {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 11px;
-    color: #80868b;
   }
 </style>

@@ -1,4 +1,4 @@
-package suparna
+package main
 
 import (
 	"regexp"
@@ -7,17 +7,14 @@ import (
 )
 
 var (
-	codeKeywordRe = regexp.MustCompile(`(?i)(code|otp|pin|verification|confirm|mot de passe|mot-de-passe|accès|acces|gafam|impulsion)`)
-	// Standalone numeric codes (4–8 digits), optional spaced groups.
-	numericCodeRe = regexp.MustCompile(`(?:^|[\s:：\-—])((?:\d[\s\-]?){4,8}\d)(?:[\s.,!?]|$)`)
-	// HH:MM style recovery codes
-	timeCodeRe = regexp.MustCompile(`\b([01]?\d|2[0-3])[:h]([0-5]\d)\b`)
-	// Alphanumeric OTP (e.g. A1B2C3)
+	codeKeywordRe  = regexp.MustCompile(`(?i)(code|otp|pin|verification|confirm|mot de passe|mot-de-passe|accès|acces|gafam|impulsion)`)
+	numericCodeRe  = regexp.MustCompile(`(?:^|[\s:：\-—])((?:\d[\s\-]?){4,8}\d)(?:[\s.,!?]|$)`)
+	timeCodeRe     = regexp.MustCompile(`\b([01]?\d|2[0-3])[:h]([0-5]\d)\b`)
 	alphaNumCodeRe = regexp.MustCompile(`\b([A-Z0-9]{4,8})\b`)
 )
 
-// DetectCodes finds likely verification / OTP codes in SMS or log text.
-func DetectCodes(text string) []string {
+// detectSmsCodes finds likely verification / OTP codes in SMS or log text.
+func detectSmsCodes(text string) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
@@ -25,12 +22,11 @@ func DetectCodes(text string) []string {
 	var out []string
 
 	add := func(raw string) {
-		c := normalizeCode(raw)
+		c := normalizeSmsCode(raw)
 		if c == "" || len(c) < 4 || len(c) > 10 {
 			return
 		}
-		// Skip obvious phone fragments / years
-		if len(c) == 4 && (c >= "1900" && c <= "2099") {
+		if len(c) == 4 && c >= "1900" && c <= "2099" {
 			return
 		}
 		if _, ok := seen[c]; ok {
@@ -60,7 +56,7 @@ func DetectCodes(text string) []string {
 
 	if hasKeyword {
 		for _, m := range alphaNumCodeRe.FindAllStringSubmatch(strings.ToUpper(text), -1) {
-			if len(m) > 1 && !isCommonWord(m[1]) {
+			if len(m) > 1 && !isCommonSmsWord(m[1]) {
 				add(m[1])
 			}
 		}
@@ -70,7 +66,7 @@ func DetectCodes(text string) []string {
 	return out
 }
 
-func normalizeCode(raw string) string {
+func normalizeSmsCode(raw string) string {
 	raw = strings.TrimSpace(raw)
 	raw = strings.ReplaceAll(raw, " ", "")
 	raw = strings.ReplaceAll(raw, "-", "")
@@ -78,7 +74,7 @@ func normalizeCode(raw string) string {
 	return raw
 }
 
-func isCommonWord(s string) bool {
+func isCommonSmsWord(s string) bool {
 	switch s {
 	case "GAFAM", "CODE", "HTTP", "HTTPS", "TRUE", "FALSE", "NULL", "SMS", "AUTH":
 		return true

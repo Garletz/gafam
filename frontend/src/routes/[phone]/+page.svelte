@@ -6,7 +6,7 @@
   import AdbTerminal from '$lib/AdbTerminal.svelte';
   import Settings from '$lib/Settings.svelte';
   import Logs from '$lib/Logs.svelte';
-  import { detectSmsCodes } from '$lib/suparnaCodes';
+  import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
 
@@ -828,7 +828,7 @@
                   <div class="msg__bubble">{sms.body}</div>
                   {#if codes.length > 0}
                     <div class="msg__codes">
-                      <span class="msg__codes-label">Suparna</span>
+                      <span class="msg__codes-label">Code</span>
                       {#each codes as code}
                         <button
                           type="button"
