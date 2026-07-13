@@ -240,6 +240,7 @@ func main() {
 	mux.HandleFunc("POST /api/settings/guardians", sessionMiddleware(addGuardianHandler))
 	mux.HandleFunc("DELETE /api/settings/guardians", sessionMiddleware(deleteGuardianHandler))
 	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
+	mux.HandleFunc("GET /api/web/settings", sessionMiddleware(handleSettings))
 	
 	mux.HandleFunc("GET /api/web/vpc-info", sessionMiddleware(vpcInfoHandler))
 	mux.HandleFunc("POST /api/web/vpc-update", sessionMiddleware(triggerUpdateHandler))

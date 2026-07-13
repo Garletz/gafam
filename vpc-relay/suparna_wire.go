@@ -32,7 +32,9 @@ func suparnaReadLogsHandler(w http.ResponseWriter, r *http.Request) {
 		func() bool {
 			scrcpyHub.mu.RLock()
 			defer scrcpyHub.mu.RUnlock()
-			return scrcpyHub.bridgeReady || len(scrcpyHub.viewers) > 0 || len(scrcpyHub.shellViewers) > 0
+			// Block only active browser relay streams (RAM on 1 Go VPS).
+			// Manager bridge alone (no cloud viewers) must not block Suparna.
+			return len(scrcpyHub.viewers) > 0 || len(scrcpyHub.shellViewers) > 0
 		},
 	)
 }

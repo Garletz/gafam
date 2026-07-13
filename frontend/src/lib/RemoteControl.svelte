@@ -24,6 +24,7 @@
 
   let bridgeConnected = $state(false);
   let isCheckingStatus = $state(true);
+  let userWantsStream = $state(false);
 
   onMount(() => {
     if (canvas) {
@@ -48,10 +49,7 @@
       
       const status = await response.json();
       bridgeConnected = status.bridge_connected;
-      
-      if (bridgeConnected) {
-        connectToStream();
-      }
+      // Do not auto-open video_stream — it blocks Suparna on 1 Go VPS (viewer slot).
     } catch (err) {
       error = 'Network error while checking ADB status';
     } finally {
@@ -70,6 +68,7 @@
       error = 'Missing VPC URL or session token';
       return;
     }
+    userWantsStream = true;
 
     error = '';
     initDecoder();
@@ -146,25 +145,26 @@
       }
       
       connected = false;
-      // Auto-reconnect if dropped
-      if (!streamAbort) {
+      if (userWantsStream && !streamAbort) {
         setTimeout(() => {
-          if (vpcUrl && sessionToken && !connected) connectToStream();
+          if (vpcUrl && sessionToken && !connected && userWantsStream) connectToStream();
         }, 2000);
       }
     } catch (e: any) {
       if (e.name !== 'AbortError') {
         error = 'Stream error: ' + e.message;
         connected = false;
-        // Auto-reconnect on error
-        setTimeout(() => {
-          if (vpcUrl && sessionToken && !connected) connectToStream();
-        }, 2000);
+        if (userWantsStream) {
+          setTimeout(() => {
+            if (vpcUrl && sessionToken && !connected && userWantsStream) connectToStream();
+          }, 2000);
+        }
       }
     }
   }
 
   function disconnect() {
+    userWantsStream = false;
     if (streamAbort) {
       streamAbort.abort();
       streamAbort = null;
@@ -431,8 +431,10 @@
     ></canvas>
     {#if !connected && !error && !isCheckingStatus && bridgeConnected}
       <div class="rc-loading-overlay">
-        <div class="rc-spinner"></div>
-        <span>Connecting to Android stream...</span>
+        <button class="rc-btn" type="button" onclick={connectToStream} style="padding: 10px 18px;">
+          Start remote video
+        </button>
+        <span style="margin-top:8px;font-size:12px;color:#666;">Stops Suparna while active (1 Go VPS)</span>
       </div>
     {:else if connected && !hasReceivedKeyFrame}
       <div class="rc-loading-overlay">

@@ -151,19 +151,30 @@
   }
 
   onMount(() => {
-    let saved = null;
-    const match = document.cookie.match(new RegExp('(^| )' + `gafam_auth_${phone}` + '=([^;]+)'));
-    if (match) saved = decodeURIComponent(match[2]);
-    
-    if (saved) {
+    // Prefer D1 directory token (APK re-pair) over stale browser cookie.
+    const serverVpc = (data as any).savedVpcUrl;
+    const serverToken = (data as any).sessionToken;
+    if (serverVpc && serverToken) {
+      vpcUrl = serverVpc;
+      sessionToken = serverToken;
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed.vpcUrl && parsed.sessionToken) {
-          vpcUrl = parsed.vpcUrl;
-          sessionToken = parsed.sessionToken;
-          certFingerprint = parsed.certFingerprint || '';
-        }
-      } catch(e) {}
+        const authData = JSON.stringify({ vpcUrl, sessionToken, certFingerprint });
+        document.cookie = `gafam_auth_${phone}=${encodeURIComponent(authData)}; domain=${getRootDomain()}; path=/; max-age=31536000`;
+      } catch {}
+    } else {
+      let saved = null;
+      const match = document.cookie.match(new RegExp('(^| )' + `gafam_auth_${phone}` + '=([^;]+)'));
+      if (match) saved = decodeURIComponent(match[2]);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.vpcUrl && parsed.sessionToken) {
+            vpcUrl = parsed.vpcUrl;
+            sessionToken = parsed.sessionToken;
+            certFingerprint = parsed.certFingerprint || '';
+          }
+        } catch(e) {}
+      }
     }
 
     if (vpcUrl && sessionToken) {
