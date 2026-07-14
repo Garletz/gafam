@@ -1,6 +1,6 @@
 services:
   gafam-browser:
-    image: gafam-browser
+    image: ghcr.io/garletz/gafam-browser:latest
     container_name: gafam-browser
     mem_limit: 600m
     memswap_limit: 2g
