@@ -168,6 +168,54 @@ if [ "${INSTALL_QWEN:-1}" = "1" ]; then
     install_qwen_sidecar || echo "[!] Qwen install skipped/failed (non-fatal)."
 fi
 
+# 8. Sidecar Browser — Vātāyana (remote Firefox via noVNC)
+install_browser_sidecar() {
+    local work="/root/gafam-setup"
+    mkdir -p "$work/vpc-relay"
+
+    local SCRIPT_DIR
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.browser" ]; then
+        echo "[*] Using local vpc-relay/ for browser build..."
+        cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.browser" "$work/vpc-relay/" 2>/dev/null || true
+        cp -rf "$SCRIPT_DIR/vpc-relay/firefox-profiles" "$work/vpc-relay/" 2>/dev/null || true
+        cp -f "$SCRIPT_DIR/vpc-relay/entrypoint.sh" "$work/vpc-relay/" 2>/dev/null || true
+    else
+        echo "[*] Fetching browser Dockerfile from GitHub..."
+        curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.browser" -o "$work/vpc-relay/Dockerfile.browser"
+        curl -fsSL "$REPO_RAW/vpc-relay/entrypoint.sh" -o "$work/vpc-relay/entrypoint.sh"
+        mkdir -p "$work/vpc-relay/firefox-profiles/profile_main" "$work/vpc-relay/firefox-profiles/profile_agent"
+        curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profiles.ini" -o "$work/vpc-relay/firefox-profiles/profiles.ini"
+        curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_main/user.js" -o "$work/vpc-relay/firefox-profiles/profile_main/user.js"
+        curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_agent/user.js" -o "$work/vpc-relay/firefox-profiles/profile_agent/user.js"
+    fi
+
+    chmod +x "$work/vpc-relay/entrypoint.sh"
+
+    echo "[*] Building gafam-browser image..."
+    docker build -t gafam-browser -f "$work/vpc-relay/Dockerfile.browser" "$work/vpc-relay"
+
+    echo "[*] Creating gafam-browser container (stopped)..."
+    docker rm -f gafam-browser 2>/dev/null || true
+    docker run -d \
+      --name gafam-browser \
+      --network gafam-net \
+      --memory=600m \
+      --memory-swap=2g \
+      --tmpfs /tmp:size=128m \
+      --tmpfs /dev/shm:size=128m \
+      --restart no \
+      -v /root/gafam_data/browser:/home/browser/data \
+      gafam-browser
+    docker stop gafam-browser
+}
+
+if [ "${INSTALL_BROWSER:-1}" = "1" ]; then
+    echo "[*] Installing Browser sidecar (stopped until wake)..."
+    install_browser_sidecar || echo "[!] Browser install skipped/failed (non-fatal)."
+fi
+
 echo ""
 echo "=========================================="
 echo "✅ GAFAM VPC successfully deployed!"
@@ -177,5 +225,6 @@ echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
 echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes."
 echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
 echo "🪶 Qwen: stopped by default (1 Go). Auto wake via Suparna API."
+echo "🌐 Browser: stopped by default. Wake via Browser tab on gafam.cloud."
 echo "   Swap 4G: enabled by this script (SKIP_SWAP=1 to skip)."
 echo "=========================================="

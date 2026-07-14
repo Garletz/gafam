@@ -7,6 +7,7 @@
   import Settings from '$lib/Settings.svelte';
   import Logs from '$lib/Logs.svelte';
   import SuparnaPanel from '$lib/suparna/SuparnaPanel.svelte';
+  import BrowserView from '$lib/BrowserView.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
@@ -31,7 +32,7 @@
   let certFingerprint: string = $state((data as any).certFingerprint || '');
   let smsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' = $state('chats');
+  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
   let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' = $state('vpc');
   let contactSearchQuery: string = $state('');
@@ -670,6 +671,7 @@
               </div>
               <div class="sidebar__tabs-end">
                 <button class="tab {sidebarTab === 'suparna' ? 'active' : ''}" onclick={() => sidebarTab = 'suparna'}>Suparna</button>
+                <button class="tab {sidebarTab === 'browser' ? 'active' : ''}" onclick={() => sidebarTab = 'browser'}>Browser</button>
                 <button
                   type="button"
                   class="tab tab--icon {sidebarTab === 'settings' ? 'active' : ''}"
@@ -886,6 +888,11 @@
               bind:days={logDays}
               bind:totalBytes={logTotalBytes}
               bind:quotaBytes={logQuotaBytes}
+            />
+          {:else if sidebarTab === 'browser'}
+            <BrowserView
+              {sessionToken}
+              {vpcUrl}
             />
           {:else if selectedSender}
             <div class="chat-main__header">

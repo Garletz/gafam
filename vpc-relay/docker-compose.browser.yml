@@ -1,0 +1,21 @@
+services:
+  gafam-browser:
+    image: gafam-browser
+    container_name: gafam-browser
+    mem_limit: 600m
+    memswap_limit: 2g
+    expose:
+      - "6080"
+    volumes:
+      - /root/gafam_data/browser:/home/browser/data
+    tmpfs:
+      - /tmp:size=128m
+      - /dev/shm:size=128m
+    restart: "no"
+    networks:
+      - gafam-net
+
+networks:
+  gafam-net:
+    external: true
+    name: gafam-net

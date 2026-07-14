@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Garletz/gafam/vpc-relay/browser"
 	_ "modernc.org/sqlite"
 )
 
@@ -265,6 +266,12 @@ func main() {
 	mux.HandleFunc("POST /api/scrcpy/shell_input", sessionMiddleware(scrcpyShellInputHandler))
 	mux.HandleFunc("OPTIONS /api/scrcpy/shell_input", sessionMiddleware(scrcpyShellInputHandler))
 	mux.HandleFunc("GET /api/scrcpy/status", sessionMiddleware(scrcpyStatusHandler))
+
+	// Browser Remote Control (Manifest 22 — Vātāyana)
+	mux.HandleFunc("GET /api/web/browser/status", sessionMiddleware(browser.StatusHandler))
+	mux.HandleFunc("POST /api/web/browser/wake", sessionMiddleware(browser.WakeHandler))
+	mux.HandleFunc("POST /api/web/browser/stop", sessionMiddleware(browser.StopHandler))
+	mux.HandleFunc("/browser/", sessionMiddleware(browser.ProxyHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {

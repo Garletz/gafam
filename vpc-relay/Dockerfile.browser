@@ -1,0 +1,36 @@
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:99
+ENV HOME=/home/browser
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    firefox-esr \
+    xvfb \
+    openbox \
+    pulseaudio \
+    x11vnc \
+    websockify \
+    novnc \
+    procps \
+    fonts-dejavu-core \
+    fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash browser && \
+    mkdir -p /home/browser/.mozilla/firefox/profile_main && \
+    mkdir -p /home/browser/.mozilla/firefox/profile_agent && \
+    chown -R browser:browser /home/browser
+
+COPY firefox-profiles/ /home/browser/.mozilla/firefox/
+RUN chown -R browser:browser /home/browser/.mozilla
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 6080
+
+USER browser
+WORKDIR /home/browser
+
+CMD ["/entrypoint.sh"]
