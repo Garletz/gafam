@@ -225,6 +225,51 @@ if [ "${INSTALL_BROWSER:-1}" = "1" ]; then
     install_browser_sidecar || echo "[!] Browser install skipped/failed (non-fatal)."
 fi
 
+# 9. Sidecar Sandbox — Yantraśālā (terminal, files, storage)
+install_sandbox_sidecar() {
+    local work="/root/gafam-setup"
+    mkdir -p "$work/vpc-relay"
+    mkdir -p /root/gafam_data/sandbox/{files,downloads,screenshots}
+
+    local SCRIPT_DIR
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.sandbox" ]; then
+        echo "[*] Using local vpc-relay/ for sandbox build..."
+        cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.sandbox" "$work/vpc-relay/" 2>/dev/null || true
+        cp -f "$SCRIPT_DIR/vpc-relay/sandbox_server.py" "$work/vpc-relay/" 2>/dev/null || true
+        cp -f "$SCRIPT_DIR/vpc-relay/docker-compose.sandbox.yml" "$work/vpc-relay/" 2>/dev/null || true
+    else
+        echo "[*] Fetching sandbox Dockerfile from GitHub..."
+        curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.sandbox" -o "$work/vpc-relay/Dockerfile.sandbox"
+        curl -fsSL "$REPO_RAW/vpc-relay/sandbox_server.py" -o "$work/vpc-relay/sandbox_server.py"
+        curl -fsSL "$REPO_RAW/vpc-relay/docker-compose.sandbox.yml" -o "$work/vpc-relay/docker-compose.sandbox.yml"
+    fi
+
+    echo "[*] Building gafam-sandbox image..."
+    docker build -t gafam-sandbox -f "$work/vpc-relay/Dockerfile.sandbox" "$work/vpc-relay"
+
+    echo "[*] Creating gafam-sandbox container (stopped)..."
+    docker rm -f gafam-sandbox 2>/dev/null || true
+    docker run -d \
+      --name gafam-sandbox \
+      --network gafam-net \
+      --memory=128m \
+      --memory-swap=256m \
+      --tmpfs /sandbox/tmp:size=64m \
+      --restart no \
+      -v /root/gafam_data/sandbox/files:/sandbox/files \
+      -v /root/gafam_data/sandbox/downloads:/sandbox/downloads \
+      -v /root/gafam_data/sandbox/screenshots:/sandbox/screenshots \
+      gafam-sandbox
+    docker stop gafam-sandbox
+}
+
+if [ "${INSTALL_SANDBOX:-1}" = "1" ]; then
+    echo "[*] Installing Sandbox sidecar (stopped until wake)..."
+    install_sandbox_sidecar || echo "[!] Sandbox install skipped/failed (non-fatal)."
+fi
+
 echo ""
 echo "=========================================="
 echo "✅ GAFAM VPC successfully deployed!"
@@ -235,5 +280,6 @@ echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes (gafam-api + gafa
 echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
 echo "🪶 Qwen: stopped by default (1 Go). Auto wake via Suparna API."
 echo "🌐 Browser: stopped by default (GHCR image). Wake via Browser tab on gafam.cloud."
+echo "🛠️  Sandbox: stopped by default (Alpine). Wake via Sandbox tab on gafam.cloud."
 echo "   Swap 4G: enabled by this script (SKIP_SWAP=1 to skip)."
 echo "=========================================="

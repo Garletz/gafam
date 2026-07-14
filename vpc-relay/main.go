@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Garletz/gafam/vpc-relay/browser"
+	"github.com/Garletz/gafam/vpc-relay/sandbox"
 	_ "modernc.org/sqlite"
 )
 
@@ -275,6 +276,14 @@ func main() {
 	mux.HandleFunc("POST /api/web/browser/input", sessionMiddleware(browser.InputHandler))
 	mux.HandleFunc("OPTIONS /api/web/browser/input", sessionMiddleware(browser.InputHandler))
 	mux.HandleFunc("/browser/", sessionMiddleware(browser.ProxyHandler))
+
+	// Sandbox (Manifest 24 — Yantraśālā)
+	mux.HandleFunc("GET /api/web/sandbox/status", sessionMiddleware(sandbox.StatusHandler))
+	mux.HandleFunc("POST /api/web/sandbox/wake", sessionMiddleware(sandbox.WakeHandler))
+	mux.HandleFunc("POST /api/web/sandbox/stop", sessionMiddleware(sandbox.StopHandler))
+	mux.HandleFunc("GET /api/web/sandbox/storage-vpc", sessionMiddleware(sandbox.VpcStorageHandler))
+	mux.HandleFunc("/api/web/sandbox/", sessionMiddleware(sandbox.FilesHandler))
+	mux.HandleFunc("POST /api/web/sandbox-exec", sessionMiddleware(sandbox.ExecHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {

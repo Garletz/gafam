@@ -8,6 +8,7 @@
   import Logs from '$lib/Logs.svelte';
   import SuparnaPanel from '$lib/suparna/SuparnaPanel.svelte';
   import BrowserView from '$lib/BrowserView.svelte';
+  import SandboxView from '$lib/SandboxView.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
@@ -32,7 +33,7 @@
   let certFingerprint: string = $state((data as any).certFingerprint || '');
   let smsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' = $state('chats');
+  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
   let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' = $state('vpc');
   let contactSearchQuery: string = $state('');
@@ -61,7 +62,7 @@
   let isProfileMenuOpen = $state(false);
 
   // Google-style apps overflow for secondary sidebar tabs
-  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser';
+  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox';
   let appsMenuOpen = $state(false);
   const primaryTabs: Array<{ id: SidebarTab; label: string }> = [
     { id: 'chats', label: 'Chats' },
@@ -71,6 +72,7 @@
   const appsMenuItems: Array<{ id: SidebarTab; label: string; hint: string }> = [
     { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI' },
     { id: 'browser', label: 'Browser', hint: 'Vātāyana' },
+    { id: 'sandbox', label: 'Sandbox', hint: 'Yantraśālā' },
     { id: 'settings', label: 'Settings', hint: 'Node & recovery' }
   ];
   const appsMenuActive = $derived(appsMenuItems.some((item) => item.id === sidebarTab));
@@ -979,6 +981,11 @@
             />
           {:else if sidebarTab === 'browser'}
             <BrowserView
+              {sessionToken}
+              {vpcUrl}
+            />
+          {:else if sidebarTab === 'sandbox'}
+            <SandboxView
               {sessionToken}
               {vpcUrl}
             />

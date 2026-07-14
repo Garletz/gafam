@@ -1,0 +1,37 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache \
+    bash \
+    curl \
+    wget \
+    python3 \
+    py3-pip \
+    sqlite \
+    jq \
+    git \
+    vim \
+    procps \
+    coreutils \
+    findutils \
+    grep \
+    sed \
+    gawk \
+    tar \
+    gzip \
+    openssh-client-default \
+    tmux
+
+RUN pip3 install --break-system-packages websockets
+
+RUN mkdir -p /sandbox/files /sandbox/tmp /sandbox/downloads /sandbox/screenshots /sandbox/scripts
+RUN adduser -D -h /sandbox sandbox && chown -R sandbox:sandbox /sandbox
+
+COPY sandbox_server.py /sandbox_server.py
+RUN chmod +x /sandbox_server.py
+
+EXPOSE 6090 6091
+
+USER sandbox
+WORKDIR /sandbox
+
+CMD ["python3", "/sandbox_server.py"]

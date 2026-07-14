@@ -1,0 +1,23 @@
+services:
+  gafam-sandbox:
+    image: gafam-sandbox
+    container_name: gafam-sandbox
+    mem_limit: 128m
+    memswap_limit: 256m
+    expose:
+      - "6090"
+      - "6091"
+    volumes:
+      - /root/gafam_data/sandbox/files:/sandbox/files
+      - /root/gafam_data/sandbox/downloads:/sandbox/downloads
+      - /root/gafam_data/sandbox/screenshots:/sandbox/screenshots
+    tmpfs:
+      - /sandbox/tmp:size=64m
+    restart: "no"
+    networks:
+      - gafam-net
+
+networks:
+  gafam-net:
+    external: true
+    name: gafam-net
