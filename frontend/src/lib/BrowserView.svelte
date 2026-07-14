@@ -206,7 +206,7 @@
       while (pendingFrame && ctx) {
         const jpegData = pendingFrame;
         pendingFrame = null;
-        const blob = new Blob([jpegData.buffer as ArrayBuffer], { type: 'image/jpeg' });
+        const blob = new Blob([jpegData], { type: 'image/jpeg' });
         const bitmap = await createImageBitmap(blob);
         ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         bitmap.close();
@@ -258,11 +258,33 @@
   function getCanvasCoords(e: MouseEvent): { x: number; y: number } {
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const canvasAspect = canvas.width / canvas.height;
+    const rectAspect = rect.width / rect.height;
+
+    // object-fit: contain → image is letterboxed inside the element box
+    let displayW: number;
+    let displayH: number;
+    let offsetX: number;
+    let offsetY: number;
+    if (canvasAspect > rectAspect) {
+      displayW = rect.width;
+      displayH = rect.width / canvasAspect;
+      offsetX = 0;
+      offsetY = (rect.height - displayH) / 2;
+    } else {
+      displayH = rect.height;
+      displayW = rect.height * canvasAspect;
+      offsetX = (rect.width - displayW) / 2;
+      offsetY = 0;
+    }
+
+    const localX = e.clientX - rect.left - offsetX;
+    const localY = e.clientY - rect.top - offsetY;
+    const x = Math.round((localX / displayW) * canvas.width);
+    const y = Math.round((localY / displayH) * canvas.height);
     return {
-      x: Math.round((e.clientX - rect.left) * scaleX),
-      y: Math.round((e.clientY - rect.top) * scaleY)
+      x: Math.max(0, Math.min(canvas.width - 1, x)),
+      y: Math.max(0, Math.min(canvas.height - 1, y))
     };
   }
 
