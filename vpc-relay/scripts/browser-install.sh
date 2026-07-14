@@ -5,7 +5,7 @@ echo "=========================================="
 echo "  Vātāyana — Remote Browser Install"
 echo "=========================================="
 
-BROWSER_IMAGE="${BROWSER_IMAGE:-ghcr.io/garletz/gafam-browser:latest}"
+BROWSER_IMAGE="${BROWSER_IMAGE:-ghcr.io/garletz/gafam:browser}"
 
 if ! command -v docker &> /dev/null; then
     echo "[!] Docker is required but not found."

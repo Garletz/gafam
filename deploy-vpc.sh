@@ -173,7 +173,7 @@ fi
 # 8. Sidecar Browser — Vātāyana (remote Firefox via noVNC)
 # Prefer pre-built GHCR image (same OTA path as gafam-api). Local Dockerfile only as fallback.
 install_browser_sidecar() {
-    local BROWSER_IMAGE="${BROWSER_IMAGE:-ghcr.io/garletz/gafam-browser:latest}"
+    local BROWSER_IMAGE="${BROWSER_IMAGE:-ghcr.io/garletz/gafam:browser}"
 
     mkdir -p /root/gafam_data/browser
 

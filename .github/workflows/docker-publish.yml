@@ -79,10 +79,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Lowercase browser image name
+      - name: Lowercase repository name (same public package as API)
         run: |
-          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "browser_image=${OWNER_LOWER}/gafam-browser" >> $GITHUB_ENV
+          REPO_LOWERCASE=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image_name=$REPO_LOWERCASE" >> $GITHUB_ENV
 
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
@@ -92,14 +92,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT || secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for browser image
+      # Same package as API (public): ghcr.io/garletz/gafam:browser
+      - name: Extract metadata for browser tag
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.browser_image }}
+          images: ${{ env.REGISTRY }}/${{ env.image_name }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
+            type=raw,value=browser,enable={{is_default_branch}}
+            type=sha,prefix=browser-
 
       - name: Build and push browser image
         uses: docker/build-push-action@v5
@@ -111,22 +112,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=gafam-browser
           cache-to: type=gha,mode=max,scope=gafam-browser
-
-      - name: Make browser package public (same as gafam-api)
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.CR_PAT || secrets.GITHUB_TOKEN }}
-        run: |
-          # Match public visibility of ghcr.io/garletz/gafam so VPS can pull without auth.
-          for path in \
-            "/user/packages/container/gafam-browser/visibility" \
-            "/users/${{ github.repository_owner }}/packages/container/gafam-browser/visibility"
-          do
-            if gh api --method PUT "$path" -f visibility=public; then
-              echo "Published via $path"
-              exit 0
-            fi
-          done
-          echo "Could not set visibility automatically — set Package → Change visibility → Public in GitHub UI."
-          exit 0

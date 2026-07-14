@@ -18,7 +18,7 @@ const (
 	dockerSock       = "/var/run/docker.sock"
 	browserContainer = "gafam-browser"
 	dockerAPIBase    = "http://localhost"
-	defaultImage     = "ghcr.io/garletz/gafam-browser:latest"
+	defaultImage     = "ghcr.io/garletz/gafam:browser"
 )
 
 func dockerHTTP() *http.Client {

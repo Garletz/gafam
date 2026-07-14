@@ -29,7 +29,7 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 				"running":      false,
 				"docker_error": "",
 				"browser_url":  browserBaseURL(),
-				"message":      "not installed yet — Wake pulls ghcr.io/garletz/gafam-browser:latest",
+				"message":      "not installed yet — Wake pulls ghcr.io/garletz/gafam:browser",
 			})
 			return
 		}
