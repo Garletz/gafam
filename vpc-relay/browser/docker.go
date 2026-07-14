@@ -253,7 +253,7 @@ func browserBaseURL() string {
 
 func waitBrowserReady(ctx context.Context) error {
 	client := &http.Client{Timeout: 5 * time.Second}
-	healthURL := browserBaseURL() + "/vnc.html"
+	healthURL := browserBaseURL() + "/status"
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 

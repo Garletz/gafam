@@ -2,7 +2,12 @@
 set -e
 
 DISPLAY_NUM=99
-SCREEN_RES="1920x1080x24"
+SCREEN_RES="1280x720x24"
+
+export BROWSER_WIDTH=1280
+export BROWSER_HEIGHT=720
+export BROWSER_FPS=12
+export STREAM_PORT=6080
 
 echo "[vatayana] Starting Xvfb on :${DISPLAY_NUM}..."
 Xvfb :${DISPLAY_NUM} -screen 0 ${SCREEN_RES} -ac +extension GLX +render -noreset &
@@ -23,14 +28,10 @@ echo "[vatayana] Starting Firefox ESR (main profile)..."
 firefox-esr -P main --no-remote --new-instance "about:blank" &
 sleep 2
 
-echo "[vatayana] Starting x11vnc on display :${DISPLAY_NUM}..."
-x11vnc -display :${DISPLAY_NUM} -nopw -listen 0.0.0.0 -xkb -ncache 10 -ncache_cr -forever -shared -rfbport 5900 &
-sleep 1
+echo "[vatayana] Starting stream server (JPEG over HTTP on port ${STREAM_PORT})..."
+python3 /stream.py &
+STREAM_PID=$!
 
-echo "[vatayana] Starting websockify + noVNC on port 6080..."
-websockify --web=/usr/share/novnc 6080 localhost:5900 &
-WEBSOCKIFY_PID=$!
+echo "[vatayana] Ready. Stream at http://localhost:${STREAM_PORT}/stream"
 
-echo "[vatayana] Ready. noVNC available at http://localhost:6080/vnc.html?autoconnect=true"
-
-wait ${WEBSOCKIFY_PID}
+wait ${STREAM_PID}

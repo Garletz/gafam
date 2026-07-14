@@ -100,7 +100,7 @@ function findBodyStart(buffer: Uint8Array): number {
 	return -1;
 }
 
-async function proxyBrowserContent(url: URL, request: Request, browserPath: string) {
+async function proxyStream(url: URL, request: Request) {
 	const vpcUrl = url.searchParams.get('vpcUrl');
 	const token = url.searchParams.get('token');
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
@@ -116,8 +116,9 @@ async function proxyBrowserContent(url: URL, request: Request, browserPath: stri
 		const writer = socket.writable.getWriter();
 		const encoder = new TextEncoder();
 
+		const path = `/api/web/browser/stream?token=${encodeURIComponent(token)}`;
 		const httpRequest = [
-			`GET /browser${browserPath} HTTP/1.0`,
+			`GET ${path} HTTP/1.0`,
 			`Host: ${host}`,
 			`Authorization: Bearer ${token}`,
 			`Connection: close`,
@@ -134,7 +135,7 @@ async function proxyBrowserContent(url: URL, request: Request, browserPath: stri
 		while (true) {
 			const { done, value } = await reader.read();
 			if (value) {
-				// @ts-ignore - ArrayBufferLike vs ArrayBuffer compatibility
+				// @ts-ignore - ArrayBufferLike vs ArrayBuffer
 				buffer = concatBuffer(buffer, value);
 			}
 
@@ -187,7 +188,8 @@ async function proxyBrowserContent(url: URL, request: Request, browserPath: stri
 		}
 	} catch (socketError: any) {
 		try {
-			const response = await fetch(`${vpcUrl}/browser${browserPath}`, {
+			const path = `/api/web/browser/stream?token=${encodeURIComponent(token)}`;
+			const response = await fetch(`${vpcUrl}${path}`, {
 				method: 'GET',
 				headers: { Authorization: `Bearer ${token}` }
 			});
@@ -201,28 +203,98 @@ async function proxyBrowserContent(url: URL, request: Request, browserPath: stri
 	}
 }
 
-export const GET: RequestHandler = async ({ url, request }) => {
+async function proxyInput(url: URL, request: Request) {
 	const vpcUrl = url.searchParams.get('vpcUrl');
 	const token = url.searchParams.get('token');
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
 
-	const action = url.searchParams.get('action');
-	const path = url.searchParams.get('path');
+	const parsed = new URL(vpcUrl);
+	const host = parsed.hostname;
+	const port = parseInt(parsed.port) || 5150;
+	const payload = await request.text();
 
-	if (action === 'status' || (!action && !path)) {
+	try {
+		// @ts-ignore
+		const { connect } = await import(/* @vite-ignore */ 'cloudflare:sockets');
+		const socket = connect(`${host}:${port}`);
+		const writer = socket.writable.getWriter();
+		const encoder = new TextEncoder();
+
+		const path = `/api/web/browser/input?token=${encodeURIComponent(token)}`;
+		const bodyBytes = new TextEncoder().encode(payload).length;
+		const httpRequest = [
+			`POST ${path} HTTP/1.1`,
+			`Host: ${host}`,
+			`Authorization: Bearer ${token}`,
+			`Content-Type: application/json`,
+			`Content-Length: ${bodyBytes}`,
+			`Connection: close`,
+			'',
+			payload
+		].join('\r\n');
+
+		await writer.write(encoder.encode(httpRequest));
+		writer.releaseLock();
+
+		const reader = socket.readable.getReader();
+		const decoder = new TextDecoder();
+		let rawResponse = '';
+
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			rawResponse += decoder.decode(value, { stream: true });
+		}
+
+		const bodyStart = rawResponse.indexOf('\r\n\r\n');
+		if (bodyStart === -1) {
+			return json({ error: 'Malformed response' }, { status: 502 });
+		}
+
+		const statusLine = rawResponse.split('\r\n')[0];
+		const statusCode = parseInt(statusLine.split(' ')[1] || '500');
+		const responseBody = rawResponse.slice(bodyStart + 4).trim();
+
+		try {
+			return json(responseBody ? JSON.parse(responseBody) : {}, { status: statusCode });
+		} catch {
+			return json({ error: responseBody }, { status: statusCode });
+		}
+	} catch (socketError: any) {
+		try {
+			const path = `/api/web/browser/input?token=${encodeURIComponent(token)}`;
+			const response = await fetch(`${vpcUrl}${path}`, {
+				method: 'POST',
+				headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+				body: payload
+			});
+			return json(await response.json(), { status: response.status });
+		} catch {
+			return json({ error: 'Both socket and fetch failed' }, { status: 500 });
+		}
+	}
+}
+
+export const GET: RequestHandler = async ({ url }) => {
+	const vpcUrl = url.searchParams.get('vpcUrl');
+	const token = url.searchParams.get('token');
+	const action = url.searchParams.get('action');
+	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
+
+	if (action === 'status' || !action) {
 		const vpcPath = `/api/web/browser/status?token=${encodeURIComponent(token)}`;
 		const result = await vpcRequest(vpcUrl, token, 'GET', vpcPath);
 		return json(result.data, { status: result.status });
 	}
 
-	if (path) {
-		return proxyBrowserContent(url, request, path);
+	if (action === 'stream') {
+		return proxyStream(url, new Request(url));
 	}
 
-	return json({ error: 'Missing action or path' }, { status: 400 });
+	return json({ error: 'Unknown action' }, { status: 400 });
 };
 
-export const POST: RequestHandler = async ({ url }) => {
+export const POST: RequestHandler = async ({ url, request }) => {
 	const vpcUrl = url.searchParams.get('vpcUrl');
 	const token = url.searchParams.get('token');
 	const action = url.searchParams.get('action');
@@ -240,5 +312,20 @@ export const POST: RequestHandler = async ({ url }) => {
 		return json(result.data, { status: result.status });
 	}
 
+	if (action === 'input') {
+		return proxyInput(url, request);
+	}
+
 	return json({ error: 'Unknown action' }, { status: 400 });
+};
+
+export const OPTIONS: RequestHandler = async ({ url }) => {
+	return new Response(null, {
+		status: 200,
+		headers: {
+			'Access-Control-Allow-Origin': '*',
+			'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+			'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+		}
+	});
 };

@@ -271,6 +271,9 @@ func main() {
 	mux.HandleFunc("GET /api/web/browser/status", sessionMiddleware(browser.StatusHandler))
 	mux.HandleFunc("POST /api/web/browser/wake", sessionMiddleware(browser.WakeHandler))
 	mux.HandleFunc("POST /api/web/browser/stop", sessionMiddleware(browser.StopHandler))
+	mux.HandleFunc("GET /api/web/browser/stream", sessionMiddleware(browser.StreamHandler))
+	mux.HandleFunc("POST /api/web/browser/input", sessionMiddleware(browser.InputHandler))
+	mux.HandleFunc("OPTIONS /api/web/browser/input", sessionMiddleware(browser.InputHandler))
 	mux.HandleFunc("/browser/", sessionMiddleware(browser.ProxyHandler))
 
 	port := os.Getenv("PORT")

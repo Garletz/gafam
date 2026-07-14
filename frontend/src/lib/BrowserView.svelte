@@ -9,12 +9,16 @@
     sessionToken: string;
   } = $props();
 
+  let canvas: HTMLCanvasElement;
   let browserRunning = $state(false);
   let isLoading = $state(false);
   let errorMsg = $state('');
   let statusMsg = $state('');
-  let iframeRef: HTMLIFrameElement | null = $state(null);
+  let connected = $state(false);
+  let streamWidth = $state(1280);
+  let streamHeight = $state(720);
 
+  let streamAbort: AbortController | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
@@ -23,6 +27,7 @@
   });
 
   onDestroy(() => {
+    disconnect();
     if (pollInterval) clearInterval(pollInterval);
   });
 
@@ -35,7 +40,9 @@
         const data: any = await res.json();
         browserRunning = data.running;
         if (data.docker_error) errorMsg = data.docker_error;
-        else if (data.running) errorMsg = '';
+        if (browserRunning && !connected) {
+          connectToStream();
+        }
       }
     } catch {
     }
@@ -53,7 +60,7 @@
       if (res.ok) {
         browserRunning = true;
         statusMsg = 'Browser ready';
-        reloadIframe();
+        setTimeout(() => connectToStream(), 500);
       } else {
         errorMsg = data.error || 'Failed to start browser';
         statusMsg = '';
@@ -68,6 +75,7 @@
 
   async function stopBrowser() {
     if (!vpcUrl || !sessionToken) return;
+    disconnect();
     isLoading = true;
     errorMsg = '';
     statusMsg = 'Stopping browser...';
@@ -77,6 +85,7 @@
       const data: any = await res.json();
       if (res.ok) {
         browserRunning = false;
+        connected = false;
         statusMsg = 'Browser stopped';
       } else {
         errorMsg = data.error || 'Failed to stop browser';
@@ -90,29 +99,165 @@
     }
   }
 
-  function encodeVpc(vpc: string): string {
-    return btoa(vpc).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  }
+  async function connectToStream() {
+    if (!vpcUrl || !sessionToken || !browserRunning) return;
 
-  function getNoVncUrl(): string {
-    if (!vpcUrl || !sessionToken) return '';
-    const vpcEnc = encodeVpc(vpcUrl);
-    const tokenPath = encodeURIComponent(sessionToken);
-    const base = `/api/proxy/browser/t/${vpcEnc}/${tokenPath}`;
-    const params = new URLSearchParams({
-      autoconnect: 'true',
-      resize: 'scale',
-      reconnect: 'true',
-      // Force websockify through our CF tunnel (default noVNC path is /websockify at site root).
-      path: `${base}/websockify`
-    });
-    return `${base}/vnc.html?${params.toString()}`;
-  }
+    errorMsg = '';
+    streamAbort = new AbortController();
 
-  function reloadIframe() {
-    if (iframeRef) {
-      iframeRef.src = getNoVncUrl();
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'stream' });
+      const response = await fetch(`/api/proxy/browser?${params.toString()}`, {
+        signal: streamAbort.signal
+      });
+
+      if (!response.ok) {
+        errorMsg = 'Stream failed: ' + response.status;
+        return;
+      }
+
+      const w = parseInt(response.headers.get('X-Browser-Width') || '1280');
+      const h = parseInt(response.headers.get('X-Browser-Height') || '720');
+      streamWidth = w;
+      streamHeight = h;
+      if (canvas) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+
+      connected = true;
+      statusMsg = '';
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        errorMsg = 'Streaming not supported';
+        return;
+      }
+
+      let buffer = new Uint8Array(0);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (value) {
+          const newBuffer = new Uint8Array(buffer.length + value.length);
+          newBuffer.set(buffer);
+          newBuffer.set(value, buffer.length);
+          buffer = newBuffer;
+        }
+
+        while (buffer.length >= 4) {
+          const len = new DataView(
+            buffer.buffer,
+            buffer.byteOffset,
+            buffer.byteLength
+          ).getUint32(0, false);
+
+          if (buffer.length >= 4 + len) {
+            const jpegData = buffer.slice(4, 4 + len);
+            buffer = buffer.slice(4 + len);
+            renderFrame(jpegData);
+          } else {
+            break;
+          }
+        }
+      }
+
+      connected = false;
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        errorMsg = 'Stream error: ' + err.message;
+        connected = false;
+      }
     }
+  }
+
+  function disconnect() {
+    if (streamAbort) {
+      streamAbort.abort();
+      streamAbort = null;
+    }
+    connected = false;
+  }
+
+  async function renderFrame(jpegData: Uint8Array) {
+    if (!canvas) return;
+    try {
+      const copy = new Uint8Array(jpegData);
+      const blob = new Blob([copy], { type: 'image/jpeg' });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        }
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => URL.revokeObjectURL(url);
+      img.src = url;
+    } catch {
+    }
+  }
+
+  async function sendInput(event: any) {
+    if (!vpcUrl || !sessionToken || !connected) return;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'input' });
+      await fetch(`/api/proxy/browser?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event)
+      });
+    } catch {
+    }
+  }
+
+  function getCanvasCoords(e: MouseEvent): { x: number; y: number } {
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: Math.round((e.clientX - rect.left) * scaleX),
+      y: Math.round((e.clientY - rect.top) * scaleY)
+    };
+  }
+
+  function handleMouseDown(e: MouseEvent) {
+    const { x, y } = getCanvasCoords(e);
+    sendInput({ type: 'mouse_move', x, y });
+    sendInput({ type: 'mouse_down', button: 1 });
+  }
+
+  function handleMouseUp(e: MouseEvent) {
+    sendInput({ type: 'mouse_up', button: 1 });
+  }
+
+  function handleMouseMove(e: MouseEvent) {
+    if (e.buttons > 0) {
+      const { x, y } = getCanvasCoords(e);
+      sendInput({ type: 'mouse_move', x, y });
+    }
+  }
+
+  function handleWheel(e: WheelEvent) {
+    sendInput({ type: 'scroll', dy: e.deltaY });
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    e.preventDefault();
+    let key = '';
+    if (e.key === 'Enter') key = 'Return';
+    else if (e.key === 'Backspace') key = 'BackSpace';
+    else if (e.key === 'Tab') key = 'Tab';
+    else if (e.key === 'Escape') key = 'Escape';
+    else if (e.key === ' ') key = 'space';
+    else if (e.key.length === 1) key = e.key;
+    else return;
+
+    sendInput({ type: 'key', key });
   }
 </script>
 
@@ -130,7 +275,7 @@
         class:is-loading={isLoading}
       ></span>
       <span class="status-label">
-        {browserRunning ? 'Running' : isLoading ? 'Loading...' : 'Stopped'}
+        {browserRunning ? (connected ? 'Streaming' : 'Running') : isLoading ? 'Loading...' : 'Stopped'}
       </span>
     </div>
   </header>
@@ -166,13 +311,16 @@
 
   <div class="browser-view__frame">
     {#if browserRunning}
-      <iframe
-        bind:this={iframeRef}
-        src={getNoVncUrl()}
-        title="Vātāyana Remote Browser"
-        allow="clipboard-read; clipboard-write"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-      ></iframe>
+      <canvas
+        bind:this={canvas}
+        onmousedown={handleMouseDown}
+        onmouseup={handleMouseUp}
+        onmousemove={handleMouseMove}
+        onwheel={handleWheel}
+        onkeydown={handleKeydown}
+        tabindex="0"
+        class="browser-canvas"
+      ></canvas>
     {:else}
       <div class="browser-view__placeholder">
         <p>Firefox ESR on VPC</p>
@@ -195,7 +343,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 10px 16px;
     border-bottom: 1px solid #dfe1e5;
     flex-shrink: 0;
   }
@@ -258,7 +406,7 @@
   }
 
   .browser-view__controls {
-    padding: 10px 16px;
+    padding: 8px 16px;
     border-bottom: 1px solid #e8eaed;
     flex-shrink: 0;
   }
@@ -321,13 +469,17 @@
     min-height: 0;
     overflow: hidden;
     position: relative;
-    background: #f5f5f5;
+    background: #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .browser-view__frame iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
+  .browser-canvas {
+    max-width: 100%;
+    max-height: 100%;
+    cursor: crosshair;
+    outline: none;
   }
 
   .browser-view__placeholder {

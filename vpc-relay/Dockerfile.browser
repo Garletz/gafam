@@ -9,9 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
     openbox \
     pulseaudio \
-    x11vnc \
-    websockify \
-    novnc \
+    xdotool \
+    ffmpeg \
+    python3 \
     procps \
     fonts-dejavu-core \
     fonts-liberation \
@@ -25,8 +25,9 @@ RUN useradd -m -s /bin/bash browser && \
 COPY firefox-profiles/ /home/browser/.mozilla/firefox/
 RUN chown -R browser:browser /home/browser/.mozilla
 
+COPY stream.py /stream.py
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /stream.py
 
 EXPOSE 6080
 

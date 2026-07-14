@@ -24,13 +24,17 @@ function decodeVpc(encoded: string): string {
 }
 
 function injectBaseHref(html: string, baseHref: string): string {
+	// Normalize path query before Debian noVNC does: url += '/' + path
+	const fixScript = `<script>(function(){try{var u=new URL(location.href);var p=u.searchParams.get('path')||'';if(/^wss?:\\/\\//i.test(p)){var w=new URL(p);p=w.pathname.replace(/^\\/+/, '')+(w.search||'');u.searchParams.set('path',p);history.replaceState(null,'',u);}else if(p.charAt(0)==='/'){u.searchParams.set('path',p.replace(/^\\/+/, ''));history.replaceState(null,'',u);}}catch(e){}})();</script>`;
+	const inject = `<base href="${baseHref}">${fixScript}`;
 	if (/<base\s/i.test(html)) {
-		return html.replace(/<base\s[^>]*>/i, `<base href="${baseHref}">`);
+		html = html.replace(/<base\s[^>]*>/i, inject);
+	} else if (/<head[^>]*>/i.test(html)) {
+		html = html.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
+	} else {
+		html = inject + html;
 	}
-	if (/<head[^>]*>/i.test(html)) {
-		return html.replace(/<head([^>]*)>/i, `<head$1><base href="${baseHref}">`);
-	}
-	return `<base href="${baseHref}">` + html;
+	return html;
 }
 
 function encodeClientWsFrame(opcode: number, payload: Uint8Array): Uint8Array {

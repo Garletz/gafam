@@ -190,15 +190,17 @@ install_browser_sidecar() {
             cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.browser" "$work/vpc-relay/" 2>/dev/null || true
             cp -rf "$SCRIPT_DIR/vpc-relay/firefox-profiles" "$work/vpc-relay/" 2>/dev/null || true
             cp -f "$SCRIPT_DIR/vpc-relay/entrypoint.sh" "$work/vpc-relay/" 2>/dev/null || true
+            cp -f "$SCRIPT_DIR/vpc-relay/stream.py" "$work/vpc-relay/" 2>/dev/null || true
         else
             curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.browser" -o "$work/vpc-relay/Dockerfile.browser"
             curl -fsSL "$REPO_RAW/vpc-relay/entrypoint.sh" -o "$work/vpc-relay/entrypoint.sh"
+            curl -fsSL "$REPO_RAW/vpc-relay/stream.py" -o "$work/vpc-relay/stream.py"
             mkdir -p "$work/vpc-relay/firefox-profiles/profile_main" "$work/vpc-relay/firefox-profiles/profile_agent"
             curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profiles.ini" -o "$work/vpc-relay/firefox-profiles/profiles.ini"
             curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_main/user.js" -o "$work/vpc-relay/firefox-profiles/profile_main/user.js"
             curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_agent/user.js" -o "$work/vpc-relay/firefox-profiles/profile_agent/user.js"
         fi
-        chmod +x "$work/vpc-relay/entrypoint.sh"
+        chmod +x "$work/vpc-relay/entrypoint.sh" "$work/vpc-relay/stream.py"
         docker build -t gafam-browser -f "$work/vpc-relay/Dockerfile.browser" "$work/vpc-relay"
         BROWSER_IMAGE="gafam-browser"
     fi
