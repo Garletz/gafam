@@ -97,13 +97,16 @@
   function getNoVncUrl(): string {
     if (!vpcUrl || !sessionToken) return '';
     const vpcEnc = encodeVpc(vpcUrl);
+    const tokenPath = encodeURIComponent(sessionToken);
+    const base = `/api/proxy/browser/t/${vpcEnc}/${tokenPath}`;
     const params = new URLSearchParams({
       autoconnect: 'true',
       resize: 'scale',
-      reconnect: 'true'
+      reconnect: 'true',
+      // Force websockify through our CF tunnel (default noVNC path is /websockify at site root).
+      path: `${base}/websockify`
     });
-    // Path-based tunnel so relative noVNC CSS/JS resolve under the same auth prefix.
-    return `/api/proxy/browser/t/${vpcEnc}/${encodeURIComponent(sessionToken)}/vnc.html?${params.toString()}`;
+    return `${base}/vnc.html?${params.toString()}`;
   }
 
   function reloadIframe() {
