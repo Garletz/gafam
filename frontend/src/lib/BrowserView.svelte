@@ -35,6 +35,7 @@
         const data: any = await res.json();
         browserRunning = data.running;
         if (data.docker_error) errorMsg = data.docker_error;
+        else if (data.running) errorMsg = '';
       }
     } catch {
     }
@@ -89,17 +90,20 @@
     }
   }
 
+  function encodeVpc(vpc: string): string {
+    return btoa(vpc).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
   function getNoVncUrl(): string {
     if (!vpcUrl || !sessionToken) return '';
+    const vpcEnc = encodeVpc(vpcUrl);
     const params = new URLSearchParams({
-      vpcUrl,
-      token: sessionToken,
-      path: '/vnc.html',
       autoconnect: 'true',
       resize: 'scale',
       reconnect: 'true'
     });
-    return `/api/proxy/browser?${params.toString()}`;
+    // Path-based tunnel so relative noVNC CSS/JS resolve under the same auth prefix.
+    return `/api/proxy/browser/t/${vpcEnc}/${encodeURIComponent(sessionToken)}/vnc.html?${params.toString()}`;
   }
 
   function reloadIframe() {

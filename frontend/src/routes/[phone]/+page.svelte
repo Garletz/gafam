@@ -60,6 +60,42 @@
   // Profile menu state
   let isProfileMenuOpen = $state(false);
 
+  // Google-style apps overflow for secondary sidebar tabs
+  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser';
+  let appsMenuOpen = $state(false);
+  const primaryTabs: Array<{ id: SidebarTab; label: string }> = [
+    { id: 'chats', label: 'Chats' },
+    { id: 'contacts', label: 'Contacts' },
+    { id: 'logs', label: 'Logs' }
+  ];
+  const appsMenuItems: Array<{ id: SidebarTab; label: string; hint: string }> = [
+    { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI' },
+    { id: 'browser', label: 'Browser', hint: 'Vātāyana' },
+    { id: 'settings', label: 'Settings', hint: 'Node & recovery' }
+  ];
+  const appsMenuActive = $derived(appsMenuItems.some((item) => item.id === sidebarTab));
+  const appsMenuActiveLabel = $derived(
+    appsMenuItems.find((item) => item.id === sidebarTab)?.label ?? null
+  );
+
+  function selectSidebarTab(tab: SidebarTab) {
+    sidebarTab = tab;
+    appsMenuOpen = false;
+  }
+
+  function toggleAppsMenu() {
+    appsMenuOpen = !appsMenuOpen;
+  }
+
+  $effect(() => {
+    if (!appsMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') appsMenuOpen = false;
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   // Web Crypto API Helpers
   async function derivePBKDF2Key(passphrase: string, saltBase64: string) {
     const enc = new TextEncoder();
@@ -665,25 +701,77 @@
           <div class="sidebar__header">
             <div class="sidebar__tabs">
               <div class="sidebar__tabs-main">
-                <button class="tab {sidebarTab === 'chats' ? 'active' : ''}" onclick={() => sidebarTab = 'chats'}>Chats</button>
-                <button class="tab {sidebarTab === 'contacts' ? 'active' : ''}" onclick={() => sidebarTab = 'contacts'}>Contacts</button>
-                <button class="tab {sidebarTab === 'logs' ? 'active' : ''}" onclick={() => sidebarTab = 'logs'}>Logs</button>
+                {#each primaryTabs as t}
+                  <button
+                    type="button"
+                    class="tab {sidebarTab === t.id ? 'active' : ''}"
+                    onclick={() => selectSidebarTab(t.id)}
+                  >
+                    {t.label}
+                  </button>
+                {/each}
               </div>
-              <div class="sidebar__tabs-end">
-                <button class="tab {sidebarTab === 'suparna' ? 'active' : ''}" onclick={() => sidebarTab = 'suparna'}>Suparna</button>
-                <button class="tab {sidebarTab === 'browser' ? 'active' : ''}" onclick={() => sidebarTab = 'browser'}>Browser</button>
+              <div class="sidebar__apps" class:is-open={appsMenuOpen} class:is-active={appsMenuActive}>
                 <button
                   type="button"
-                  class="tab tab--icon {sidebarTab === 'settings' ? 'active' : ''}"
-                  title="Settings"
-                  aria-label="Settings"
-                  onclick={() => sidebarTab = 'settings'}
+                  class="apps-trigger"
+                  class:is-open={appsMenuOpen}
+                  class:is-active={appsMenuActive}
+                  title="More apps"
+                  aria-label="More apps"
+                  aria-haspopup="menu"
+                  aria-expanded={appsMenuOpen}
+                  onclick={toggleAppsMenu}
                 >
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
+                  <span class="apps-grid" aria-hidden="true">
+                    {#each Array(9) as _, i (i)}
+                      <span class="apps-dot"></span>
+                    {/each}
+                  </span>
+                  {#if appsMenuActiveLabel && !appsMenuOpen}
+                    <span class="apps-trigger__label">{appsMenuActiveLabel}</span>
+                  {/if}
                 </button>
+                {#if appsMenuOpen}
+                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+                  <div class="apps-backdrop" role="presentation" onclick={() => (appsMenuOpen = false)}></div>
+                  <div class="apps-panel" role="menu" aria-label="More apps">
+                    <div class="apps-panel__grid">
+                      {#each appsMenuItems as item, i}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          class="apps-tile"
+                          class:active={sidebarTab === item.id}
+                          style="--i: {i}"
+                          onclick={() => selectSidebarTab(item.id)}
+                        >
+                          <span class="apps-tile__icon" data-app={item.id}>
+                            {#if item.id === 'suparna'}
+                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+                                <circle cx="12" cy="12" r="4.5" />
+                                <path d="M7.5 7.5l2 2M14.5 14.5l2 2M16.5 7.5l-2 2M9.5 14.5l-2 2" />
+                              </svg>
+                            {:else if item.id === 'browser'}
+                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+                              </svg>
+                            {:else}
+                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                            {/if}
+                          </span>
+                          <span class="apps-tile__label">{item.label}</span>
+                          <span class="apps-tile__hint">{item.hint}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
               </div>
             </div>
             <div class="sidebar__actions">
@@ -697,7 +785,7 @@
                   <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
                 </div>
               {/if}
-              {#if sidebarTab !== 'logs' && sidebarTab !== 'settings' && sidebarTab !== 'suparna'}
+              {#if sidebarTab === 'chats' || sidebarTab === 'contacts'}
               <label class="toggle-sync" title="Sync Contacts with Android">
                 <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
                 <span>Sync Contacts</span>
@@ -1111,41 +1199,172 @@
   }
   .sidebar__tabs {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+    min-width: 0;
   }
-  .sidebar__tabs-main,
-  .sidebar__tabs-end {
+  .sidebar__tabs-main {
     display: flex;
-    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    gap: 2px;
   }
   .sidebar__tabs-main .tab {
     flex: 1;
-  }
-  .sidebar__tabs-end .tab {
-    flex: 0 0 auto;
+    min-width: 0;
   }
   .tab {
     flex: 1;
-    padding: 8px;
+    padding: 8px 6px;
     border: none;
     background: transparent;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: #5f6368;
     cursor: pointer;
     border-bottom: 2px solid transparent;
+    white-space: nowrap;
   }
   .tab.active {
     color: #202124;
     border-bottom-color: #202124;
   }
-  .tab--icon {
-    display: flex;
+  .sidebar__apps {
+    position: relative;
+    flex: 0 0 auto;
+    margin-left: 2px;
+  }
+  .apps-trigger {
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 8px 10px;
+    gap: 6px;
+    max-width: 108px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #5f6368;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  }
+  .apps-trigger:hover,
+  .apps-trigger.is-open {
+    background: #f1f3f4;
+    color: #202124;
+  }
+  .apps-trigger.is-active {
+    color: #202124;
+  }
+  .apps-trigger.is-open .apps-grid {
+    transform: rotate(90deg) scale(1.05);
+  }
+  .apps-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 4px);
+    gap: 3px;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .apps-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .apps-trigger__label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .apps-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: transparent;
+  }
+  .apps-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 50;
+    width: min(248px, calc(100vw - 48px));
+    padding: 10px;
+    border: 1px solid #dadce0;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 28px rgba(32, 33, 36, 0.16);
+    transform-origin: top right;
+    animation: apps-panel-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    overflow: hidden;
+  }
+  @keyframes apps-panel-in {
+    from {
+      opacity: 0;
+      transform: scale(0.92) translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+  .apps-panel__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .apps-tile {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 10px;
+    row-gap: 1px;
+    align-items: center;
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: #202124;
+    text-align: left;
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(6px);
+    animation: apps-tile-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+  @keyframes apps-tile-in {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .apps-tile:hover,
+  .apps-tile.active {
+    background: #f1f3f4;
+  }
+  .apps-tile__icon {
+    grid-row: 1 / span 2;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: #f1f3f4;
+    color: #202124;
+  }
+  .apps-tile.active .apps-tile__icon {
+    background: #202124;
+    color: #ffffff;
+  }
+  .apps-tile__label {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .apps-tile__hint {
+    font-size: 11px;
+    color: #80868b;
   }
   .sidebar__actions {
     display: flex;
@@ -1490,11 +1709,14 @@
       border-bottom: 1px solid #dfe1e5;
     }
     .sidebar__tabs {
-      flex-wrap: wrap;
+      gap: 2px;
     }
     .tab {
       font-size: 12px;
-      padding: 6px;
+      padding: 6px 4px;
+    }
+    .apps-trigger__label {
+      display: none;
     }
     .chat-main__identity {
       gap: 8px;
