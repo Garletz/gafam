@@ -111,3 +111,22 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=gafam-browser
           cache-to: type=gha,mode=max,scope=gafam-browser
+
+      - name: Make browser package public (same as gafam-api)
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.CR_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          # Match public visibility of ghcr.io/garletz/gafam so VPS can pull without auth.
+          for path in \
+            "/user/packages/container/gafam-browser/visibility" \
+            "/users/${{ github.repository_owner }}/packages/container/gafam-browser/visibility"
+          do
+            if gh api --method PUT "$path" -f visibility=public; then
+              echo "Published via $path"
+              exit 0
+            fi
+          done
+          echo "Could not set visibility automatically — set Package → Change visibility → Public in GitHub UI."
+          exit 0
