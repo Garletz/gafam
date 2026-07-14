@@ -2,11 +2,13 @@
 set -e
 
 DISPLAY_NUM=99
-SCREEN_RES="1280x720x24"
+# Lighter defaults for 1 Go VPS — still readable, much less CPU/bandwidth.
+SCREEN_RES="1024x576x24"
 
-export BROWSER_WIDTH=1280
-export BROWSER_HEIGHT=720
-export BROWSER_FPS=12
+export BROWSER_WIDTH=1024
+export BROWSER_HEIGHT=576
+export BROWSER_FPS=8
+export BROWSER_JPEG_Q=10
 export STREAM_PORT=6080
 
 echo "[vatayana] Starting Xvfb on :${DISPLAY_NUM}..."

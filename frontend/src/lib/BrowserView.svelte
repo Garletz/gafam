@@ -20,6 +20,12 @@
 
   let streamAbort: AbortController | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let pendingFrame: Uint8Array | null = null;
+  let drawing = false;
+  let lastMoveAt = 0;
+  let queuedMove: { x: number; y: number } | null = null;
+  let inputBusy = false;
+  let inputQueue: any[] = [];
 
   onMount(() => {
     fetchStatus();
@@ -157,7 +163,9 @@
           if (buffer.length >= 4 + len) {
             const jpegData = buffer.slice(4, 4 + len);
             buffer = buffer.slice(4 + len);
-            renderFrame(jpegData);
+            // Keep only latest frame — drops backlog for lower latency.
+            pendingFrame = jpegData;
+            if (!drawing) void pumpFrames();
           } else {
             break;
           }
@@ -179,39 +187,65 @@
       streamAbort = null;
     }
     connected = false;
+    pendingFrame = null;
+    inputQueue = [];
+    queuedMove = null;
   }
 
-  async function renderFrame(jpegData: Uint8Array) {
-    if (!canvas) return;
+  async function pumpFrames() {
+    if (drawing || !canvas) return;
+    drawing = true;
+    const ctx = canvas.getContext('2d');
     try {
-      const copy = new Uint8Array(jpegData);
-      const blob = new Blob([copy], { type: 'image/jpeg' });
-      const url = URL.createObjectURL(blob);
-      const img = new Image();
-      img.onload = () => {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      while (pendingFrame && ctx) {
+        const jpegData = pendingFrame;
+        pendingFrame = null;
+        const bitmap = await createImageBitmap(new Blob([jpegData], { type: 'image/jpeg' }));
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+      }
+    } catch {
+      /* ignore decode errors */
+    } finally {
+      drawing = false;
+      if (pendingFrame) void pumpFrames();
+    }
+  }
+
+  async function flushInputQueue() {
+    if (inputBusy) return;
+    inputBusy = true;
+    try {
+      while (inputQueue.length || queuedMove) {
+        if (queuedMove) {
+          const m = queuedMove;
+          queuedMove = null;
+          inputQueue.push({ type: 'mouse_move', x: m.x, y: m.y });
         }
-        URL.revokeObjectURL(url);
-      };
-      img.onerror = () => URL.revokeObjectURL(url);
-      img.src = url;
+        const event = inputQueue.shift();
+        if (!event) break;
+        const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'input' });
+        await fetch(`/api/proxy/browser?${params.toString()}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(event)
+        });
+      }
     } catch {
+    } finally {
+      inputBusy = false;
+      if (inputQueue.length || queuedMove) void flushInputQueue();
     }
   }
 
-  async function sendInput(event: any) {
+  function sendInput(event: any) {
     if (!vpcUrl || !sessionToken || !connected) return;
-    try {
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'input' });
-      await fetch(`/api/proxy/browser?${params.toString()}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(event)
-      });
-    } catch {
+    if (event.type === 'mouse_move') {
+      queuedMove = { x: event.x, y: event.y };
+    } else {
+      inputQueue.push(event);
     }
+    void flushInputQueue();
   }
 
   function getCanvasCoords(e: MouseEvent): { x: number; y: number } {
@@ -226,23 +260,31 @@
   }
 
   function handleMouseDown(e: MouseEvent) {
+    canvas?.focus();
     const { x, y } = getCanvasCoords(e);
     sendInput({ type: 'mouse_move', x, y });
     sendInput({ type: 'mouse_down', button: 1 });
   }
 
-  function handleMouseUp(e: MouseEvent) {
+  function handleMouseUp(_e: MouseEvent) {
     sendInput({ type: 'mouse_up', button: 1 });
   }
 
   function handleMouseMove(e: MouseEvent) {
-    if (e.buttons > 0) {
+    if (e.buttons === 0) return;
+    const now = performance.now();
+    if (now - lastMoveAt < 40) {
       const { x, y } = getCanvasCoords(e);
-      sendInput({ type: 'mouse_move', x, y });
+      queuedMove = { x, y };
+      return;
     }
+    lastMoveAt = now;
+    const { x, y } = getCanvasCoords(e);
+    sendInput({ type: 'mouse_move', x, y });
   }
 
   function handleWheel(e: WheelEvent) {
+    e.preventDefault();
     sendInput({ type: 'scroll', dy: e.deltaY });
   }
 
@@ -254,6 +296,7 @@
     else if (e.key === 'Tab') key = 'Tab';
     else if (e.key === 'Escape') key = 'Escape';
     else if (e.key === ' ') key = 'space';
+    else if (e.key.startsWith('Arrow')) key = e.key.replace('Arrow', '');
     else if (e.key.length === 1) key = e.key;
     else return;
 
@@ -476,10 +519,12 @@
   }
 
   .browser-canvas {
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
     cursor: crosshair;
     outline: none;
+    background: #111;
   }
 
   .browser-view__placeholder {
