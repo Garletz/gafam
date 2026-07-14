@@ -109,10 +109,12 @@ docker run -d \
   nickfedor/watchtower:latest \
   --cleanup \
   --interval 300 \
+  --include-stopped \
+  --revive-stopped=false \
   --http-api-update \
   --http-api-periodic-polls \
   --http-api-token "${WATCHTOWER_TOKEN}" \
-  gafam-api
+  gafam-api gafam-browser
 
 # 6. Deploy GAFAM API
 echo "[*] Starting GAFAM VPC services..."
@@ -169,32 +171,37 @@ if [ "${INSTALL_QWEN:-1}" = "1" ]; then
 fi
 
 # 8. Sidecar Browser — Vātāyana (remote Firefox via noVNC)
+# Prefer pre-built GHCR image (same OTA path as gafam-api). Local Dockerfile only as fallback.
 install_browser_sidecar() {
-    local work="/root/gafam-setup"
-    mkdir -p "$work/vpc-relay"
+    local BROWSER_IMAGE="${BROWSER_IMAGE:-ghcr.io/garletz/gafam-browser:latest}"
 
-    local SCRIPT_DIR
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+    mkdir -p /root/gafam_data/browser
 
-    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.browser" ]; then
-        echo "[*] Using local vpc-relay/ for browser build..."
-        cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.browser" "$work/vpc-relay/" 2>/dev/null || true
-        cp -rf "$SCRIPT_DIR/vpc-relay/firefox-profiles" "$work/vpc-relay/" 2>/dev/null || true
-        cp -f "$SCRIPT_DIR/vpc-relay/entrypoint.sh" "$work/vpc-relay/" 2>/dev/null || true
-    else
-        echo "[*] Fetching browser Dockerfile from GitHub..."
-        curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.browser" -o "$work/vpc-relay/Dockerfile.browser"
-        curl -fsSL "$REPO_RAW/vpc-relay/entrypoint.sh" -o "$work/vpc-relay/entrypoint.sh"
-        mkdir -p "$work/vpc-relay/firefox-profiles/profile_main" "$work/vpc-relay/firefox-profiles/profile_agent"
-        curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profiles.ini" -o "$work/vpc-relay/firefox-profiles/profiles.ini"
-        curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_main/user.js" -o "$work/vpc-relay/firefox-profiles/profile_main/user.js"
-        curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_agent/user.js" -o "$work/vpc-relay/firefox-profiles/profile_agent/user.js"
+    echo "[*] Pulling browser image $BROWSER_IMAGE..."
+    if ! docker pull "$BROWSER_IMAGE"; then
+        echo "[!] GHCR pull failed — building from Dockerfile.browser fallback"
+        local work="/root/gafam-setup"
+        mkdir -p "$work/vpc-relay"
+
+        local SCRIPT_DIR
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+        if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.browser" ]; then
+            cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.browser" "$work/vpc-relay/" 2>/dev/null || true
+            cp -rf "$SCRIPT_DIR/vpc-relay/firefox-profiles" "$work/vpc-relay/" 2>/dev/null || true
+            cp -f "$SCRIPT_DIR/vpc-relay/entrypoint.sh" "$work/vpc-relay/" 2>/dev/null || true
+        else
+            curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.browser" -o "$work/vpc-relay/Dockerfile.browser"
+            curl -fsSL "$REPO_RAW/vpc-relay/entrypoint.sh" -o "$work/vpc-relay/entrypoint.sh"
+            mkdir -p "$work/vpc-relay/firefox-profiles/profile_main" "$work/vpc-relay/firefox-profiles/profile_agent"
+            curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profiles.ini" -o "$work/vpc-relay/firefox-profiles/profiles.ini"
+            curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_main/user.js" -o "$work/vpc-relay/firefox-profiles/profile_main/user.js"
+            curl -fsSL "$REPO_RAW/vpc-relay/firefox-profiles/profile_agent/user.js" -o "$work/vpc-relay/firefox-profiles/profile_agent/user.js"
+        fi
+        chmod +x "$work/vpc-relay/entrypoint.sh"
+        docker build -t gafam-browser -f "$work/vpc-relay/Dockerfile.browser" "$work/vpc-relay"
+        BROWSER_IMAGE="gafam-browser"
     fi
-
-    chmod +x "$work/vpc-relay/entrypoint.sh"
-
-    echo "[*] Building gafam-browser image..."
-    docker build -t gafam-browser -f "$work/vpc-relay/Dockerfile.browser" "$work/vpc-relay"
 
     echo "[*] Creating gafam-browser container (stopped)..."
     docker rm -f gafam-browser 2>/dev/null || true
@@ -207,7 +214,7 @@ install_browser_sidecar() {
       --tmpfs /dev/shm:size=128m \
       --restart no \
       -v /root/gafam_data/browser:/home/browser/data \
-      gafam-browser
+      "$BROWSER_IMAGE"
     docker stop gafam-browser
 }
 
@@ -222,9 +229,9 @@ echo "✅ GAFAM VPC successfully deployed!"
 echo "=========================================="
 echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
-echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes."
+echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes (gafam-api + gafam-browser)."
 echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
 echo "🪶 Qwen: stopped by default (1 Go). Auto wake via Suparna API."
-echo "🌐 Browser: stopped by default. Wake via Browser tab on gafam.cloud."
+echo "🌐 Browser: stopped by default (GHCR image). Wake via Browser tab on gafam.cloud."
 echo "   Swap 4G: enabled by this script (SKIP_SWAP=1 to skip)."
 echo "=========================================="
