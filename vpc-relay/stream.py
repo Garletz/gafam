@@ -83,6 +83,10 @@ class StreamHandler(BaseHTTPRequestHandler):
             "mjpeg",
             "-q:v",
             JPEG_QUALITY,
+            "-threads",
+            "1",
+            "-flush_packets",
+            "1",
             "-f",
             "image2pipe",
             "-",
@@ -92,7 +96,7 @@ class StreamHandler(BaseHTTPRequestHandler):
         try:
             assert proc.stdout is not None
             while True:
-                chunk = proc.stdout.read(16384)
+                chunk = proc.stdout.read(4096)
                 if not chunk:
                     break
                 buf += chunk

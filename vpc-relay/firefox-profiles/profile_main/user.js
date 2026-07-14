@@ -22,3 +22,8 @@ user_pref("browser.safebrowsing.malware.enabled", false);
 user_pref("browser.safebrowsing.phishing.enabled", false);
 user_pref("network.prefetch-next", false);
 user_pref("network.dns.disablePrefetch", true);
+user_pref("content.notify.interval", 10000);
+user_pref("nglayout.initialpaint.delay", 0);
+user_pref("browser.display.show_image_placeholders", false);
+user_pref("image.animation_mode", "none");
+user_pref("dom.image-lazy-loading.enabled", false);

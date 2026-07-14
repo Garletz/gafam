@@ -140,32 +140,38 @@
         return;
       }
 
-      let buffer = new Uint8Array(0);
+      let buffer = new Uint8Array(65536);
+      let bufferLen = 0;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         if (value) {
-          const newBuffer = new Uint8Array(buffer.length + value.length);
-          newBuffer.set(buffer);
-          newBuffer.set(value, buffer.length);
-          buffer = newBuffer;
+          if (bufferLen + value.length > buffer.length) {
+            const grown = new Uint8Array(bufferLen + value.length + 32768);
+            grown.set(buffer.subarray(0, bufferLen));
+            buffer = grown;
+          }
+          buffer.set(value, bufferLen);
+          bufferLen += value.length;
         }
 
-        while (buffer.length >= 4) {
+        while (bufferLen >= 4) {
           const len = new DataView(
             buffer.buffer,
             buffer.byteOffset,
-            buffer.byteLength
+            bufferLen
           ).getUint32(0, false);
 
-          if (buffer.length >= 4 + len) {
+          if (bufferLen >= 4 + len) {
             const jpegData = buffer.slice(4, 4 + len);
-            buffer = buffer.slice(4 + len);
-            // Keep only latest frame — drops backlog for lower latency.
+            bufferLen -= 4 + len;
+            if (bufferLen > 0) {
+              buffer.copyWithin(0, 4 + len, 4 + len + bufferLen);
+            }
             pendingFrame = jpegData;
-            if (!drawing) void pumpFrames();
+            if (!drawing) requestAnimationFrame(() => void pumpFrames());
           } else {
             break;
           }
@@ -195,12 +201,13 @@
   async function pumpFrames() {
     if (drawing || !canvas) return;
     drawing = true;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     try {
       while (pendingFrame && ctx) {
         const jpegData = pendingFrame;
         pendingFrame = null;
-        const bitmap = await createImageBitmap(new Blob([jpegData], { type: 'image/jpeg' }));
+        const blob = new Blob([jpegData.buffer as ArrayBuffer], { type: 'image/jpeg' });
+        const bitmap = await createImageBitmap(blob);
         ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         bitmap.close();
       }
@@ -208,7 +215,7 @@
       /* ignore decode errors */
     } finally {
       drawing = false;
-      if (pendingFrame) void pumpFrames();
+      if (pendingFrame) requestAnimationFrame(() => void pumpFrames());
     }
   }
 
@@ -263,17 +270,28 @@
     canvas?.focus();
     const { x, y } = getCanvasCoords(e);
     sendInput({ type: 'mouse_move', x, y });
-    sendInput({ type: 'mouse_down', button: 1 });
+    sendInput({ type: 'mouse_down', button: e.button + 1 });
   }
 
-  function handleMouseUp(_e: MouseEvent) {
-    sendInput({ type: 'mouse_up', button: 1 });
+  function handleMouseUp(e: MouseEvent) {
+    sendInput({ type: 'mouse_up', button: e.button + 1 });
+  }
+
+  function handleDblClick(e: MouseEvent) {
+    const { x, y } = getCanvasCoords(e);
+    sendInput({ type: 'mouse_move', x, y });
+    sendInput({ type: 'mouse_click', button: 1, x, y });
+    sendInput({ type: 'mouse_click', button: 1, x, y });
+  }
+
+  function handleContextMenu(e: MouseEvent) {
+    e.preventDefault();
   }
 
   function handleMouseMove(e: MouseEvent) {
     if (e.buttons === 0) return;
     const now = performance.now();
-    if (now - lastMoveAt < 40) {
+    if (now - lastMoveAt < 20) {
       const { x, y } = getCanvasCoords(e);
       queuedMove = { x, y };
       return;
@@ -297,6 +315,16 @@
     else if (e.key === 'Escape') key = 'Escape';
     else if (e.key === ' ') key = 'space';
     else if (e.key.startsWith('Arrow')) key = e.key.replace('Arrow', '');
+    else if (e.key === 'Control') key = 'Control_L';
+    else if (e.key === 'Shift') key = 'Shift_L';
+    else if (e.key === 'Alt') key = 'Alt_L';
+    else if (e.key === 'Meta') key = 'Super_L';
+    else if (e.key === 'Delete') key = 'Delete';
+    else if (e.key === 'Home') key = 'Home';
+    else if (e.key === 'End') key = 'End';
+    else if (e.key === 'PageUp') key = 'Page_Up';
+    else if (e.key === 'PageDown') key = 'Page_Down';
+    else if (e.key === 'Insert') key = 'Insert';
     else if (e.key.length === 1) key = e.key;
     else return;
 
@@ -358,6 +386,8 @@
         bind:this={canvas}
         onmousedown={handleMouseDown}
         onmouseup={handleMouseUp}
+        ondblclick={handleDblClick}
+        oncontextmenu={handleContextMenu}
         onmousemove={handleMouseMove}
         onwheel={handleWheel}
         onkeydown={handleKeydown}
