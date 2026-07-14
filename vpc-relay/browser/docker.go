@@ -198,8 +198,45 @@ func createContainer(image string) error {
 	return nil
 }
 
+func removeContainer() error {
+	req, err := http.NewRequest(http.MethodDelete, dockerAPIBase+"/containers/"+browserContainer+"?force=true", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("docker rm: %s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// recreateContainer pulls :browser and replaces the container so tag updates apply.
+func recreateContainer() error {
+	img := browserImage()
+	if err := pullImage(img); err != nil {
+		return fmt.Errorf("pull %s: %w", img, err)
+	}
+	_ = stopContainer()
+	if err := removeContainer(); err != nil {
+		return fmt.Errorf("rm: %w", err)
+	}
+	if err := createContainer(img); err != nil {
+		return fmt.Errorf("create: %w", err)
+	}
+	return nil
+}
+
 func startContainer() error {
-	if err := ensureContainer(); err != nil {
+	// Always pull+recreate on start so JPEG image replaces a leftover noVNC container.
+	if err := recreateContainer(); err != nil {
 		return err
 	}
 	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+browserContainer+"/start", nil)

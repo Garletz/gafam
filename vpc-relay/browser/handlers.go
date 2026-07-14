@@ -65,12 +65,18 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+
+	// Old noVNC containers report Running but have no /status — force recreate.
 	if running {
-		sendJSON(w, http.StatusOK, map[string]string{"status": "already_running"})
-		return
+		if streamBackendReady() {
+			sendJSON(w, http.StatusOK, map[string]string{"status": "already_running"})
+			return
+		}
+		log.Println("vatayana: running container missing /status (stale image) — recreating from GHCR")
+	} else {
+		log.Println("vatayana: ensuring/pulling gafam-browser from GHCR then starting")
 	}
 
-	log.Println("vatayana: ensuring/pulling gafam-browser from GHCR then starting")
 	if err := startContainer(); err != nil {
 		sendJSON(w, http.StatusBadGateway, map[string]string{"error": "start: " + err.Error()})
 		return
@@ -86,6 +92,20 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("vatayana: browser ready")
 	sendJSON(w, http.StatusOK, map[string]string{"status": "started"})
+}
+
+func streamBackendReady() bool {
+	client := &http.Client{Timeout: 3 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, browserBaseURL()+"/status", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 func StopHandler(w http.ResponseWriter, r *http.Request) {
