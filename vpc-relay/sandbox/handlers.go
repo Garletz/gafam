@@ -27,7 +27,7 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, http.StatusOK, map[string]interface{}{
 				"running": false,
 				"error":   "",
-				"message": "not installed yet — Wake will create from gafam-sandbox image",
+				"message": "not installed yet — Wake pulls ghcr.io/garletz/gafam:sandbox",
 			})
 			return
 		}
@@ -65,13 +65,13 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("yantrashala: starting gafam-sandbox container")
+	log.Println("yantrashala: pulling/creating gafam-sandbox from GHCR then starting")
 	if err := startContainer(); err != nil {
 		sendJSON(w, http.StatusBadGateway, map[string]string{"error": "start: " + err.Error()})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	if err := waitSandboxReady(ctx); err != nil {
 		sendJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "ready: " + err.Error()})

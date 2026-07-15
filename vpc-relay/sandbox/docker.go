@@ -18,14 +18,14 @@ const (
 	dockerSock        = "/var/run/docker.sock"
 	sandboxContainer  = "gafam-sandbox"
 	dockerAPIBase     = "http://localhost"
-	defaultSandboxImg = "gafam-sandbox"
+	defaultSandboxImg = "ghcr.io/garletz/gafam:sandbox"
 	sandboxHTTPPort   = "6091"
 	sandboxWSPort     = "6090"
 )
 
 func dockerHTTP() *http.Client {
 	return &http.Client{
-		Timeout: 5 * time.Minute,
+		Timeout: 10 * time.Minute,
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				var d net.Dialer
@@ -94,15 +94,33 @@ func containerExists() (bool, error) {
 	return resp.StatusCode != http.StatusNotFound, nil
 }
 
-func ensureContainer() error {
-	exists, err := containerExists()
+func pullImage(image string) error {
+	from := image
+	tag := "latest"
+	if i := strings.LastIndex(image, ":"); i > 0 && !strings.Contains(image[i+1:], "/") {
+		from = image[:i]
+		tag = image[i+1:]
+	}
+	q := url.Values{}
+	q.Set("fromImage", from)
+	q.Set("tag", tag)
+	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/images/create?"+q.Encode(), nil)
 	if err != nil {
 		return err
 	}
-	if exists {
-		return nil
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return err
 	}
-	return createContainer(sandboxImage())
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("%s", strings.TrimSpace(string(body)))
+	}
+	if bytes.Contains(body, []byte(`"error"`)) {
+		return fmt.Errorf("%s", strings.TrimSpace(string(body)))
+	}
+	return nil
 }
 
 func createContainer(image string) error {
@@ -149,13 +167,49 @@ func createContainer(image string) error {
 		return nil
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("docker create: %s", strings.TrimSpace(string(body)))
+		return fmt.Errorf("%s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func removeContainer() error {
+	req, err := http.NewRequest(http.MethodDelete, dockerAPIBase+"/containers/"+sandboxContainer+"?force=true", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("docker rm: %s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+// recreateContainer pulls :sandbox from public GHCR and replaces the container.
+func recreateContainer() error {
+	img := sandboxImage()
+	if err := pullImage(img); err != nil {
+		return fmt.Errorf("pull %s: %w", img, err)
+	}
+	_ = stopContainer()
+	if err := removeContainer(); err != nil {
+		return fmt.Errorf("rm: %w", err)
+	}
+	if err := createContainer(img); err != nil {
+		return fmt.Errorf("create: %w", err)
 	}
 	return nil
 }
 
 func startContainer() error {
-	if err := ensureContainer(); err != nil {
+	if err := recreateContainer(); err != nil {
 		return err
 	}
 	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+sandboxContainer+"/start", nil)

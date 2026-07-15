@@ -114,7 +114,7 @@ docker run -d \
   --http-api-update \
   --http-api-periodic-polls \
   --http-api-token "${WATCHTOWER_TOKEN}" \
-  gafam-api gafam-browser
+  gafam-api gafam-browser gafam-sandbox
 
 # 6. Deploy GAFAM API
 echo "[*] Starting GAFAM VPC services..."
@@ -227,27 +227,28 @@ fi
 
 # 9. Sidecar Sandbox — Yantraśālā (terminal, files, storage)
 install_sandbox_sidecar() {
-    local work="/root/gafam-setup"
-    mkdir -p "$work/vpc-relay"
+    local SANDBOX_IMAGE="${SANDBOX_IMAGE:-ghcr.io/garletz/gafam:sandbox}"
     mkdir -p /root/gafam_data/sandbox/{files,downloads,screenshots}
 
-    local SCRIPT_DIR
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+    echo "[*] Pulling sandbox image $SANDBOX_IMAGE..."
+    if ! docker pull "$SANDBOX_IMAGE"; then
+        echo "[!] GHCR pull failed — building from Dockerfile.sandbox fallback"
+        local work="/root/gafam-setup"
+        mkdir -p "$work/vpc-relay"
 
-    if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.sandbox" ]; then
-        echo "[*] Using local vpc-relay/ for sandbox build..."
-        cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.sandbox" "$work/vpc-relay/" 2>/dev/null || true
-        cp -f "$SCRIPT_DIR/vpc-relay/sandbox_server.py" "$work/vpc-relay/" 2>/dev/null || true
-        cp -f "$SCRIPT_DIR/vpc-relay/docker-compose.sandbox.yml" "$work/vpc-relay/" 2>/dev/null || true
-    else
-        echo "[*] Fetching sandbox Dockerfile from GitHub..."
-        curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.sandbox" -o "$work/vpc-relay/Dockerfile.sandbox"
-        curl -fsSL "$REPO_RAW/vpc-relay/sandbox_server.py" -o "$work/vpc-relay/sandbox_server.py"
-        curl -fsSL "$REPO_RAW/vpc-relay/docker-compose.sandbox.yml" -o "$work/vpc-relay/docker-compose.sandbox.yml"
+        local SCRIPT_DIR
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+        if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.sandbox" ]; then
+            cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.sandbox" "$work/vpc-relay/" 2>/dev/null || true
+            cp -f "$SCRIPT_DIR/vpc-relay/sandbox_server.py" "$work/vpc-relay/" 2>/dev/null || true
+        else
+            curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.sandbox" -o "$work/vpc-relay/Dockerfile.sandbox"
+            curl -fsSL "$REPO_RAW/vpc-relay/sandbox_server.py" -o "$work/vpc-relay/sandbox_server.py"
+        fi
+        docker build -t gafam-sandbox -f "$work/vpc-relay/Dockerfile.sandbox" "$work/vpc-relay"
+        SANDBOX_IMAGE="gafam-sandbox"
     fi
-
-    echo "[*] Building gafam-sandbox image..."
-    docker build -t gafam-sandbox -f "$work/vpc-relay/Dockerfile.sandbox" "$work/vpc-relay"
 
     echo "[*] Creating gafam-sandbox container (stopped)..."
     docker rm -f gafam-sandbox 2>/dev/null || true
@@ -261,7 +262,7 @@ install_sandbox_sidecar() {
       -v /root/gafam_data/sandbox/files:/sandbox/files \
       -v /root/gafam_data/sandbox/downloads:/sandbox/downloads \
       -v /root/gafam_data/sandbox/screenshots:/sandbox/screenshots \
-      gafam-sandbox
+      "$SANDBOX_IMAGE"
     docker stop gafam-sandbox
 }
 
@@ -276,10 +277,10 @@ echo "✅ GAFAM VPC successfully deployed!"
 echo "=========================================="
 echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
-echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes (gafam-api + gafam-browser)."
+echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes (gafam-api + gafam-browser + gafam-sandbox)."
 echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
 echo "🪶 Qwen: stopped by default (1 Go). Auto wake via Suparna API."
-echo "🌐 Browser: stopped by default (GHCR image). Wake via Browser tab on gafam.cloud."
-echo "🛠️  Sandbox: stopped by default (Alpine). Wake via Sandbox tab on gafam.cloud."
+echo "🌐 Browser: stopped by default (ghcr.io/garletz/gafam:browser). Wake via Browser tab."
+echo "🛠️  Sandbox: stopped by default (ghcr.io/garletz/gafam:sandbox). Wake via Sandbox tab."
 echo "   Swap 4G: enabled by this script (SKIP_SWAP=1 to skip)."
 echo "=========================================="
