@@ -61,10 +61,10 @@
   // Profile menu state
   let isProfileMenuOpen = $state(false);
 
-  // Navigation: Chat is primary, Tools is center launcher, Settings is right
-  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox';
-  type ChatSubview = 'chats' | 'contacts';
-  let chatSubview: ChatSubview = $state('chats');
+  // Navigation: Chat (left), Tools (center), Settings (right)
+  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'tools';
+  let showContactsInChat = $state(false);
+  let toolsWiggle = $state(false);
   let appsMenuOpen = $state(false);
 
   const toolsMenuItems: Array<{ id: SidebarTab; label: string; hint: string; icon: string }> = [
@@ -74,18 +74,25 @@
     { id: 'logs', label: 'Logs', hint: 'Phone activity', icon: 'logs' },
   ];
   const toolsMenuActive = $derived(toolsMenuItems.some((item) => item.id === sidebarTab));
-  const toolsMenuActiveLabel = $derived(
-    toolsMenuItems.find((item) => item.id === sidebarTab)?.label ?? null
-  );
 
   function selectSidebarTab(tab: SidebarTab) {
     sidebarTab = tab;
     appsMenuOpen = false;
-    if (tab !== 'chats') chatSubview = 'chats';
+    if (tab !== 'chats') showContactsInChat = false;
   }
 
-  function toggleAppsMenu() {
-    appsMenuOpen = !appsMenuOpen;
+  function toggleContactsInChat() {
+    showContactsInChat = !showContactsInChat;
+  }
+
+  function clickTools() {
+    toolsWiggle = true;
+    setTimeout(() => { toolsWiggle = false; }, 400);
+    if (sidebarTab === 'tools') {
+      sidebarTab = 'chats';
+    } else {
+      sidebarTab = 'tools';
+    }
   }
 
   $effect(() => {
@@ -704,110 +711,63 @@
               <div class="sidebar__tabs-main">
                 <button
                   type="button"
-                  class="tab {sidebarTab === 'chats' && chatSubview === 'chats' ? 'active' : ''}"
-                  onclick={() => { sidebarTab = 'chats'; chatSubview = 'chats'; }}
+                  class="tab {sidebarTab === 'chats' ? 'active' : ''}"
+                  onclick={() => selectSidebarTab('chats')}
                 >Chats</button>
-                <button
-                  type="button"
-                  class="tab {sidebarTab === 'chats' && chatSubview === 'contacts' ? 'active' : ''}"
-                  onclick={() => { sidebarTab = 'chats'; chatSubview = 'contacts'; }}
-                >Contacts</button>
               </div>
               <div class="sidebar__tabs-center">
                 <button
                   type="button"
                   class="tools-trigger"
-                  class:is-open={appsMenuOpen}
+                  class:is-open={sidebarTab === 'tools'}
                   class:is-active={toolsMenuActive}
+                  class:wiggle={toolsWiggle}
                   title="Tools"
                   aria-label="Tools"
-                  aria-haspopup="menu"
-                  aria-expanded={appsMenuOpen}
-                  onclick={toggleAppsMenu}
+                  onclick={clickTools}
                 >
                   <span class="tools-grid" aria-hidden="true">
                     {#each Array(9) as _, i (i)}
-                      <span class="tools-dot"></span>
+                      <span class="tools-dot" class:alive={toolsMenuActive}></span>
                     {/each}
                   </span>
                 </button>
-                {#if appsMenuOpen}
-                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-                  <div class="apps-backdrop" role="presentation" onclick={() => (appsMenuOpen = false)}></div>
-                  <div class="apps-panel" role="menu" aria-label="Tools">
-                    <div class="apps-panel__grid">
-                      {#each toolsMenuItems as item, i}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          class="apps-tile"
-                          class:active={sidebarTab === item.id}
-                          style="--i: {i}"
-                          onclick={() => selectSidebarTab(item.id)}
-                        >
-                          <span class="apps-tile__icon" data-app={item.icon}>
-                            {#if item.icon === 'suparna'}
-                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
-                                <circle cx="12" cy="12" r="4.5" />
-                                <path d="M7.5 7.5l2 2M14.5 14.5l2 2M16.5 7.5l-2 2M9.5 14.5l-2 2" />
-                              </svg>
-                            {:else if item.icon === 'browser'}
-                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <circle cx="12" cy="12" r="9" />
-                                <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
-                              </svg>
-                            {:else if item.icon === 'sandbox'}
-                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <rect x="3" y="3" width="18" height="18" rx="2" />
-                                <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
-                              </svg>
-                            {:else if item.icon === 'logs'}
-                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                <path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" />
-                              </svg>
-                            {/if}
-                          </span>
-                          <span class="apps-tile__label">{item.label}</span>
-                          <span class="apps-tile__hint">{item.hint}</span>
-                        </button>
-                      {/each}
-                    </div>
-                  </div>
-                {/if}
               </div>
               <div class="sidebar__tabs-end">
                 <button
                   type="button"
-                  class="tab tab--icon {sidebarTab === 'settings' ? 'active' : ''}"
-                  title="Settings"
-                  aria-label="Settings"
+                  class="tab {sidebarTab === 'settings' ? 'active' : ''}"
                   onclick={() => selectSidebarTab('settings')}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </button>
+                >Settings</button>
               </div>
             </div>
             <div class="sidebar__actions">
-              {#if sidebarTab === 'chats' && chatSubview === 'chats'}
+              {#if sidebarTab === 'chats' && !showContactsInChat}
                 <div class="contact-search">
                   <input type="search" placeholder="Search chats..." bind:value={chatSearchQuery} />
                 </div>
               {/if}
-              {#if sidebarTab === 'chats' && chatSubview === 'contacts'}
+              {#if sidebarTab === 'chats' && showContactsInChat}
                 <div class="contact-search">
                   <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
                 </div>
               {/if}
               {#if sidebarTab === 'chats'}
-              <label class="toggle-sync" title="Sync Contacts with Android">
-                <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
-                <span>Sync Contacts</span>
-              </label>
+              <div class="chat-sub-actions">
+                <label class="toggle-sync" title="Sync Contacts with Android">
+                  <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
+                  <span>Sync</span>
+                </label>
+                <button
+                  type="button"
+                  class="contacts-toggle"
+                  class:active={showContactsInChat}
+                  onclick={toggleContactsInChat}
+                  title="Show contacts"
+                >
+                  {showContactsInChat ? '← Back to chats' : 'Contacts'}
+                </button>
+              </div>
               {/if}
               {#if sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc')}
                 <div class="logs-quota-mini">
@@ -859,13 +819,13 @@
                   <p>{chatSearchQuery.trim() ? 'No matching chats' : 'No conversations yet'}</p>
                 </div>
               {/if}
-            {:else if sidebarTab === 'chats' && chatSubview === 'contacts'}
+            {:else if sidebarTab === 'chats' && showContactsInChat}
               {#each filteredContacts() as [cPhone, cName]}
                 <div class="chat-item chat-item--contact {selectedSender === cPhone ? 'active' : ''}">
                   <button
                     type="button"
                     class="chat-item__open"
-                    onclick={() => { selectedSender = cPhone; chatSubview = 'chats'; }}
+                    onclick={() => { selectedSender = cPhone; showContactsInChat = false; }}
                   >
                     <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
                     <div class="chat-item__info">
@@ -883,6 +843,23 @@
                     {copiedPhone === cPhone ? 'Copied' : 'Copy'}
                   </button>
                 </div>
+              {/each}
+            {:else if sidebarTab === 'tools'}
+              <div class="logs-archive-label">Tools</div>
+              {#each toolsMenuItems as item}
+                <button
+                  type="button"
+                  class="chat-item settings-nav {sidebarTab === item.id ? 'active' : ''}"
+                  onclick={() => selectSidebarTab(item.id)}
+                >
+                  <div class="chat-item__avatar settings-nav__icon">
+                    {#if item.icon === 'browser'}🌐{:else if item.icon === 'sandbox'}🛠{:else if item.icon === 'suparna'}🪶{:else if item.icon === 'logs'}📋{/if}
+                  </div>
+                  <div class="chat-item__info">
+                    <div class="chat-item__name">{item.label}</div>
+                    <div class="chat-item__preview">{item.hint}</div>
+                  </div>
+                </button>
               {/each}
             {:else if sidebarTab === 'settings'}
               <button
@@ -1275,18 +1252,28 @@
     background: transparent;
     color: #5f6368;
     cursor: pointer;
-    transition: background 0.18s ease, color 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: background 0.18s ease, color 0.18s ease;
   }
-  .tools-trigger:hover,
-  .tools-trigger.is-open {
+  .tools-trigger:hover {
     background: #f1f3f4;
     color: #202124;
+  }
+  .tools-trigger.is-open {
+    background: #202124;
+    color: #fff;
   }
   .tools-trigger.is-active {
     color: #202124;
   }
-  .tools-trigger.is-open .tools-grid {
-    transform: rotate(90deg) scale(1.1);
+  .tools-trigger.wiggle {
+    animation: tools-wiggle 0.4s ease;
+  }
+  @keyframes tools-wiggle {
+    0%, 100% { transform: translateX(0) rotate(0); }
+    20% { transform: translateX(-2px) rotate(-8deg); }
+    40% { transform: translateX(2px) rotate(8deg); }
+    60% { transform: translateX(-1px) rotate(-4deg); }
+    80% { transform: translateX(1px) rotate(4deg); }
   }
   .tools-grid {
     display: grid;
@@ -1294,11 +1281,57 @@
     gap: 3px;
     transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
+  .tools-trigger.is-open .tools-grid {
+    transform: rotate(90deg) scale(1.1);
+  }
   .tools-dot {
     width: 4px;
     height: 4px;
     border-radius: 50%;
     background: currentColor;
+    transition: opacity 0.3s;
+  }
+  .tools-dot.alive {
+    animation: dot-pulse 1.5s ease-in-out infinite;
+  }
+  .tools-dot.alive:nth-child(1) { animation-delay: 0s; }
+  .tools-dot.alive:nth-child(2) { animation-delay: 0.1s; }
+  .tools-dot.alive:nth-child(3) { animation-delay: 0.2s; }
+  .tools-dot.alive:nth-child(4) { animation-delay: 0.15s; }
+  .tools-dot.alive:nth-child(5) { animation-delay: 0.05s; }
+  .tools-dot.alive:nth-child(6) { animation-delay: 0.25s; }
+  .tools-dot.alive:nth-child(7) { animation-delay: 0.3s; }
+  .tools-dot.alive:nth-child(8) { animation-delay: 0.12s; }
+  .tools-dot.alive:nth-child(9) { animation-delay: 0.18s; }
+  @keyframes dot-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.3); }
+  }
+  .chat-sub-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+  }
+  .contacts-toggle {
+    padding: 4px 10px;
+    border: 1px solid #dfe1e5;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    color: #5f6368;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .contacts-toggle:hover {
+    background: #f1f3f4;
+  }
+  .contacts-toggle.active {
+    background: #202124;
+    color: #fff;
+    border-color: #202124;
   }
   .apps-trigger {
     display: inline-flex;
