@@ -775,27 +775,7 @@
             </div>
           </div>
           <div class="sidebar__list">
-            {#if sidebarTab === 'logs'}
-              <div class="logs-archive-label">Phone activity archive</div>
-              {#each logDays as d}
-                <button
-                  class="chat-item {selectedLogDay === d.day ? 'active' : ''}"
-                  onclick={() => selectedLogDay = d.day}
-                >
-                  <div class="chat-item__avatar logs-day-avatar">{d.day.slice(8, 10)}</div>
-                  <div class="chat-item__info">
-                    <div class="chat-item__name">{new Date(d.day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-                    <div class="chat-item__preview">{d.lines} lines · {(d.bytes / 1024).toFixed(1)} KB</div>
-                  </div>
-                </button>
-              {/each}
-              {#if logDays.length === 0}
-                <div class="logs-sidebar-hint">
-                  <p>No days yet</p>
-                  <p class="hint-sub">APK ships logs every few seconds after pairing.</p>
-                </div>
-              {/if}
-            {:else if sidebarTab === 'chats' && !showContactsInChat}
+            {#if sidebarTab === 'chats' && !showContactsInChat}
               {#each chatSenders as sender}
                 <button class="chat-item {selectedSender === sender ? 'active' : ''}" onclick={() => selectedSender = sender}>
                   <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
@@ -841,31 +821,41 @@
                   </button>
                 </div>
               {/each}
-            {:else if isToolTab}
-              <div class="logs-archive-label">Tools</div>
-              {#each toolsMenuItems as item}
-                <button
-                  type="button"
-                  class="chat-item settings-nav {sidebarTab === item.id ? 'active' : ''}"
-                  onclick={() => selectSidebarTab(item.id)}
-                >
-                  <div class="chat-item__avatar settings-nav__icon">
-                    {#if item.icon === 'browser'}
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
-                    {:else if item.icon === 'sandbox'}
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
-                    {:else if item.icon === 'suparna'}
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4.5"/><path d="M7.5 7.5l2 2M14.5 14.5l2 2M16.5 7.5l-2 2M9.5 14.5l-2 2"/></svg>
-                    {:else if item.icon === 'logs'}
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/></svg>
-                    {/if}
-                  </div>
+            {:else if sidebarTab === 'suparna'}
+              <button class="chat-item settings-nav {suparnaSection === 'vpc' ? 'active' : ''}" onclick={() => { suparnaSection = 'vpc'; }}>
+                <div class="chat-item__avatar settings-nav__icon">V</div>
+                <div class="chat-item__info"><div class="chat-item__name">VPC 1 RAM</div><div class="chat-item__preview">Wake & analyze logs</div></div>
+              </button>
+              <button class="chat-item settings-nav {suparnaSection === 'models' ? 'active' : ''}" onclick={() => { suparnaSection = 'models'; }}>
+                <div class="chat-item__avatar settings-nav__icon">M</div>
+                <div class="chat-item__info"><div class="chat-item__name">Models</div><div class="chat-item__preview">GGUF catalog</div></div>
+              </button>
+              <button class="chat-item settings-nav {suparnaSection === 'rules' ? 'active' : ''}" onclick={() => { suparnaSection = 'rules'; }}>
+                <div class="chat-item__avatar settings-nav__icon">R</div>
+                <div class="chat-item__info"><div class="chat-item__name">Rules</div><div class="chat-item__preview">Local preferences</div></div>
+              </button>
+              <button class="chat-item settings-nav {suparnaSection === 'phone' ? 'active' : ''}" onclick={() => { suparnaSection = 'phone'; }}>
+                <div class="chat-item__avatar settings-nav__icon">P</div>
+                <div class="chat-item__info"><div class="chat-item__name">Phone</div><div class="chat-item__preview">One-shot edge tester</div></div>
+              </button>
+            {:else if sidebarTab === 'logs'}
+              <div class="logs-archive-label">Phone activity archive</div>
+              <div class="logs-quota-mini" style="padding: 4px 16px;">
+                <span>{(logTotalBytes / 1024).toFixed(0)} KB / {(logQuotaBytes / (1024 * 1024)).toFixed(0)} MB</span>
+                <div class="quota-bar"><div class="quota-fill" style="width: {Math.min(100, (logTotalBytes / logQuotaBytes) * 100)}%"></div></div>
+              </div>
+              {#each logDays as d}
+                <button class="chat-item {selectedLogDay === d.day ? 'active' : ''}" onclick={() => selectedLogDay = d.day}>
+                  <div class="chat-item__avatar logs-day-avatar">{d.day.slice(8, 10)}</div>
                   <div class="chat-item__info">
-                    <div class="chat-item__name">{item.label}</div>
-                    <div class="chat-item__preview">{item.hint}</div>
+                    <div class="chat-item__name">{new Date(d.day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                    <div class="chat-item__preview">{d.lines} lines · {(d.bytes / 1024).toFixed(1)} KB</div>
                   </div>
                 </button>
               {/each}
+              {#if logDays.length === 0}
+                <div class="logs-sidebar-hint"><p>No days yet</p><p class="hint-sub">APK ships logs every few seconds after pairing.</p></div>
+              {/if}
             {:else if sidebarTab === 'settings'}
               <button
                 type="button"
@@ -905,6 +895,16 @@
         </aside>
 
         <main class="chat-main {isToolTab ? 'chat-main--logs' : ''}">
+          {#if isToolTab}
+            <nav class="tools-bar">
+              {#each toolsMenuItems as item}
+                <button
+                  class="tools-tab {sidebarTab === item.id ? 'active' : ''}"
+                  onclick={() => selectSidebarTab(item.id)}
+                >{item.label}</button>
+              {/each}
+            </nav>
+          {/if}
           {#if sidebarTab === 'settings'}
             <Settings
               {sessionToken}
@@ -1307,6 +1307,33 @@
     background: #202124;
     color: #fff;
     border-color: #202124;
+  }
+  .tools-bar {
+    display: flex;
+    gap: 4px;
+    padding: 10px 20px 0;
+    border-bottom: 1px solid #dfe1e5;
+    flex-shrink: 0;
+    background: #fff;
+  }
+  .tools-tab {
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 600;
+    color: #5f6368;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tools-tab:hover {
+    color: #202124;
+    background: #f8f9fa;
+  }
+  .tools-tab.active {
+    color: #202124;
+    border-bottom-color: #202124;
   }
   .apps-trigger {
     display: inline-flex;
