@@ -821,7 +821,55 @@
                   </button>
                 </div>
               {/each}
-            {:else if sidebarTab === 'suparna'}
+            {:else if isToolTab}
+              <div class="logs-archive-label">Tools</div>
+              {#each toolsMenuItems as item}
+                <button class="chat-item settings-nav {sidebarTab === item.id ? 'active' : ''}" onclick={() => selectSidebarTab(item.id)}>
+                  <div class="chat-item__avatar settings-nav__icon" style="background:#202124;color:#fff;font-size:10px;font-weight:700;">
+                    {item.icon === 'browser' ? 'B' : item.icon === 'sandbox' ? 'S' : item.icon === 'suparna' ? 'P' : 'L'}
+                  </div>
+                  <div class="chat-item__info">
+                    <div class="chat-item__name">{item.label}</div>
+                    <div class="chat-item__preview">{item.hint}</div>
+                  </div>
+                </button>
+              {/each}
+              {#if sidebarTab === 'suparna'}
+                <button class="chat-item settings-nav {suparnaSection === 'vpc' ? 'active' : ''}" onclick={() => { suparnaSection = 'vpc'; }}>
+                  <div class="chat-item__avatar settings-nav__icon">V</div>
+                  <div class="chat-item__info"><div class="chat-item__name">VPC 1 RAM</div><div class="chat-item__preview">Wake & analyze logs</div></div>
+                </button>
+                <button class="chat-item settings-nav {suparnaSection === 'models' ? 'active' : ''}" onclick={() => { suparnaSection = 'models'; }}>
+                  <div class="chat-item__avatar settings-nav__icon">M</div>
+                  <div class="chat-item__info"><div class="chat-item__name">Models</div><div class="chat-item__preview">GGUF catalog</div></div>
+                </button>
+                <button class="chat-item settings-nav {suparnaSection === 'rules' ? 'active' : ''}" onclick={() => { suparnaSection = 'rules'; }}>
+                  <div class="chat-item__avatar settings-nav__icon">R</div>
+                  <div class="chat-item__info"><div class="chat-item__name">Rules</div><div class="chat-item__preview">Local preferences</div></div>
+                </button>
+                <button class="chat-item settings-nav {suparnaSection === 'phone' ? 'active' : ''}" onclick={() => { suparnaSection = 'phone'; }}>
+                  <div class="chat-item__avatar settings-nav__icon">P</div>
+                  <div class="chat-item__info"><div class="chat-item__name">Phone</div><div class="chat-item__preview">One-shot edge tester</div></div>
+                </button>
+              {:else if sidebarTab === 'logs'}
+                <div class="logs-quota-mini" style="padding: 4px 16px;">
+                  <span>{(logTotalBytes / 1024).toFixed(0)} KB / {(logQuotaBytes / (1024 * 1024)).toFixed(0)} MB</span>
+                  <div class="quota-bar"><div class="quota-fill" style="width: {Math.min(100, (logTotalBytes / logQuotaBytes) * 100)}%"></div></div>
+                </div>
+                {#each logDays as d}
+                  <button class="chat-item {selectedLogDay === d.day ? 'active' : ''}" onclick={() => selectedLogDay = d.day}>
+                    <div class="chat-item__avatar logs-day-avatar">{d.day.slice(8, 10)}</div>
+                    <div class="chat-item__info">
+                      <div class="chat-item__name">{new Date(d.day + 'T12:00:00Z').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                      <div class="chat-item__preview">{d.lines} lines · {(d.bytes / 1024).toFixed(1)} KB</div>
+                    </div>
+                  </button>
+                {/each}
+                {#if logDays.length === 0}
+                  <div class="logs-sidebar-hint"><p>No days yet</p><p class="hint-sub">APK ships logs every few seconds after pairing.</p></div>
+                {/if}
+              {/if}
+            {:else if sidebarTab === 'settings'}
               <button class="chat-item settings-nav {suparnaSection === 'vpc' ? 'active' : ''}" onclick={() => { suparnaSection = 'vpc'; }}>
                 <div class="chat-item__avatar settings-nav__icon">V</div>
                 <div class="chat-item__info"><div class="chat-item__name">VPC 1 RAM</div><div class="chat-item__preview">Wake & analyze logs</div></div>
