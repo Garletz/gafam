@@ -61,28 +61,27 @@
   // Profile menu state
   let isProfileMenuOpen = $state(false);
 
-  // Google-style apps overflow for secondary sidebar tabs
+  // Navigation: Chat is primary, Tools is center launcher, Settings is right
   type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox';
+  type ChatSubview = 'chats' | 'contacts';
+  let chatSubview: ChatSubview = $state('chats');
   let appsMenuOpen = $state(false);
-  const primaryTabs: Array<{ id: SidebarTab; label: string }> = [
-    { id: 'chats', label: 'Chats' },
-    { id: 'contacts', label: 'Contacts' },
-    { id: 'logs', label: 'Logs' }
+
+  const toolsMenuItems: Array<{ id: SidebarTab; label: string; hint: string; icon: string }> = [
+    { id: 'browser', label: 'Browser', hint: 'Vātāyana', icon: 'browser' },
+    { id: 'sandbox', label: 'Sandbox', hint: 'Yantraśālā', icon: 'sandbox' },
+    { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI', icon: 'suparna' },
+    { id: 'logs', label: 'Logs', hint: 'Phone activity', icon: 'logs' },
   ];
-  const appsMenuItems: Array<{ id: SidebarTab; label: string; hint: string }> = [
-    { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI' },
-    { id: 'browser', label: 'Browser', hint: 'Vātāyana' },
-    { id: 'sandbox', label: 'Sandbox', hint: 'Yantraśālā' },
-    { id: 'settings', label: 'Settings', hint: 'Node & recovery' }
-  ];
-  const appsMenuActive = $derived(appsMenuItems.some((item) => item.id === sidebarTab));
-  const appsMenuActiveLabel = $derived(
-    appsMenuItems.find((item) => item.id === sidebarTab)?.label ?? null
+  const toolsMenuActive = $derived(toolsMenuItems.some((item) => item.id === sidebarTab));
+  const toolsMenuActiveLabel = $derived(
+    toolsMenuItems.find((item) => item.id === sidebarTab)?.label ?? null
   );
 
   function selectSidebarTab(tab: SidebarTab) {
     sidebarTab = tab;
     appsMenuOpen = false;
+    if (tab !== 'chats') chatSubview = 'chats';
   }
 
   function toggleAppsMenu() {
@@ -703,43 +702,41 @@
           <div class="sidebar__header">
             <div class="sidebar__tabs">
               <div class="sidebar__tabs-main">
-                {#each primaryTabs as t}
-                  <button
-                    type="button"
-                    class="tab {sidebarTab === t.id ? 'active' : ''}"
-                    onclick={() => selectSidebarTab(t.id)}
-                  >
-                    {t.label}
-                  </button>
-                {/each}
-              </div>
-              <div class="sidebar__apps" class:is-open={appsMenuOpen} class:is-active={appsMenuActive}>
                 <button
                   type="button"
-                  class="apps-trigger"
+                  class="tab {sidebarTab === 'chats' && chatSubview === 'chats' ? 'active' : ''}"
+                  onclick={() => { sidebarTab = 'chats'; chatSubview = 'chats'; }}
+                >Chats</button>
+                <button
+                  type="button"
+                  class="tab {sidebarTab === 'chats' && chatSubview === 'contacts' ? 'active' : ''}"
+                  onclick={() => { sidebarTab = 'chats'; chatSubview = 'contacts'; }}
+                >Contacts</button>
+              </div>
+              <div class="sidebar__tabs-center">
+                <button
+                  type="button"
+                  class="tools-trigger"
                   class:is-open={appsMenuOpen}
-                  class:is-active={appsMenuActive}
-                  title="More apps"
-                  aria-label="More apps"
+                  class:is-active={toolsMenuActive}
+                  title="Tools"
+                  aria-label="Tools"
                   aria-haspopup="menu"
                   aria-expanded={appsMenuOpen}
                   onclick={toggleAppsMenu}
                 >
-                  <span class="apps-grid" aria-hidden="true">
+                  <span class="tools-grid" aria-hidden="true">
                     {#each Array(9) as _, i (i)}
-                      <span class="apps-dot"></span>
+                      <span class="tools-dot"></span>
                     {/each}
                   </span>
-                  {#if appsMenuActiveLabel && !appsMenuOpen}
-                    <span class="apps-trigger__label">{appsMenuActiveLabel}</span>
-                  {/if}
                 </button>
                 {#if appsMenuOpen}
                   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                   <div class="apps-backdrop" role="presentation" onclick={() => (appsMenuOpen = false)}></div>
-                  <div class="apps-panel" role="menu" aria-label="More apps">
+                  <div class="apps-panel" role="menu" aria-label="Tools">
                     <div class="apps-panel__grid">
-                      {#each appsMenuItems as item, i}
+                      {#each toolsMenuItems as item, i}
                         <button
                           type="button"
                           role="menuitem"
@@ -748,22 +745,27 @@
                           style="--i: {i}"
                           onclick={() => selectSidebarTab(item.id)}
                         >
-                          <span class="apps-tile__icon" data-app={item.id}>
-                            {#if item.id === 'suparna'}
+                          <span class="apps-tile__icon" data-app={item.icon}>
+                            {#if item.icon === 'suparna'}
                               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
                                 <circle cx="12" cy="12" r="4.5" />
                                 <path d="M7.5 7.5l2 2M14.5 14.5l2 2M16.5 7.5l-2 2M9.5 14.5l-2 2" />
                               </svg>
-                            {:else if item.id === 'browser'}
+                            {:else if item.icon === 'browser'}
                               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <circle cx="12" cy="12" r="9" />
                                 <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
                               </svg>
-                            {:else}
+                            {:else if item.icon === 'sandbox'}
                               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                                <circle cx="12" cy="12" r="3" />
+                                <rect x="3" y="3" width="18" height="18" rx="2" />
+                                <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+                              </svg>
+                            {:else if item.icon === 'logs'}
+                              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                <path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" />
                               </svg>
                             {/if}
                           </span>
@@ -775,19 +777,33 @@
                   </div>
                 {/if}
               </div>
+              <div class="sidebar__tabs-end">
+                <button
+                  type="button"
+                  class="tab tab--icon {sidebarTab === 'settings' ? 'active' : ''}"
+                  title="Settings"
+                  aria-label="Settings"
+                  onclick={() => selectSidebarTab('settings')}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="sidebar__actions">
-              {#if sidebarTab === 'chats'}
+              {#if sidebarTab === 'chats' && chatSubview === 'chats'}
                 <div class="contact-search">
                   <input type="search" placeholder="Search chats..." bind:value={chatSearchQuery} />
                 </div>
               {/if}
-              {#if sidebarTab === 'contacts'}
+              {#if sidebarTab === 'chats' && chatSubview === 'contacts'}
                 <div class="contact-search">
                   <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
                 </div>
               {/if}
-              {#if sidebarTab === 'chats' || sidebarTab === 'contacts'}
+              {#if sidebarTab === 'chats'}
               <label class="toggle-sync" title="Sync Contacts with Android">
                 <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
                 <span>Sync Contacts</span>
@@ -843,13 +859,13 @@
                   <p>{chatSearchQuery.trim() ? 'No matching chats' : 'No conversations yet'}</p>
                 </div>
               {/if}
-            {:else if sidebarTab === 'contacts'}
+            {:else if sidebarTab === 'chats' && chatSubview === 'contacts'}
               {#each filteredContacts() as [cPhone, cName]}
                 <div class="chat-item chat-item--contact {selectedSender === cPhone ? 'active' : ''}">
                   <button
                     type="button"
                     class="chat-item__open"
-                    onclick={() => { selectedSender = cPhone; sidebarTab = 'chats'; }}
+                    onclick={() => { selectedSender = cPhone; chatSubview = 'chats'; }}
                   >
                     <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
                     <div class="chat-item__info">
@@ -1240,6 +1256,49 @@
     position: relative;
     flex: 0 0 auto;
     margin-left: 2px;
+  }
+  .sidebar__tabs-center {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tools-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #5f6368;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .tools-trigger:hover,
+  .tools-trigger.is-open {
+    background: #f1f3f4;
+    color: #202124;
+  }
+  .tools-trigger.is-active {
+    color: #202124;
+  }
+  .tools-trigger.is-open .tools-grid {
+    transform: rotate(90deg) scale(1.1);
+  }
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 4px);
+    gap: 3px;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .tools-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
   }
   .apps-trigger {
     display: inline-flex;

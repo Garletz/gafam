@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Garletz/gafam/vpc-relay/browser"
+	"github.com/Garletz/gafam/vpc-relay/karaka"
 	"github.com/Garletz/gafam/vpc-relay/sandbox"
 	_ "modernc.org/sqlite"
 )
@@ -204,6 +205,10 @@ func main() {
 	initDB()
 	initLogsStore()
 
+	karaka.RegisterAllTools()
+	karaka.RegisterDefaultKarakas()
+	log.Println("Kāraka tool registry initialized.")
+
 	mux := http.NewServeMux()
 
 	// Public Routes
@@ -285,6 +290,11 @@ func main() {
 	mux.HandleFunc("/api/web/sandbox/", sessionMiddleware(sandbox.FilesHandler))
 	mux.HandleFunc("POST /api/web/sandbox/exec", sessionMiddleware(sandbox.ExecHandler))
 	mux.HandleFunc("POST /api/web/sandbox-exec", sessionMiddleware(sandbox.ExecHandler))
+
+	// Kāraka — tool registry & execution (Manifest 25/26)
+	mux.HandleFunc("GET /api/web/karaka/tools", sessionMiddleware(karaka.ToolsListHandler))
+	mux.HandleFunc("GET /api/web/karaka/status", sessionMiddleware(karaka.KarakasListHandler))
+	mux.HandleFunc("POST /api/web/karaka/execute", sessionMiddleware(karaka.ExecuteHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {
