@@ -13,18 +13,10 @@
   let isLoading = $state(false);
   let errorMsg = $state('');
   let statusMsg = $state('');
-  let subTab: 'terminal' | 'files' | 'storage' = $state('terminal');
-
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-  onMount(() => {
-    fetchStatus();
-    pollInterval = setInterval(fetchStatus, 8000);
-  });
-
-  onDestroy(() => {
-    if (pollInterval) clearInterval(pollInterval);
-  });
+  onMount(() => { fetchStatus(); pollInterval = setInterval(fetchStatus, 8000); });
+  onDestroy(() => { if (pollInterval) clearInterval(pollInterval); });
 
   async function fetchStatus() {
     if (!vpcUrl || !sessionToken) return;
@@ -35,213 +27,325 @@
         const data: any = await res.json();
         sandboxRunning = data.running;
         if (data.error) errorMsg = data.error;
+        if (sandboxRunning) { loadFiles(); loadStorage(); }
       }
-    } catch { }
+    } catch {}
   }
 
   async function wake() {
     if (!vpcUrl || !sessionToken) return;
-    isLoading = true;
-    errorMsg = '';
-    statusMsg = 'Starting sandbox...';
+    isLoading = true; errorMsg = ''; statusMsg = 'Starting sandbox...';
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'wake' });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`, { method: 'POST' });
       const data: any = await res.json();
-      if (res.ok) {
-        sandboxRunning = true;
-        statusMsg = 'Sandbox ready';
-        loadFiles();
-      } else {
-        errorMsg = data.error || 'Failed to start';
-        statusMsg = '';
-      }
-    } catch (err: any) {
-      errorMsg = err.message || 'Network error';
-      statusMsg = '';
-    } finally {
-      isLoading = false;
-    }
+      if (res.ok) { sandboxRunning = true; statusMsg = 'Sandbox ready'; loadFiles(); loadStorage(); }
+      else { errorMsg = data.error || 'Failed to start'; statusMsg = ''; }
+    } catch (err: any) { errorMsg = err.message || 'Network error'; statusMsg = ''; }
+    finally { isLoading = false; }
   }
 
   async function stop() {
     if (!vpcUrl || !sessionToken) return;
-    isLoading = true;
-    errorMsg = '';
-    statusMsg = 'Stopping sandbox...';
+    isLoading = true; errorMsg = ''; statusMsg = 'Stopping...';
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'stop' });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`, { method: 'POST' });
       const data: any = await res.json();
-      if (res.ok) {
-        sandboxRunning = false;
-        terminalOutput = '';
-        files = [];
-        vpcStorage = null;
-        statusMsg = 'Sandbox stopped';
-      } else {
-        errorMsg = data.error || 'Failed to stop';
-        statusMsg = '';
-      }
-    } catch (err: any) {
-      errorMsg = err.message || 'Network error';
-      statusMsg = '';
-    } finally {
-      isLoading = false;
-    }
+      if (res.ok) { sandboxRunning = false; terminalOutput = ''; files = []; vpcStorage = null; statusMsg = 'Stopped'; }
+      else { errorMsg = data.error || 'Failed'; statusMsg = ''; }
+    } catch (err: any) { errorMsg = err.message; statusMsg = ''; }
+    finally { isLoading = false; }
   }
 
-  // --- Terminal ---
+  // ─── Terminal ───
   let terminalInput = $state('');
   let terminalOutput = $state('');
   let execBusy = $state(false);
+  let cmdHistory: string[] = [];
+  let historyIdx = $state(-1);
+  let termScroll: HTMLDivElement | null = null;
 
   async function execCommand() {
-    if (!vpcUrl || !sessionToken || !terminalInput.trim() || execBusy) return;
+    if (!terminalInput.trim() || execBusy) return;
     const cmd = terminalInput;
+    cmdHistory.unshift(cmd);
+    if (cmdHistory.length > 50) cmdHistory.pop();
+    historyIdx = -1;
     terminalInput = '';
-    terminalOutput += `\n$ ${cmd}\n`;
+    terminalOutput += `$ ${cmd}\n`;
     execBusy = true;
+    await tick();
+    scrollTerm();
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'exec' });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd, timeout: 30 })
       });
       const data: any = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        terminalOutput += `Error: ${data.error || res.status}\n`;
-      } else {
-        if (data.stdout) terminalOutput += data.stdout;
-        if (data.stderr) terminalOutput += data.stderr;
-        if (data.error) terminalOutput += `Error: ${data.error}\n`;
-      }    } catch (err: any) {
-      terminalOutput += `Error: ${err.message}\n`;
-    } finally {
-      execBusy = false;
-    }
+      if (data.stdout) terminalOutput += data.stdout;
+      if (data.stderr) terminalOutput += data.stderr;
+      if (data.error) terminalOutput += `Error: ${data.error}\n`;
+    } catch (err: any) { terminalOutput += `Error: ${err.message}\n`; }
+    finally { execBusy = false; await tick(); scrollTerm(); }
   }
+
+  function scrollTerm() { if (termScroll) termScroll.scrollTop = termScroll.scrollHeight; }
+  async function tick() { await new Promise(r => requestAnimationFrame(() => r(null))); }
 
   function handleTermKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); execCommand(); }
+    else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      execCommand();
+      if (cmdHistory.length === 0) return;
+      historyIdx = Math.min(historyIdx + 1, cmdHistory.length - 1);
+      terminalInput = cmdHistory[historyIdx] || '';
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      historyIdx = Math.max(historyIdx - 1, -1);
+      terminalInput = historyIdx === -1 ? '' : cmdHistory[historyIdx];
+    } else if (e.key === 'l' && e.ctrlKey) {
+      e.preventDefault(); terminalOutput = '';
     }
   }
 
-  // --- Files ---
+  function clearTerminal() { terminalOutput = ''; }
+
+  // ─── Files ───
   let files: any[] = $state([]);
   let currentPath = $state('/files');
   let fileBusy = $state(false);
+  let selectedFile: any | null = $state(null);
+  let filePreview: string = $state('');
+  let filePreviewType: 'text' | 'image' | 'binary' = $state('binary');
+  let dragOver = $state(false);
 
-  const DIR_LABELS: Record<string, string> = {
-    '/files': 'Files',
-    '/tmp': 'Tmp',
-    '/downloads': 'Downloads',
-    '/screenshots': 'Screenshots',
-    '/scripts': 'Scripts'
-  };
+  const DIRS = [
+    { path: '/files', label: 'Files' },
+    { path: '/downloads', label: 'Downloads' },
+    { path: '/screenshots', label: 'Screenshots' },
+    { path: '/scripts', label: 'Scripts' },
+    { path: '/tmp', label: 'Tmp' },
+  ];
 
   async function loadFiles() {
     if (!vpcUrl || !sessionToken) return;
-    fileBusy = true;
+    fileBusy = true; selectedFile = null; filePreview = '';
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'files', path: currentPath });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`);
-      if (res.ok) {
-        const data: any = await res.json();
-        files = data.entries || [];
-      }
-    } catch { } finally {
-      fileBusy = false;
+      if (res.ok) { const data: any = await res.json(); files = data.entries || []; }
+    } catch {} finally { fileBusy = false; }
+  }
+
+  function navigateTo(path: string) { currentPath = path; loadFiles(); }
+
+  async function clickFile(f: any) {
+    if (f.type === 'dir') {
+      currentPath = currentPath === '/' ? `/${f.name}` : `${currentPath}/${f.name}`;
+      loadFiles();
+      return;
+    }
+    selectedFile = f;
+    filePreview = ''; filePreviewType = 'binary';
+    const ext = f.name.split('.').pop()?.toLowerCase() || '';
+    if (['txt', 'md', 'json', 'js', 'ts', 'py', 'sh', 'yml', 'yaml', 'csv', 'xml', 'html', 'css', 'log', 'conf'].includes(ext)) {
+      filePreviewType = 'text';
+      try {
+        const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: `${currentPath}/${f.name}` });
+        const res = await fetch(`/api/proxy/sandbox?${params.toString()}`);
+        if (res.ok) filePreview = await res.text();
+      } catch { filePreview = 'Failed to load'; }
+    } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) {
+      filePreviewType = 'image';
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: `${currentPath}/${f.name}` });
+      filePreview = `/api/proxy/sandbox?${params.toString()}`;
     }
   }
 
-  function navigateTo(path: string) {
-    currentPath = path;
+  async function deleteFile(f: any) {
+    if (!confirm(`Delete ${f.name}?`)) return;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, path: `${currentPath}/${f.name}` });
+      await fetch(`/api/proxy/sandbox?${params.toString()}`, { method: 'DELETE' });
+      loadFiles();
+      if (selectedFile?.name === f.name) { selectedFile = null; filePreview = ''; }
+    } catch {}
+  }
+
+  async function downloadFile(f: any) {
+    const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: `${currentPath}/${f.name}`, download: '1' });
+    const a = document.createElement('a');
+    a.href = `/api/proxy/sandbox?${params.toString()}`;
+    a.download = f.name;
+    a.click();
+  }
+
+  async function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    dragOver = false;
+    const droppedFiles = e.dataTransfer?.files;
+    if (!droppedFiles || droppedFiles.length === 0) return;
+    for (const f of Array.from(droppedFiles)) {
+      const path = `${currentPath}/${f.name}`;
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, path });
+      await fetch(`/api/proxy/sandbox?${params.toString()}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': f.type || 'application/octet-stream' },
+        body: f
+      });
+    }
     loadFiles();
   }
 
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  async function uploadViaInput(e: Event) {
+    const target = e.target as HTMLInputElement;
+    const uploaded = target.files;
+    if (!uploaded) return;
+    for (const f of Array.from(uploaded)) {
+      const path = `${currentPath}/${f.name}`;
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, path });
+      await fetch(`/api/proxy/sandbox?${params.toString()}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': f.type || 'application/octet-stream' },
+        body: f
+      });
+    }
+    loadFiles();
+    target.value = '';
   }
 
-  // --- Storage ---
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function formatDate(ts: number): string {
+    return new Date(ts * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ─── Storage ───
   let vpcStorage: any = $state(null);
-  let storageBusy = $state(false);
 
   async function loadStorage() {
     if (!vpcUrl || !sessionToken) return;
-    storageBusy = true;
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'storage-vpc' });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`);
-      if (res.ok) {
-        vpcStorage = await res.json();
-      }
-    } catch { } finally {
-      storageBusy = false;
-    }
+      if (res.ok) vpcStorage = await res.json();
+    } catch {}
   }
 
-  function tabLoad() {
-    if (subTab === 'files') loadFiles();
-    if (subTab === 'storage') loadStorage();
+  function storageColor(pct: number): string {
+    if (pct < 60) return '#1e8e3e';
+    if (pct < 80) return '#f9ab00';
+    return '#d93025';
   }
-
-  $effect(() => {
-    if (sandboxRunning) tabLoad();
-  });
 </script>
 
-<div class="sandbox-view">
-  <header class="sandbox-view__header">
-    <div class="sandbox-view__title">
+<div class="sandbox">
+  <!-- Header bar -->
+  <header class="sb-header">
+    <div class="sb-header__left">
       <h3>Sandbox</h3>
-      <span class="sandbox-view__subtitle">Yantraśālā</span>
+      <span class="sb-header__sub">Yantraśālā</span>
     </div>
-    <div class="sandbox-view__status">
-      <span class="status-dot" class:is-on={sandboxRunning} class:is-off={!sandboxRunning && !isLoading} class:is-loading={isLoading}></span>
-      <span class="status-label">
-        {sandboxRunning ? 'Running' : isLoading ? 'Loading...' : 'Stopped'}
-      </span>
+    <div class="sb-header__right">
+      <span class="dot" class:on={sandboxRunning} class:off={!sandboxRunning && !isLoading} class:load={isLoading}></span>
+      <span class="sb-header__status">{sandboxRunning ? 'Running' : isLoading ? 'Loading' : 'Stopped'}</span>
+      {#if sandboxRunning}
+        <button class="btn-sm btn-ghost" onclick={stop} disabled={isLoading}>Stop</button>
+      {:else}
+        <button class="btn-sm btn-dark" onclick={wake} disabled={isLoading}>Wake</button>
+      {/if}
     </div>
   </header>
 
-  <div class="sandbox-view__controls">
-    {#if !sandboxRunning}
-      <button type="button" class="btn btn--primary" onclick={wake} disabled={isLoading}>
-        {isLoading ? 'Starting...' : 'Wake Sandbox'}
-      </button>
-    {:else}
-      <button type="button" class="btn btn--ghost" onclick={stop} disabled={isLoading}>
-        {isLoading ? 'Stopping...' : 'Stop Sandbox'}
-      </button>
-    {/if}
-  </div>
-
   {#if errorMsg}
-    <p class="sandbox-view__error">{errorMsg}</p>
+    <div class="sb-error">{errorMsg}</div>
   {/if}
   {#if statusMsg && !errorMsg}
-    <p class="sandbox-view__status-msg">{statusMsg}</p>
+    <div class="sb-status">{statusMsg}</div>
   {/if}
 
   {#if sandboxRunning}
-    <nav class="sandbox-view__subtabs">
-      <button class="subtab" class:active={subTab === 'terminal'} onclick={() => { subTab = 'terminal'; }}>Terminal</button>
-      <button class="subtab" class:active={subTab === 'files'} onclick={() => { subTab = 'files'; tabLoad(); }}>Files</button>
-      <button class="subtab" class:active={subTab === 'storage'} onclick={() => { subTab = 'storage'; tabLoad(); }}>Storage</button>
-    </nav>
+    <div class="sb-body">
+      <!-- LEFT: Files -->
+      <div class="sb-left">
+        <div class="sb-section-title">Files</div>
+        <div class="dir-tabs">
+          {#each DIRS as d}
+            <button class="dir-tab" class:active={currentPath === d.path} onclick={() => navigateTo(d.path)}>{d.label}</button>
+          {/each}
+        </div>
+        <div class="breadcrumb">{currentPath}</div>
 
-    <div class="sandbox-view__body">
-      {#if subTab === 'terminal'}
-        <div class="terminal">
-          <div class="terminal__output">{terminalOutput || '$ Terminal ready. Type a command.\n'}</div>
-          <div class="terminal__input">
+        <div
+          class="file-drop-zone"
+          class:dragover={dragOver}
+          ondragover={(e) => { e.preventDefault(); dragOver = true; }}
+          ondragleave={() => { dragOver = false; }}
+          ondrop={handleDrop}
+        >
+          {#if fileBusy}
+            <div class="file-empty">Loading...</div>
+          {:else if files.length === 0}
+            <div class="file-empty">Empty — drag files here</div>
+          {:else}
+            {#each files as f}
+              <div class="file-row" class:selected={selectedFile?.name === f.name}>
+                <button class="file-row__main" onclick={() => clickFile(f)}>
+                  <span class="file-icon">{f.type === 'dir' ? '📁' : '📄'}</span>
+                  <span class="file-name">{f.name}</span>
+                </button>
+                <span class="file-size">{f.type === 'dir' ? '' : formatSize(f.size)}</span>
+                {#if f.type !== 'dir'}
+                  <button class="file-action" title="Download" onclick={() => downloadFile(f)}>⬇</button>
+                  <button class="file-action file-action--del" title="Delete" onclick={() => deleteFile(f)}>✕</button>
+                {/if}
+              </div>
+            {/each}
+          {/if}
+        </div>
+
+        <label class="upload-btn">
+          + Upload
+          <input type="file" multiple onchange={uploadViaInput} hidden />
+        </label>
+
+        <!-- File preview -->
+        {#if selectedFile}
+          <div class="preview">
+            <div class="preview__header">
+              <span>{selectedFile.name}</span>
+              <button class="file-action" onclick={() => { selectedFile = null; filePreview = ''; }}>✕</button>
+            </div>
+            <div class="preview__body">
+              {#if filePreviewType === 'text'}
+                <pre>{filePreview || 'Loading...'}</pre>
+              {:else if filePreviewType === 'image'}
+                <img src={filePreview} alt={selectedFile.name} />
+              {:else}
+                <p class="file-empty">Binary file — click ⬇ to download</p>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- RIGHT: Terminal + Storage -->
+      <div class="sb-right">
+        <div class="sb-right-top">
+          <div class="sb-section-title">
+            Terminal
+            <button class="btn-sm btn-ghost" onclick={clearTerminal}>Clear</button>
+          </div>
+          <div class="terminal" bind:this={termScroll}>
+            <pre class="terminal__out">{terminalOutput || '$ Sandbox ready. Type a command.\n'}</pre>
+          </div>
+          <div class="terminal__input-row">
             <span class="terminal__prompt">$</span>
             <input
               type="text"
@@ -250,136 +354,119 @@
               disabled={execBusy}
               placeholder="ls -la /sandbox/files"
             />
+            {#if execBusy}<span class="terminal__busy">⏳</span>{/if}
           </div>
         </div>
-      {:else if subTab === 'files'}
-        <div class="files">
-          <div class="files__nav">
-            {#each Object.keys(DIR_LABELS) as dir}
-              <button class="files__dir" class:active={currentPath === dir} onclick={() => navigateTo(dir)}>
-                {DIR_LABELS[dir]}
-              </button>
-            {/each}
-          </div>
-          <div class="files__list">
-            {#if fileBusy}
-              <p class="files__empty">Loading...</p>
-            {:else if files.length === 0}
-              <p class="files__empty">Empty directory</p>
-            {:else}
-              {#each files as f}
-                <div class="files__row">
-                  <span class="files__icon">{f.type === 'dir' ? '📁' : '📄'}</span>
-                  <span class="files__name">{f.name}</span>
-                  <span class="files__size">{f.type === 'dir' ? '-' : formatSize(f.size)}</span>
+
+        <div class="sb-right-bottom">
+          <div class="sb-section-title">Storage</div>
+          {#if vpcStorage}
+            <div class="storage-grid">
+              {#each vpcStorage.volumes as vol}
+                {@const pct = (vol.used_mb / vol.quota_mb) * 100}
+                <div class="storage-item">
+                  <div class="storage-item__label">{vol.name}</div>
+                  <div class="storage-item__bar">
+                    <div class="storage-item__fill" style="width: {Math.min(100, pct)}%; background: {storageColor(pct)}"></div>
+                  </div>
+                  <div class="storage-item__value">{vol.used_mb} / {vol.quota_mb} MB</div>
                 </div>
               {/each}
-            {/if}
-          </div>
-        </div>
-      {:else if subTab === 'storage'}
-        <div class="storage">
-          {#if storageBusy}
-            <p class="files__empty">Loading...</p>
-          {:else if vpcStorage}
-            <h4 class="storage__title">VPC Volumes</h4>
-            {#each vpcStorage.volumes as vol}
-              <div class="storage__bar">
-                <div class="storage__label">{vol.name}</div>
-                <div class="storage__track">
-                  <div class="storage__fill" style="width: {Math.min(100, (vol.used_mb / vol.quota_mb) * 100)}%"></div>
-                </div>
-                <div class="storage__value">{vol.used_mb} / {vol.quota_mb} MB</div>
-              </div>
-            {/each}
+            </div>
           {:else}
-            <p class="files__empty">No storage data</p>
+            <div class="file-empty">Loading storage...</div>
           {/if}
         </div>
-      {/if}
+      </div>
     </div>
   {:else}
-    <div class="sandbox-view__placeholder">
+    <div class="sb-placeholder">
       <p>Alpine Linux Sandbox</p>
       <span>Terminal · Files · Storage</span>
-      <span>bash, curl, python3, jq, sqlite3, git...</span>
+      <span>bash, curl, python3, jq, sqlite3, git, vim, tmux...</span>
     </div>
   {/if}
 </div>
 
 <style>
-  .sandbox-view {
-    display: flex; flex-direction: column; height: 100%; background: #fff; overflow: hidden;
-  }
-  .sandbox-view__header {
-    display: flex; align-items: center; justify-content: space-between; padding: 10px 16px;
-    border-bottom: 1px solid #dfe1e5; flex-shrink: 0;
-  }
-  .sandbox-view__title { display: flex; align-items: baseline; gap: 8px; }
-  .sandbox-view__title h3 { margin: 0; font-size: 16px; font-weight: 600; color: #202124; }
-  .sandbox-view__subtitle { font-size: 12px; color: #80868b; }
-  .sandbox-view__status { display: flex; align-items: center; gap: 6px; }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #bdc1c6; }
-  .status-dot.is-on { background: #202124; }
-  .status-dot.is-off { background: transparent; border: 2px solid #80868b; box-sizing: border-box; }
-  .status-dot.is-loading { background: #202124; animation: pulse 1.2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-  .status-label { font-size: 12px; font-weight: 500; color: #5f6368; }
-  .sandbox-view__controls { padding: 8px 16px; border-bottom: 1px solid #e8eaed; flex-shrink: 0; }
-  .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
-  .btn--primary { background: #202124; color: #fff; }
-  .btn--primary:hover:not(:disabled) { background: #3c4043; }
-  .btn--primary:disabled { background: #bdc1c6; cursor: not-allowed; }
-  .btn--ghost { background: #fff; color: #202124; border: 1px solid #dfe1e5; }
-  .btn--ghost:hover:not(:disabled) { background: #f1f3f4; }
-  .btn--ghost:disabled { opacity: .6; cursor: not-allowed; }
-  .sandbox-view__error { margin: 0; padding: 8px 16px; font-size: 13px; color: #d93025; background: #fce8e6; }
-  .sandbox-view__status-msg { margin: 0; padding: 8px 16px; font-size: 13px; color: #5f6368; }
-  .sandbox-view__subtabs {
-    display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid #dfe1e5; flex-shrink: 0;
-  }
-  .subtab {
-    padding: 8px 16px; border: none; background: transparent; font-size: 13px; font-weight: 600;
-    color: #5f6368; cursor: pointer; border-bottom: 2px solid transparent;
-  }
-  .subtab:hover { color: #202124; }
-  .subtab.active { color: #202124; border-bottom-color: #202124; }
-  .sandbox-view__body { flex: 1; min-height: 0; overflow: auto; }
-  .sandbox-view__placeholder {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    flex: 1; gap: 8px; color: #80868b;
-  }
-  .sandbox-view__placeholder p { margin: 0; font-size: 15px; font-weight: 600; color: #5f6368; }
-  .sandbox-view__placeholder span { font-size: 13px; }
+  .sandbox { display: flex; flex-direction: column; height: 100%; background: #fff; overflow: hidden; }
 
-  .terminal { display: flex; flex-direction: column; height: 100%; background: #1a1a1a; padding: 12px; font-family: monospace; font-size: 13px; }
-  .terminal__output { flex: 1; overflow: auto; white-space: pre-wrap; color: #e0e0e0; padding-bottom: 8px; }
-  .terminal__input { display: flex; align-items: center; gap: 8px; border-top: 1px solid #333; padding-top: 8px; }
-  .terminal__prompt { color: #4fc3f7; flex-shrink: 0; }
-  .terminal__input input {
-    flex: 1; background: transparent; border: none; color: #e0e0e0; font-family: monospace; font-size: 13px; outline: none;
-  }
+  .sb-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid #dfe1e5; flex-shrink: 0; }
+  .sb-header__left { display: flex; align-items: baseline; gap: 8px; }
+  .sb-header__left h3 { margin: 0; font-size: 15px; font-weight: 600; color: #202124; }
+  .sb-header__sub { font-size: 11px; color: #80868b; }
+  .sb-header__right { display: flex; align-items: center; gap: 8px; }
+  .sb-header__status { font-size: 12px; color: #5f6368; font-weight: 500; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #bdc1c6; }
+  .dot.on { background: #1e8e3e; }
+  .dot.off { border: 2px solid #80868b; box-sizing: border-box; }
+  .dot.load { background: #202124; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-  .files { padding: 12px; }
-  .files__nav { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
-  .files__dir {
-    padding: 4px 10px; border: 1px solid #dfe1e5; border-radius: 4px; background: #fff;
-    font-size: 12px; color: #5f6368; cursor: pointer;
-  }
-  .files__dir.active { background: #202124; color: #fff; border-color: #202124; }
-  .files__list { border: 1px solid #dfe1e5; border-radius: 6px; overflow: hidden; }
-  .files__empty { padding: 20px; text-align: center; color: #80868b; font-size: 13px; }
-  .files__row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #f1f3f4; font-size: 13px; }
-  .files__row:last-child { border-bottom: none; }
-  .files__icon { flex-shrink: 0; }
-  .files__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #202124; }
-  .files__size { flex-shrink: 0; color: #80868b; font-variant-numeric: tabular-nums; }
+  .btn-sm { padding: 4px 10px; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-dark { background: #202124; color: #fff; }
+  .btn-dark:hover:not(:disabled) { background: #3c4043; }
+  .btn-dark:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-ghost { background: transparent; color: #5f6368; border: 1px solid #dfe1e5; }
+  .btn-ghost:hover { background: #f1f3f4; }
 
-  .storage { padding: 16px; }
-  .storage__title { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #202124; }
-  .storage__bar { margin-bottom: 10px; }
-  .storage__label { font-size: 11px; font-weight: 600; color: #80868b; text-transform: uppercase; margin-bottom: 4px; }
-  .storage__track { height: 6px; background: #e8eaed; border-radius: 3px; overflow: hidden; margin-bottom: 2px; }
-  .storage__fill { height: 100%; background: #202124; border-radius: 3px; transition: width .3s; }
-  .storage__value { font-size: 11px; color: #5f6368; font-variant-numeric: tabular-nums; }
+  .sb-error { padding: 6px 16px; font-size: 12px; color: #d93025; background: #fce8e6; }
+  .sb-status { padding: 6px 16px; font-size: 12px; color: #5f6368; }
+
+  .sb-body { flex: 1; min-height: 0; display: flex; gap: 1px; background: #dfe1e5; overflow: hidden; }
+  .sb-left { flex: 0 0 42%; min-width: 0; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+  .sb-right { flex: 1; min-width: 0; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+  .sb-right-top { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .sb-right-bottom { flex: 0 0 auto; max-height: 220px; overflow-y: auto; border-top: 1px solid #dfe1e5; }
+
+  .sb-section-title { padding: 6px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #80868b; border-bottom: 1px solid #f1f3f4; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+
+  .dir-tabs { display: flex; gap: 2px; padding: 4px 8px; flex-shrink: 0; }
+  .dir-tab { padding: 3px 8px; border: 1px solid #dfe1e5; border-radius: 3px; background: #fff; font-size: 11px; color: #5f6368; cursor: pointer; }
+  .dir-tab.active { background: #202124; color: #fff; border-color: #202124; }
+
+  .breadcrumb { padding: 2px 12px; font-size: 11px; color: #80868b; font-family: monospace; flex-shrink: 0; }
+
+  .file-drop-zone { flex: 1; min-height: 0; overflow-y: auto; border: 2px dashed transparent; }
+  .file-drop-zone.dragover { border-color: #202124; background: #f8f9fa; }
+
+  .file-empty { padding: 16px; text-align: center; color: #80868b; font-size: 12px; }
+
+  .file-row { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid #f8f9fa; }
+  .file-row:hover { background: #f1f3f4; }
+  .file-row.selected { background: #e8f0fe; }
+  .file-row__main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: none; background: transparent; cursor: pointer; text-align: left; padding: 0; }
+  .file-icon { flex-shrink: 0; font-size: 14px; }
+  .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #202124; }
+  .file-size { flex-shrink: 0; font-size: 11px; color: #80868b; font-variant-numeric: tabular-nums; }
+  .file-action { flex-shrink: 0; border: none; background: transparent; cursor: pointer; font-size: 12px; color: #5f6368; padding: 2px 4px; border-radius: 3px; }
+  .file-action:hover { background: #e8eaed; }
+  .file-action--del:hover { color: #d93025; }
+
+  .upload-btn { display: block; padding: 6px 12px; margin: 4px 8px; text-align: center; border: 1px solid #dfe1e5; border-radius: 4px; font-size: 12px; font-weight: 600; color: #5f6368; cursor: pointer; }
+  .upload-btn:hover { background: #f1f3f4; }
+
+  .preview { border-top: 1px solid #dfe1e5; flex-shrink: 0; max-height: 200px; display: flex; flex-direction: column; }
+  .preview__header { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; background: #f8f9fa; font-size: 12px; font-weight: 600; color: #202124; }
+  .preview__body { flex: 1; overflow: auto; padding: 8px 12px; }
+  .preview__body pre { margin: 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; font-family: monospace; color: #202124; }
+  .preview__body img { max-width: 100%; max-height: 160px; object-fit: contain; }
+
+  .terminal { flex: 1; min-height: 0; overflow-y: auto; background: #1a1a1a; padding: 8px 12px; }
+  .terminal__out { margin: 0; font-size: 12px; font-family: 'SF Mono', Menlo, monospace; color: #e0e0e0; white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
+  .terminal__input-row { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #1a1a1a; border-top: 1px solid #333; }
+  .terminal__prompt { color: #4fc3f7; font-family: monospace; font-size: 13px; flex-shrink: 0; }
+  .terminal__input-row input { flex: 1; background: transparent; border: none; color: #e0e0e0; font-family: 'SF Mono', Menlo, monospace; font-size: 13px; outline: none; }
+  .terminal__busy { font-size: 12px; }
+
+  .storage-grid { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .storage-item { display: flex; align-items: center; gap: 8px; }
+  .storage-item__label { flex: 0 0 120px; font-size: 11px; font-weight: 600; color: #5f6368; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .storage-item__bar { flex: 1; height: 5px; background: #e8eaed; border-radius: 3px; overflow: hidden; }
+  .storage-item__fill { height: 100%; border-radius: 3px; transition: width .3s, background .3s; }
+  .storage-item__value { flex: 0 0 auto; font-size: 10px; color: #80868b; font-variant-numeric: tabular-nums; }
+
+  .sb-placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #80868b; }
+  .sb-placeholder p { margin: 0; font-size: 15px; font-weight: 600; color: #5f6368; }
+  .sb-placeholder span { font-size: 13px; }
 </style>
