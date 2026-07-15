@@ -61,7 +61,7 @@
   // Profile menu state
   let isProfileMenuOpen = $state(false);
 
-  // Navigation: Chat (left), Tools (center), Settings (right)
+  // Navigation: Chat (left), Organic Tools (center), Settings (right)
   type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox';
   let showContactsInChat = $state(false);
   let toolsWiggle = $state(false);
@@ -719,8 +719,8 @@
                   class:is-open={sidebarTab === 'tools'}
                   class:is-active={toolsMenuActive}
                   class:wiggle={toolsWiggle}
-                  title="Tools"
-                  aria-label="Tools"
+                  title="Organic Tools"
+                  aria-label="Organic Tools"
                   onclick={clickTools}
                 >
                   <span class="tools-grid" aria-hidden="true">
@@ -822,7 +822,7 @@
                 </div>
               {/each}
             {:else if isToolTab}
-              <div class="logs-archive-label">Tools</div>
+              <div class="logs-archive-label">Organic Tools</div>
               {#each toolsMenuItems as item}
                 <button class="chat-item settings-nav {sidebarTab === item.id ? 'active' : ''}" onclick={() => selectSidebarTab(item.id)}>
                   <div class="chat-item__avatar settings-nav__icon">
@@ -901,7 +901,7 @@
         <main class="chat-main {isToolTab ? 'chat-main--logs' : ''}">
           {#if isToolTab}
             <header class="tools-head">
-              <h2 class="tools-head__title">Tools</h2>
+              <h2 class="tools-head__title">Organic Tools</h2>
               <nav class="tools-head__tabs">
                 {#each toolsMenuItems as item}
                   <button
