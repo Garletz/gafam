@@ -62,18 +62,19 @@
   let isProfileMenuOpen = $state(false);
 
   // Navigation: Chat (left), Tools (center), Settings (right)
-  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'tools';
+  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox';
   let showContactsInChat = $state(false);
   let toolsWiggle = $state(false);
   let appsMenuOpen = $state(false);
 
   const toolsMenuItems: Array<{ id: SidebarTab; label: string; hint: string; icon: string }> = [
+    { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI', icon: 'suparna' },
     { id: 'browser', label: 'Browser', hint: 'Vātāyana', icon: 'browser' },
     { id: 'sandbox', label: 'Sandbox', hint: 'Yantraśālā', icon: 'sandbox' },
-    { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI', icon: 'suparna' },
     { id: 'logs', label: 'Logs', hint: 'Phone activity', icon: 'logs' },
   ];
-  const toolsMenuActive = $derived(toolsMenuItems.some((item) => item.id === sidebarTab));
+  const isToolTab = $derived(['suparna', 'browser', 'sandbox', 'logs'].includes(sidebarTab));
+  const toolsMenuActive = $derived(isToolTab);
 
   function selectSidebarTab(tab: SidebarTab) {
     sidebarTab = tab;
@@ -87,12 +88,8 @@
 
   function clickTools() {
     toolsWiggle = true;
-    setTimeout(() => { toolsWiggle = false; }, 400);
-    if (sidebarTab === 'tools') {
-      sidebarTab = 'chats';
-    } else {
-      sidebarTab = 'tools';
-    }
+    setTimeout(() => { toolsWiggle = false; }, 300);
+    sidebarTab = 'suparna';
   }
 
   $effect(() => {
@@ -703,7 +700,7 @@
       </div>
 
     {:else}
-      <div class="messenger-container is-connected {sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc') ? 'is-logs' : ''}">
+      <div class="messenger-container is-connected {isToolTab ? 'is-logs' : ''}">
         <div class="messenger-ui">
           <aside class="sidebar">
           <div class="sidebar__header">
@@ -769,7 +766,7 @@
                 </button>
               </div>
               {/if}
-              {#if sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc')}
+              {#if sidebarTab === 'logs'}
                 <div class="logs-quota-mini">
                   <span>{(logTotalBytes / 1024).toFixed(0)} KB / {(logQuotaBytes / (1024 * 1024)).toFixed(0)} MB</span>
                   <div class="quota-bar"><div class="quota-fill" style="width: {Math.min(100, (logTotalBytes / logQuotaBytes) * 100)}%"></div></div>
@@ -778,7 +775,7 @@
             </div>
           </div>
           <div class="sidebar__list">
-            {#if sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc')}
+            {#if sidebarTab === 'logs'}
               <div class="logs-archive-label">Phone activity archive</div>
               {#each logDays as d}
                 <button
@@ -844,7 +841,7 @@
                   </button>
                 </div>
               {/each}
-            {:else if sidebarTab === 'tools'}
+            {:else if isToolTab}
               <div class="logs-archive-label">Tools</div>
               {#each toolsMenuItems as item}
                 <button
@@ -903,56 +900,11 @@
                   <div class="chat-item__preview">Sync from Android</div>
                 </div>
               </button>
-            {:else if sidebarTab === 'suparna'}
-              <button
-                type="button"
-                class="chat-item settings-nav {suparnaSection === 'vpc' ? 'active' : ''}"
-                onclick={() => { suparnaSection = 'vpc'; }}
-              >
-                <div class="chat-item__avatar settings-nav__icon">V</div>
-                <div class="chat-item__info">
-                  <div class="chat-item__name">VPC 1 RAM</div>
-                  <div class="chat-item__preview">Wake & analyze logs</div>
-                </div>
-              </button>
-              <button
-                type="button"
-                class="chat-item settings-nav {suparnaSection === 'models' ? 'active' : ''}"
-                onclick={() => { suparnaSection = 'models'; }}
-              >
-                <div class="chat-item__avatar settings-nav__icon">M</div>
-                <div class="chat-item__info">
-                  <div class="chat-item__name">Models</div>
-                  <div class="chat-item__preview">GGUF catalog</div>
-                </div>
-              </button>
-              <button
-                type="button"
-                class="chat-item settings-nav {suparnaSection === 'rules' ? 'active' : ''}"
-                onclick={() => { suparnaSection = 'rules'; }}
-              >
-                <div class="chat-item__avatar settings-nav__icon">R</div>
-                <div class="chat-item__info">
-                  <div class="chat-item__name">Rules</div>
-                  <div class="chat-item__preview">Local preferences</div>
-                </div>
-              </button>
-              <button
-                type="button"
-                class="chat-item settings-nav {suparnaSection === 'phone' ? 'active' : ''}"
-                onclick={() => { suparnaSection = 'phone'; }}
-              >
-                <div class="chat-item__avatar settings-nav__icon">P</div>
-                <div class="chat-item__info">
-                  <div class="chat-item__name">Phone</div>
-                  <div class="chat-item__preview">One-shot edge tester</div>
-                </div>
-              </button>
             {/if}
           </div>
         </aside>
 
-        <main class="chat-main {sidebarTab === 'logs' || (sidebarTab === 'suparna' && suparnaSection === 'vpc') ? 'chat-main--logs' : ''}">
+        <main class="chat-main {isToolTab ? 'chat-main--logs' : ''}">
           {#if sidebarTab === 'settings'}
             <Settings
               {sessionToken}
