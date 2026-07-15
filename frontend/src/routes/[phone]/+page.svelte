@@ -798,7 +798,7 @@
                   <p class="hint-sub">APK ships logs every few seconds after pairing.</p>
                 </div>
               {/if}
-            {:else if sidebarTab === 'chats'}
+            {:else if sidebarTab === 'chats' && !showContactsInChat}
               {#each chatSenders as sender}
                 <button class="chat-item {selectedSender === sender ? 'active' : ''}" onclick={() => selectedSender = sender}>
                   <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
@@ -853,7 +853,15 @@
                   onclick={() => selectSidebarTab(item.id)}
                 >
                   <div class="chat-item__avatar settings-nav__icon">
-                    {#if item.icon === 'browser'}🌐{:else if item.icon === 'sandbox'}🛠{:else if item.icon === 'suparna'}🪶{:else if item.icon === 'logs'}📋{/if}
+                    {#if item.icon === 'browser'}
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+                    {:else if item.icon === 'sandbox'}
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+                    {:else if item.icon === 'suparna'}
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4.5"/><path d="M7.5 7.5l2 2M14.5 14.5l2 2M16.5 7.5l-2 2M9.5 14.5l-2 2"/></svg>
+                    {:else if item.icon === 'logs'}
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/></svg>
+                    {/if}
                   </div>
                   <div class="chat-item__info">
                     <div class="chat-item__name">{item.label}</div>
@@ -1204,14 +1212,30 @@
     min-width: 0;
   }
   .sidebar__tabs-main {
-    display: flex;
     flex: 1;
+    display: flex;
     min-width: 0;
-    gap: 2px;
+    justify-content: center;
   }
   .sidebar__tabs-main .tab {
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
+    padding: 8px 16px;
+  }
+  .sidebar__tabs-center {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar__tabs-end {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+  .sidebar__tabs-end .tab {
+    flex: 0 0 auto;
+    padding: 8px 16px;
   }
   .tab {
     flex: 1;
@@ -1252,7 +1276,7 @@
     background: transparent;
     color: #5f6368;
     cursor: pointer;
-    transition: background 0.18s ease, color 0.18s ease;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.25s ease;
   }
   .tools-trigger:hover {
     background: #f1f3f4;
@@ -1261,51 +1285,50 @@
   .tools-trigger.is-open {
     background: #202124;
     color: #fff;
+    transform: scale(0.95);
   }
   .tools-trigger.is-active {
     color: #202124;
   }
   .tools-trigger.wiggle {
-    animation: tools-wiggle 0.4s ease;
+    animation: tools-click 0.3s ease;
   }
-  @keyframes tools-wiggle {
-    0%, 100% { transform: translateX(0) rotate(0); }
-    20% { transform: translateX(-2px) rotate(-8deg); }
-    40% { transform: translateX(2px) rotate(8deg); }
-    60% { transform: translateX(-1px) rotate(-4deg); }
-    80% { transform: translateX(1px) rotate(4deg); }
+  @keyframes tools-click {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(0.85); }
   }
   .tools-grid {
     display: grid;
     grid-template-columns: repeat(3, 4px);
     gap: 3px;
-    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  .tools-trigger.is-open .tools-grid {
-    transform: rotate(90deg) scale(1.1);
   }
   .tools-dot {
     width: 4px;
     height: 4px;
     border-radius: 50%;
     background: currentColor;
-    transition: opacity 0.3s;
+    opacity: 0.5;
+    animation: dot-blink 3s ease-in-out infinite;
+  }
+  .tools-dot:nth-child(1) { animation-delay: 0s; }
+  .tools-dot:nth-child(2) { animation-delay: 0.4s; }
+  .tools-dot:nth-child(3) { animation-delay: 0.8s; }
+  .tools-dot:nth-child(4) { animation-delay: 1.2s; }
+  .tools-dot:nth-child(5) { animation-delay: 1.6s; }
+  .tools-dot:nth-child(6) { animation-delay: 2.0s; }
+  .tools-dot:nth-child(7) { animation-delay: 0.2s; }
+  .tools-dot:nth-child(8) { animation-delay: 0.6s; }
+  .tools-dot:nth-child(9) { animation-delay: 1.0s; }
+  @keyframes dot-blink {
+    0%, 90%, 100% { opacity: 0.45; }
+    95% { opacity: 1; }
   }
   .tools-dot.alive {
-    animation: dot-pulse 1.5s ease-in-out infinite;
+    animation: dot-blink-alive 1.2s ease-in-out infinite;
   }
-  .tools-dot.alive:nth-child(1) { animation-delay: 0s; }
-  .tools-dot.alive:nth-child(2) { animation-delay: 0.1s; }
-  .tools-dot.alive:nth-child(3) { animation-delay: 0.2s; }
-  .tools-dot.alive:nth-child(4) { animation-delay: 0.15s; }
-  .tools-dot.alive:nth-child(5) { animation-delay: 0.05s; }
-  .tools-dot.alive:nth-child(6) { animation-delay: 0.25s; }
-  .tools-dot.alive:nth-child(7) { animation-delay: 0.3s; }
-  .tools-dot.alive:nth-child(8) { animation-delay: 0.12s; }
-  .tools-dot.alive:nth-child(9) { animation-delay: 0.18s; }
-  @keyframes dot-pulse {
-    0%, 100% { opacity: 0.4; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.3); }
+  @keyframes dot-blink-alive {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
   }
   .chat-sub-actions {
     display: flex;
