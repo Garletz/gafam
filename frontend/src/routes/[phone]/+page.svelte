@@ -900,14 +900,17 @@
 
         <main class="chat-main {isToolTab ? 'chat-main--logs' : ''}">
           {#if isToolTab}
-            <nav class="tools-bar">
-              {#each toolsMenuItems as item}
-                <button
-                  class="tools-tab {sidebarTab === item.id ? 'active' : ''}"
-                  onclick={() => selectSidebarTab(item.id)}
-                >{item.label}</button>
-              {/each}
-            </nav>
+            <header class="tools-head">
+              <h2 class="tools-head__title">Tools</h2>
+              <nav class="tools-head__tabs">
+                {#each toolsMenuItems as item}
+                  <button
+                    class="tools-tab {sidebarTab === item.id ? 'active' : ''}"
+                    onclick={() => selectSidebarTab(item.id)}
+                  >{item.label}</button>
+                {/each}
+              </nav>
+            </header>
           {/if}
           {#if sidebarTab === 'settings'}
             <Settings
@@ -1312,13 +1315,22 @@
     color: #fff;
     border-color: #202124;
   }
-  .tools-bar {
-    display: flex;
-    gap: 4px;
-    padding: 10px 20px 0;
+  .tools-head {
+    padding: 16px 20px 0;
     border-bottom: 1px solid #dfe1e5;
     flex-shrink: 0;
     background: #fff;
+  }
+  .tools-head__title {
+    margin: 0 0 12px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #202124;
+  }
+  .tools-head__tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: -1px;
   }
   .tools-tab {
     padding: 10px 14px;
@@ -1329,7 +1341,6 @@
     color: #5f6368;
     cursor: pointer;
     border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
   }
   .tools-tab:hover {
     color: #202124;
