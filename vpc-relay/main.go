@@ -283,6 +283,7 @@ func main() {
 	mux.HandleFunc("POST /api/web/sandbox/stop", sessionMiddleware(sandbox.StopHandler))
 	mux.HandleFunc("GET /api/web/sandbox/storage-vpc", sessionMiddleware(sandbox.VpcStorageHandler))
 	mux.HandleFunc("/api/web/sandbox/", sessionMiddleware(sandbox.FilesHandler))
+	mux.HandleFunc("POST /api/web/sandbox/exec", sessionMiddleware(sandbox.ExecHandler))
 	mux.HandleFunc("POST /api/web/sandbox-exec", sessionMiddleware(sandbox.ExecHandler))
 
 	port := os.Getenv("PORT")

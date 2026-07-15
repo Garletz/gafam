@@ -62,11 +62,17 @@
     return vpcInfo.git_sha.slice(0, 7) !== registryInfo.git_sha.slice(0, 7);
   });
 
-  type UpdatePhase = 'checking' | 'up_to_date' | 'rolling' | 'available' | 'available_no_wt';
+  type UpdatePhase = 'checking' | 'up_to_date' | 'rolling' | 'available' | 'available_no_wt' | 'ghcr_unknown';
 
   let updatePhase = $derived.by((): UpdatePhase => {
     if (updateLoading) return 'rolling';
     if (!vpcInfo || !registryInfo) return 'checking';
+    if (
+      !registryInfo.git_sha ||
+      (registryInfo.source && registryInfo.source !== 'docker_publish')
+    ) {
+      return 'ghcr_unknown';
+    }
     if (!updateAvailable) return 'up_to_date';
     if (updateTriggeredAt > 0 && Date.now() - updateTriggeredAt < 120_000) return 'rolling';
     if (vpcInfo.uptime_seconds < ROLLOUT_UPTIME_MAX) return 'rolling';
@@ -84,6 +90,12 @@
     switch (updatePhase) {
       case 'checking':
         return { label: 'Checking…', detail: 'Comparing against the latest published Docker image.', tone: 'info' };
+      case 'ghcr_unknown':
+        return {
+          label: 'GHCR check unavailable',
+          detail: 'GitHub API rate-limited from Cloudflare. Your node build is shown; retry « Check GHCR » later.',
+          tone: 'info'
+        };
       case 'up_to_date':
         return {
           label: 'Up to date',
@@ -114,12 +126,13 @@
   });
 
   let canTriggerUpdate = $derived.by(
-    () => vpcInfo?.watchtower && (updatePhase === 'available' || updatePhase === 'up_to_date')
+    () => vpcInfo?.watchtower && (updatePhase === 'available' || updatePhase === 'up_to_date' || updatePhase === 'ghcr_unknown')
   );
 
   let updateButtonLabel = $derived.by(() => {
     if (updateLoading || updatePhase === 'rolling') return 'Updating…';
     if (updatePhase === 'available') return 'Update now';
+    if (updatePhase === 'ghcr_unknown') return 'Retry GHCR check';
     if (updatePhase === 'up_to_date' && vpcInfo?.watchtower) return 'Check GHCR';
     if (updatePhase === 'available_no_wt') return 'Watchtower unreachable';
     return 'Unavailable';
@@ -404,7 +417,7 @@
                 </div>
                 <div class="version-row">
                   <span class="version-row__label">GHCR image</span>
-                  <code>{registryInfo.git_sha_short ?? '—'}</code>
+                  <code>{registryInfo.git_sha_short ?? 'unavailable'}</code>
                 </div>
               </div>
             {/if}

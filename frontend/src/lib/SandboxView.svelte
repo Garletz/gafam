@@ -109,11 +109,14 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd, timeout: 30 })
       });
-      const data: any = await res.json();
-      if (data.stdout) terminalOutput += data.stdout;
-      if (data.stderr) terminalOutput += data.stderr;
-      if (data.error) terminalOutput += `Error: ${data.error}\n`;
-    } catch (err: any) {
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        terminalOutput += `Error: ${data.error || res.status}\n`;
+      } else {
+        if (data.stdout) terminalOutput += data.stdout;
+        if (data.stderr) terminalOutput += data.stderr;
+        if (data.error) terminalOutput += `Error: ${data.error}\n`;
+      }    } catch (err: any) {
       terminalOutput += `Error: ${err.message}\n`;
     } finally {
       execBusy = false;

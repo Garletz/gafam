@@ -23,14 +23,21 @@ func getProxy() *httputil.ReverseProxy {
 			originalDirector(req)
 			req.Host = target.Host
 			path := req.URL.Path
-			path = strings.TrimPrefix(path, "/api/web/sandbox")
-			if strings.HasPrefix(path, "-") {
-				path = "/" + path[1:]
+			switch {
+			case path == "/api/web/sandbox-exec" || strings.HasSuffix(path, "/exec"):
+				req.URL.Path = "/exec"
+			default:
+				path = strings.TrimPrefix(path, "/api/web/sandbox")
+				if strings.HasPrefix(path, "-") {
+					path = "/" + path[1:]
+				}
+				if path == "" {
+					path = "/"
+				}
+				req.URL.Path = path
 			}
-			if path == "" {
-				path = "/"
-			}
-			req.URL.Path = path
+			// Sandbox HTTP server matches exact paths — never forward ?token=
+			req.URL.RawQuery = ""
 		}
 	})
 	return rp

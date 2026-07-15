@@ -119,11 +119,12 @@ class FileHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"path": path, "deleted": True})
 
     def do_POST(self):
-        if self.path == "/exec":
+        path = self.path.split("?", 1)[0]
+        if path == "/exec":
             length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length))
+            body = json.loads(self.rfile.read(length)) if length > 0 else {}
             cmd = body.get("command", "")
-            timeout = body.get("timeout", 30)
+            timeout = int(body.get("timeout", 30))
             try:
                 proc = subprocess.run(
                     ["bash", "-c", cmd],
@@ -137,8 +138,10 @@ class FileHandler(BaseHTTPRequestHandler):
                 })
             except subprocess.TimeoutExpired:
                 self._send_json(408, {"error": "timeout"})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
         else:
-            self._send_json(404, {})
+            self._send_json(404, {"error": f"unknown post path: {path}"})
 
     def _handle_storage(self):
         stats = {}

@@ -113,7 +113,7 @@ export const POST: RequestHandler = async ({ url, request }) => {
 	} else if (action === 'stop') {
 		vpcPath = `/api/web/sandbox/stop?token=${encodeURIComponent(token)}`;
 	} else if (action === 'exec') {
-		vpcPath = `/api/web/sandbox-exec?token=${encodeURIComponent(token)}`;
+		vpcPath = `/api/web/sandbox/exec?token=${encodeURIComponent(token)}`;
 		body = await request.text();
 	} else {
 		return json({ error: 'Unknown action' }, { status: 400 });

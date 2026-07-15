@@ -115,10 +115,22 @@ func StopHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ExecHandler(w http.ResponseWriter, r *http.Request) {
+	running, err := containerState()
+	if err != nil || !running {
+		http.Error(w, `{"error":"sandbox_not_running"}`, http.StatusServiceUnavailable)
+		return
+	}
+	r.URL.Path = "/exec"
+	r.URL.RawQuery = ""
 	getProxy().ServeHTTP(w, r)
 }
 
 func FilesHandler(w http.ResponseWriter, r *http.Request) {
+	running, err := containerState()
+	if err != nil || !running {
+		http.Error(w, `{"error":"sandbox_not_running"}`, http.StatusServiceUnavailable)
+		return
+	}
 	getProxy().ServeHTTP(w, r)
 }
 
