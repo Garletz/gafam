@@ -13,9 +13,6 @@ const GH_HEADERS = {
 	'User-Agent': 'gafam-relay-worker'
 };
 
-// Last known good docker-publish on main (fallback when GitHub rate-limits the Worker).
-const FALLBACK_SHA = '50660a54064ae70a2dfd3323d72a29d06f1f267d';
-
 async function latestDockerPublishSha(): Promise<{
 	git_sha: string;
 	published_at: string;
@@ -38,6 +35,20 @@ async function latestDockerPublishSha(): Promise<{
 	};
 }
 
+function unavailable(source: string) {
+	// No hardcoded SHA — Settings must treat this as "unknown", not "new build".
+	return json({
+		repo: 'Garletz/gafam',
+		branch: 'main',
+		git_sha: null,
+		git_sha_short: null,
+		published_at: null,
+		image: 'ghcr.io/garletz/gafam:latest',
+		source,
+		available: false
+	});
+}
+
 export const GET: RequestHandler = async () => {
 	try {
 		const docker = await latestDockerPublishSha();
@@ -49,29 +60,12 @@ export const GET: RequestHandler = async () => {
 				git_sha_short: docker.git_sha.slice(0, 7),
 				published_at: docker.published_at,
 				image: 'ghcr.io/garletz/gafam:latest',
-				source: docker.source
+				source: docker.source,
+				available: true
 			});
 		}
-
-		// Never 502 — GH rate limit from Cloudflare is common; use static fallback so Settings UI works.
-		return json({
-			repo: 'Garletz/gafam',
-			branch: 'main',
-			git_sha: FALLBACK_SHA,
-			git_sha_short: FALLBACK_SHA.slice(0, 7),
-			published_at: new Date().toISOString(),
-			image: 'ghcr.io/garletz/gafam:latest',
-			source: 'rate_limit_fallback'
-		});
+		return unavailable('rate_limit');
 	} catch {
-		return json({
-			repo: 'Garletz/gafam',
-			branch: 'main',
-			git_sha: FALLBACK_SHA,
-			git_sha_short: FALLBACK_SHA.slice(0, 7),
-			published_at: new Date().toISOString(),
-			image: 'ghcr.io/garletz/gafam:latest',
-			source: 'error_fallback'
-		});
+		return unavailable('error');
 	}
 };

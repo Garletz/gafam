@@ -28,11 +28,12 @@
   };
 
   type RegistryInfo = {
-    git_sha: string;
-    git_sha_short: string;
-    published_at: string;
+    git_sha: string | null;
+    git_sha_short: string | null;
+    published_at: string | null;
     image: string;
     source?: string;
+    available?: boolean;
   };
 
   let guardians: Array<{ id: number; name: string; phone: string; keyword: string }> = $state([]);
@@ -56,6 +57,8 @@
   let updateAvailable = $derived.by(() => {
     if (!vpcInfo || !registryInfo) return false;
     if (vpcInfo.git_sha === 'unknown') return false;
+    // Don't invent an update from a stale/hardcoded fallback — only real docker_publish.
+    if (!registryInfo.git_sha || registryInfo.source !== 'docker_publish') return false;
     return vpcInfo.git_sha.slice(0, 7) !== registryInfo.git_sha.slice(0, 7);
   });
 
@@ -401,7 +404,7 @@
                 </div>
                 <div class="version-row">
                   <span class="version-row__label">GHCR image</span>
-                  <code>{registryInfo.git_sha_short}</code>
+                  <code>{registryInfo.git_sha_short ?? '—'}</code>
                 </div>
               </div>
             {/if}
