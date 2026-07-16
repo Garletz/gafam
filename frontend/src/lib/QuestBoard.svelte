@@ -306,12 +306,19 @@
     <div class="qb-error">{errorMsg}</div>
   {/if}
 
-  {#if mission}
-    <div class="qb-meta">
-      <span class="mono">{mission.id}</span>
-      <span class="pill">{mission.status}</span>
-      <span class="muted">{mission.instruction}</span>
+  <div class="qb-board-wrap">
+    <div class="qb-board-title">
+      <span>Quest Board</span>
+      {#if mission}
+        <span class="mono">· {mission.id}</span>
+        <span class="pill">{mission.status}</span>
+      {:else}
+        <span class="muted">· empty — pose a demand above</span>
+      {/if}
     </div>
+    {#if mission}
+      <p class="qb-demand muted">Demand: {mission.instruction}</p>
+    {/if}
 
     <div class="qb-board" role="table" aria-label="Quest board">
       <div class="qb-row qb-head" role="row">
@@ -323,52 +330,72 @@
         <span>Reward</span>
         <span>Actions</span>
       </div>
-      {#each mission.quests as quest (quest.id)}
-        <div class="qb-row" class:is-done={quest.status === 'done'} class:is-failed={quest.status === 'failed'} role="row">
-          <div class="qb-cell title">
-            <strong>{quest.id}</strong>
-            <span>{quest.title}</span>
-            {#if quest.error}
-              <em class="err">{quest.error}</em>
-            {/if}
-          </div>
-          <div class="qb-cell mono">{quest.claim || quest.organ_hint || '—'}</div>
-          <div class="qb-cell mono">{quest.tool || '(judge)'}</div>
-          <div class="qb-cell">{quest.eta}s</div>
-          <div class="qb-cell"><span class="pill">{quest.status}</span></div>
-          <div class="qb-cell reward">
-            {#if quest.reward}
-              <span class="pill verdict-{quest.reward.verdict}">{quest.reward.verdict}</span>
-              <span class="mono">{quest.reward.score.toFixed(1)}</span>
-              {#if quest.reward.reason}<span class="muted">{quest.reward.reason}</span>{/if}
-            {:else}
-              <span class="muted">—</span>
-            {/if}
-          </div>
-          <div class="qb-cell actions">
-            {#if quest.status === 'pending'}
-              <button type="button" class="qb-mini" onclick={() => claimQuest(quest.id)} disabled={busy}>Claim</button>
-            {/if}
-            {#if quest.status === 'claimed' || quest.status === 'failed'}
-              {#if quest.tool}
-                <button type="button" class="qb-mini" onclick={() => runQuest(quest.id)} disabled={busy}>Run</button>
-              {/if}
-            {/if}
-            {#if quest.status === 'done' || quest.status === 'failed' || quest.status === 'claimed'}
-              <input
-                class="qb-reason"
-                placeholder="reason"
-                bind:value={rewardReason[quest.id]}
-              />
-              <button type="button" class="qb-mini ok" onclick={() => rewardQuest(quest.id, 'done', 0.9)} disabled={busy}>done</button>
-              <button type="button" class="qb-mini bad" onclick={() => rewardQuest(quest.id, 'failed', 0.1)} disabled={busy}>failed</button>
-              <button type="button" class="qb-mini more" onclick={() => rewardQuest(quest.id, 'needs_more', 0.4)} disabled={busy}>needs_more</button>
-            {/if}
-          </div>
-        </div>
-      {/each}
-    </div>
 
+      {#if mission}
+        {#each mission.quests as quest (quest.id)}
+          <div class="qb-row" class:is-done={quest.status === 'done'} class:is-failed={quest.status === 'failed'} role="row">
+            <div class="qb-cell title">
+              <strong>{quest.id}</strong>
+              <span>{quest.title}</span>
+              {#if quest.error}
+                <em class="err">{quest.error}</em>
+              {/if}
+            </div>
+            <div class="qb-cell mono">{quest.claim || quest.organ_hint || '—'}</div>
+            <div class="qb-cell mono">{quest.tool || '(judge)'}</div>
+            <div class="qb-cell">{quest.eta}s</div>
+            <div class="qb-cell"><span class="pill">{quest.status}</span></div>
+            <div class="qb-cell reward">
+              {#if quest.reward}
+                <span class="pill verdict-{quest.reward.verdict}">{quest.reward.verdict}</span>
+                <span class="mono">{quest.reward.score.toFixed(1)}</span>
+                {#if quest.reward.reason}<span class="muted">{quest.reward.reason}</span>{/if}
+              {:else}
+                <span class="muted">—</span>
+              {/if}
+            </div>
+            <div class="qb-cell actions">
+              {#if quest.status === 'pending'}
+                <button type="button" class="qb-mini" onclick={() => claimQuest(quest.id)} disabled={busy}>Claim</button>
+              {/if}
+              {#if quest.status === 'claimed' || quest.status === 'failed'}
+                {#if quest.tool}
+                  <button type="button" class="qb-mini" onclick={() => runQuest(quest.id)} disabled={busy}>Run</button>
+                {/if}
+              {/if}
+              {#if quest.status === 'done' || quest.status === 'failed' || quest.status === 'claimed'}
+                <input
+                  class="qb-reason"
+                  placeholder="reason"
+                  bind:value={rewardReason[quest.id]}
+                />
+                <button type="button" class="qb-mini ok" onclick={() => rewardQuest(quest.id, 'done', 0.9)} disabled={busy}>done</button>
+                <button type="button" class="qb-mini bad" onclick={() => rewardQuest(quest.id, 'failed', 0.1)} disabled={busy}>failed</button>
+                <button type="button" class="qb-mini more" onclick={() => rewardQuest(quest.id, 'needs_more', 0.4)} disabled={busy}>needs_more</button>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      {:else}
+        {#each [1, 2, 3, 4, 5] as i}
+          <div class="qb-row qb-placeholder" role="row">
+            <div class="qb-cell title">
+              <strong>Q{i}</strong>
+              <span class="ghost-line"></span>
+            </div>
+            <div class="qb-cell"><span class="ghost-chip"></span></div>
+            <div class="qb-cell"><span class="ghost-chip"></span></div>
+            <div class="qb-cell muted">—</div>
+            <div class="qb-cell"><span class="pill ghost">pending</span></div>
+            <div class="qb-cell muted">—</div>
+            <div class="qb-cell muted">claim · run · reward</div>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  </div>
+
+  {#if mission}
     <div class="qb-add">
       <input class="qb-add-input" placeholder="Add quest title (supervisor)" bind:value={addTitle} />
       <select bind:value={addOrgan}>
@@ -393,8 +420,6 @@
     {#if mission.summary}
       <pre class="qb-summary">{mission.summary}</pre>
     {/if}
-  {:else}
-    <div class="qb-empty">No board yet. Enter a demand and pose the quest board.</div>
   {/if}
 </div>
 
@@ -494,6 +519,24 @@
     margin-bottom: 12px;
     font-size: 13px;
   }
+  .qb-board-wrap {
+    margin-top: 4px;
+    margin-bottom: 16px;
+  }
+  .qb-board-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #202124;
+  }
+  .qb-demand {
+    margin: 0 0 10px;
+    font-size: 13px;
+  }
   .mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
@@ -509,6 +552,10 @@
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
+  }
+  .pill.ghost {
+    background: #f1f3f4;
+    color: #bdc1c6;
   }
   .verdict-done {
     background: #e6f4ea;
@@ -526,7 +573,10 @@
     border: 1px solid #dadce0;
     border-radius: 8px;
     overflow: hidden;
-    margin-bottom: 16px;
+    background:
+      linear-gradient(#e8eaed 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, #eef0f2 1px, transparent 1px) 0 0 / 14.28% 100%,
+      #fff;
   }
   .qb-row {
     display: grid;
@@ -536,6 +586,7 @@
     border-top: 1px solid #e8eaed;
     font-size: 12px;
     align-items: start;
+    background: rgba(255, 255, 255, 0.92);
   }
   .qb-row.qb-head {
     border-top: none;
@@ -547,10 +598,29 @@
     font-size: 10px;
   }
   .qb-row.is-done {
-    background: #f7fbf8;
+    background: rgba(247, 251, 248, 0.95);
   }
   .qb-row.is-failed {
-    background: #fff8f7;
+    background: rgba(255, 248, 247, 0.95);
+  }
+  .qb-row.qb-placeholder {
+    min-height: 44px;
+    color: #9aa0a6;
+  }
+  .ghost-line {
+    display: block;
+    height: 8px;
+    width: 70%;
+    margin-top: 6px;
+    border-radius: 4px;
+    background: #e8eaed;
+  }
+  .ghost-chip {
+    display: inline-block;
+    height: 10px;
+    width: 64px;
+    border-radius: 4px;
+    background: #e8eaed;
   }
   .qb-cell.title {
     display: flex;
