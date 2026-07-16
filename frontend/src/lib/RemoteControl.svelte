@@ -49,7 +49,12 @@
       
       const status = await response.json();
       bridgeConnected = status.bridge_connected;
-      // Do not auto-open video_stream — it blocks Suparna on 1 Go VPS (viewer slot).
+      // Auto-start video when bridge is up. (Viewer slot blocks Suparna analyze — expected.)
+      if (bridgeConnected && !connected && !userWantsStream) {
+        isCheckingStatus = false;
+        await connectToStream();
+        return;
+      }
     } catch (err) {
       error = 'Network error while checking ADB status';
     } finally {
@@ -431,10 +436,12 @@
     ></canvas>
     {#if !connected && !error && !isCheckingStatus && bridgeConnected}
       <div class="rc-loading-overlay">
-        <button class="rc-btn" type="button" onclick={connectToStream} style="padding: 10px 18px;">
-          Start remote video
+        <div class="rc-spinner"></div>
+        <span>Starting remote video…</span>
+        <button class="rc-btn" type="button" onclick={connectToStream} style="padding: 8px 14px; margin-top: 10px;">
+          Retry video
         </button>
-        <span style="margin-top:8px;font-size:12px;color:#666;">Stops Suparna while active (1 Go VPS)</span>
+        <span style="margin-top:8px;font-size:12px;color:#666;">While live, Suparna analyze stays blocked (1 Go VPS)</span>
       </div>
     {:else if connected && !hasReceivedKeyFrame}
       <div class="rc-loading-overlay">
