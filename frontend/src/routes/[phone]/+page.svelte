@@ -9,6 +9,7 @@
   import SuparnaPanel from '$lib/suparna/SuparnaPanel.svelte';
   import BrowserView from '$lib/BrowserView.svelte';
   import SandboxView from '$lib/SandboxView.svelte';
+  import QuestBoard from '$lib/QuestBoard.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
@@ -33,7 +34,7 @@
   let certFingerprint: string = $state((data as any).certFingerprint || '');
   let smsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' = $state('chats');
+  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
   let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' = $state('vpc');
   let contactSearchQuery: string = $state('');
@@ -62,18 +63,19 @@
   let isProfileMenuOpen = $state(false);
 
   // Navigation: Chat (left), Organic Tools (center), Settings (right)
-  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox';
+  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests';
   let showContactsInChat = $state(false);
   let toolsWiggle = $state(false);
   let appsMenuOpen = $state(false);
 
   const toolsMenuItems: Array<{ id: SidebarTab; label: string; hint: string; icon: string }> = [
+    { id: 'quests', label: 'Quests', hint: 'Mission board', icon: 'quests' },
     { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI', icon: 'suparna' },
     { id: 'browser', label: 'Browser', hint: 'Vātāyana', icon: 'browser' },
     { id: 'sandbox', label: 'Sandbox', hint: 'Yantraśālā', icon: 'sandbox' },
     { id: 'logs', label: 'Logs', hint: 'Phone activity', icon: 'logs' },
   ];
-  const isToolTab = $derived(['suparna', 'browser', 'sandbox', 'logs'].includes(sidebarTab));
+  const isToolTab = $derived(['quests', 'suparna', 'browser', 'sandbox', 'logs'].includes(sidebarTab));
   const toolsMenuActive = $derived(isToolTab);
 
   function selectSidebarTab(tab: SidebarTab) {
@@ -89,7 +91,7 @@
   function clickTools() {
     toolsWiggle = true;
     setTimeout(() => { toolsWiggle = false; }, 300);
-    sidebarTab = 'suparna';
+    sidebarTab = 'quests';
   }
 
   $effect(() => {
@@ -823,10 +825,13 @@
               {/each}
             {:else if isToolTab}
               <div class="logs-archive-label">Organic Tools</div>
+              <div class="logs-archive-sub">Karaka · Organs</div>
               {#each toolsMenuItems as item}
                 <button class="chat-item settings-nav {sidebarTab === item.id ? 'active' : ''}" onclick={() => selectSidebarTab(item.id)}>
                   <div class="chat-item__avatar settings-nav__icon">
-                    {#if item.icon === 'browser'}
+                    {#if item.icon === 'quests'}
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h14"/><circle cx="18" cy="12" r="2"/></svg>
+                    {:else if item.icon === 'browser'}
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
                     {:else if item.icon === 'sandbox'}
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
@@ -902,6 +907,7 @@
           {#if isToolTab}
             <header class="tools-head">
               <h2 class="tools-head__title">Organic Tools</h2>
+              <p class="tools-head__sub">Karaka · Organs</p>
               <nav class="tools-head__tabs">
                 {#each toolsMenuItems as item}
                   <button
@@ -920,6 +926,8 @@
               bind:syncContacts
               onContactSyncChange={toggleContactSync}
             />
+          {:else if sidebarTab === 'quests'}
+            <QuestBoard {sessionToken} {vpcUrl} />
           {:else if sidebarTab === 'suparna'}
             <SuparnaPanel
               {sessionToken}
@@ -1079,12 +1087,17 @@
     overflow: hidden;
   }
   .logs-archive-label {
-    padding: 10px 16px 6px;
+    padding: 10px 16px 2px;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: #80868b;
     font-weight: 600;
+  }
+  .logs-archive-sub {
+    padding: 0 16px 8px;
+    font-size: 11px;
+    color: #9aa0a6;
   }
   .logs-day-avatar {
     background: #202124 !important;
@@ -1322,10 +1335,15 @@
     background: #fff;
   }
   .tools-head__title {
-    margin: 0 0 12px;
+    margin: 0;
     font-size: 18px;
     font-weight: 600;
     color: #202124;
+  }
+  .tools-head__sub {
+    margin: 2px 0 12px;
+    font-size: 12px;
+    color: #80868b;
   }
   .tools-head__tabs {
     display: flex;

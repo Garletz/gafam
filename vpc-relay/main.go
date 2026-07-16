@@ -16,6 +16,7 @@ import (
 
 	"github.com/Garletz/gafam/vpc-relay/browser"
 	"github.com/Garletz/gafam/vpc-relay/karaka"
+	"github.com/Garletz/gafam/vpc-relay/moksa"
 	"github.com/Garletz/gafam/vpc-relay/sandbox"
 	_ "modernc.org/sqlite"
 )
@@ -295,6 +296,18 @@ func main() {
 	mux.HandleFunc("GET /api/web/karaka/tools", sessionMiddleware(karaka.ToolsListHandler))
 	mux.HandleFunc("GET /api/web/karaka/status", sessionMiddleware(karaka.KarakasListHandler))
 	mux.HandleFunc("POST /api/web/karaka/execute", sessionMiddleware(karaka.ExecuteHandler))
+
+	// Mokṣa — Method4 quest board (Organic Tools)
+	mux.HandleFunc("GET /api/web/mission/world-card", sessionMiddleware(moksa.WorldCardHandler))
+	mux.HandleFunc("POST /api/web/mission", sessionMiddleware(moksa.CreateHandler))
+	mux.HandleFunc("GET /api/web/mission", sessionMiddleware(moksa.ListHandler))
+	mux.HandleFunc("GET /api/web/mission/{id}", sessionMiddleware(moksa.GetHandler))
+	mux.HandleFunc("DELETE /api/web/mission/{id}", sessionMiddleware(moksa.DeleteHandler))
+	mux.HandleFunc("POST /api/web/mission/{id}/quest/{qid}/claim", sessionMiddleware(moksa.ClaimHandler))
+	mux.HandleFunc("POST /api/web/mission/{id}/quest/{qid}/run", sessionMiddleware(moksa.RunHandler))
+	mux.HandleFunc("POST /api/web/mission/{id}/quest/{qid}/reward", sessionMiddleware(moksa.RewardHandler))
+	mux.HandleFunc("POST /api/web/mission/{id}/quest", sessionMiddleware(moksa.AddQuestHandler))
+	mux.HandleFunc("POST /api/web/mission/{id}/synthesize", sessionMiddleware(moksa.SynthesizeHandler))
 
 	port := os.Getenv("PORT")
 	if port == "" {
