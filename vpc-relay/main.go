@@ -210,6 +210,7 @@ func main() {
 	initVault()
 	initMissionStore()
 	registerVaultTools()
+	sandbox.EnsureDirs()
 
 	karaka.RegisterAllTools()
 	karaka.RegisterDefaultKarakas()
