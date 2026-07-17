@@ -188,3 +188,20 @@ func CreateMissionFromInstruction(instruction string) *Mission {
 	SaveMission(m)
 	return m
 }
+
+// CreateEmptyMission stores a shell mission for Saṃyojaka to plan into.
+// Quests stay empty until the orchestrator LLM planner fills them.
+func CreateEmptyMission(instruction string) *Mission {
+	now := time.Now().UTC()
+	m := &Mission{
+		ID:          newMissionID(),
+		Instruction: strings.TrimSpace(instruction),
+		Quests:      nil,
+		Status:      "planning",
+		WorldCard:   WorldCard(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	SaveMission(m)
+	return m
+}

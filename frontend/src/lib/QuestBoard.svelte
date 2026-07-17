@@ -127,6 +127,39 @@
     }
   }
 
+  // ─── Saṃyojaka: autonomous agent run (plan → execute → synthesize) ───
+  let autoRunning = $state(false);
+
+  async function autoRun() {
+    if (!instruction.trim() || busy || autoRunning) return;
+    autoRunning = true;
+    errorMsg = '';
+    await loadKarakas();
+    await loadWorldCard();
+    try {
+      const res = await fetch(`/api/proxy/mission?${q({ action: 'orchestrate' })}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction: instruction.trim(), karaka_id: 'suparna_vpc' })
+      });
+      const data: any = await res.json();
+      if (!res.ok) {
+        errorMsg = data.error || 'Orchestrator failed to start';
+        if (res.status === 409 && data.mission_id) {
+          errorMsg = `Agent already running on ${data.mission_id}`;
+        }
+        return;
+      }
+      mission = null;
+      refreshMission(data.mission_id);
+      startPoll(data.mission_id);
+    } catch (e: any) {
+      errorMsg = e.message || 'Network error';
+    } finally {
+      autoRunning = false;
+    }
+  }
+
   async function claimQuest(qid: string, karakaId?: string) {
     if (!mission || busy) return;
     busy = true;
@@ -285,8 +318,17 @@
       disabled={busy}
     ></textarea>
     <div class="qb-pose-actions">
-      <button type="button" class="qb-btn primary" onclick={poseBoard} disabled={busy || !instruction.trim()}>
+      <button type="button" class="qb-btn primary" onclick={poseBoard} disabled={busy || autoRunning || !instruction.trim()}>
         {busy ? 'Working…' : 'Pose board'}
+      </button>
+      <button
+        type="button"
+        class="qb-btn agent"
+        onclick={autoRun}
+        disabled={busy || autoRunning || !instruction.trim()}
+        title="Saṃyojaka — the agent plans the quests, runs them and writes the report"
+      >
+        {autoRunning ? 'Starting agent…' : '⚡ Auto-run agent'}
       </button>
       <button type="button" class="qb-btn ghost" onclick={() => (showWorld = !showWorld)}>
         World card
@@ -311,7 +353,12 @@
       <span>Quest Board</span>
       {#if mission}
         <span class="mono">· {mission.id}</span>
-        <span class="pill">{mission.status}</span>
+        <span class="pill" class:pill-pulse={mission.status === 'planning' || mission.status === 'synthesizing'}>{mission.status}</span>
+        {#if mission.status === 'planning'}
+          <span class="agent-working">⚡ agent planning quests…</span>
+        {:else if mission.status === 'synthesizing'}
+          <span class="agent-working">⚡ agent writing report…</span>
+        {/if}
       {:else}
         <span class="muted">· empty — pose a demand above</span>
       {/if}
@@ -484,12 +531,30 @@
     color: #fff;
     border-color: #202124;
   }
+  .qb-btn.agent {
+    background: #1a73e8;
+    color: #fff;
+    border-color: #1a73e8;
+  }
+  .qb-btn.agent:hover:not(:disabled) {
+    background: #1765cc;
+  }
   .qb-btn.ghost {
     background: transparent;
   }
   .qb-btn.danger {
     color: #c5221f;
     border-color: #f6c1c0;
+  }
+  .agent-working {
+    font-size: 12px;
+    color: #1a73e8;
+    font-weight: 600;
+    animation: agentpulse 1.4s ease-in-out infinite;
+  }
+  @keyframes agentpulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
   }
   .qb-world,
   .qb-summary {
@@ -556,6 +621,11 @@
   .pill.ghost {
     background: #f1f3f4;
     color: #bdc1c6;
+  }
+  .pill.pill-pulse {
+    background: #e8f0fe;
+    color: #1a73e8;
+    animation: agentpulse 1.4s ease-in-out infinite;
   }
   .verdict-done {
     background: #e6f4ea;

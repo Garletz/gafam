@@ -339,6 +339,10 @@ func main() {
 	mux.HandleFunc("POST /api/web/llm/test", sessionMiddleware(llmTestHandler))
 	mux.HandleFunc("POST /api/web/llm/chat", sessionMiddleware(llmChatHandler))
 
+	// Saṃyojaka — autonomous orchestrator loop (Manifest 25)
+	mux.HandleFunc("POST /api/web/orchestrator/run", sessionMiddleware(orchestratorRunHandler))
+	mux.HandleFunc("GET /api/web/orchestrator/status", sessionMiddleware(orchestratorStatusHandler))
+
 	// Mokṣa — Method4 quest board (Organic Tools)
 	mux.HandleFunc("GET /api/web/mission/world-card", sessionMiddleware(moksa.WorldCardHandler))
 	mux.HandleFunc("POST /api/web/mission", sessionMiddleware(moksa.CreateHandler))

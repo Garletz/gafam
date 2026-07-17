@@ -86,6 +86,8 @@ export const GET: RequestHandler = async ({ url }) => {
 	let path: string;
 	if (action === 'world-card') {
 		path = `/api/web/mission/world-card?${tok(token)}`;
+	} else if (action === 'orchestrator-status') {
+		path = `/api/web/orchestrator/status?${tok(token)}`;
 	} else if (action === 'get' && id) {
 		path = `/api/web/mission/${encodeURIComponent(id)}?${tok(token)}`;
 	} else {
@@ -110,6 +112,9 @@ export const POST: RequestHandler = async ({ url, request }) => {
 	switch (action) {
 		case 'create':
 			path = `/api/web/mission?${tok(token)}`;
+			break;
+		case 'orchestrate':
+			path = `/api/web/orchestrator/run?${tok(token)}`;
 			break;
 		case 'claim':
 			if (!id || !qid) return json({ error: 'Missing id/qid' }, { status: 400 });
