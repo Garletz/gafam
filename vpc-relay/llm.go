@@ -175,7 +175,7 @@ func chatProvider(ctx context.Context, p LLMProvider, system, prompt string, max
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+p.APIKey)
 
-	client := &http.Client{Timeout: 90 * time.Second}
+	client := &http.Client{Timeout: 300 * time.Second} // reasoning models on big prompts can take minutes
 	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {

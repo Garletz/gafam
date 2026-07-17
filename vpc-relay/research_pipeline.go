@@ -98,6 +98,21 @@ func researchFailMission(missionID, step string, err error) {
 
 func researchChat(ctx context.Context, system, user string, maxTokens int) (string, error) {
 	res, err := chatWithActiveEngine(ctx, system, user, "", maxTokens)
+	if err != nil && strings.Contains(err.Error(), "empty content") && maxTokens < 6000 {
+		// Reasoning model ate the token budget — one retry with double.
+		log.Printf("research: empty content at %d tokens, retrying with %d", maxTokens, maxTokens*2)
+		res, err = chatWithActiveEngine(ctx, system, user, "", maxTokens*2)
+	}
+	if err != nil && strings.Contains(err.Error(), "unreachable") {
+		// Transient network/provider hiccup — one retry after a short pause.
+		log.Printf("research: provider unreachable, retrying in 5s")
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
+		res, err = chatWithActiveEngine(ctx, system, user, "", maxTokens)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -261,7 +276,7 @@ Rules:
 - Each claim cites its source note ids.
 - Output ONLY the JSON object.`
 
-	raw, err := researchChat(ctx, system, b.String(), 2500)
+	raw, err := researchChat(ctx, system, b.String(), 5000)
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +327,7 @@ Rules:
 - If the draft is sound, output {"findings": []}.
 - Output ONLY the JSON object.`
 
-	raw, err := researchChat(ctx, system, b.String(), 1500)
+	raw, err := researchChat(ctx, system, b.String(), 2500)
 	if err != nil {
 		return nil, err
 	}
