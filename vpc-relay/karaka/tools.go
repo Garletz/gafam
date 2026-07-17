@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -64,6 +65,29 @@ func browserInputHandler(params map[string]interface{}) (interface{}, error) {
 	return postJSON(browserURL()+"/input", params)
 }
 
+// browserFetchHandler — Khadyota: read any page as markdown-ish text + links.
+func browserFetchHandler(params map[string]interface{}) (interface{}, error) {
+	u, _ := params["url"].(string)
+	if u == "" {
+		return nil, fmt.Errorf("missing 'url'")
+	}
+	return getJSON(browserURL() + "/fetch?url=" + url.QueryEscape(u))
+}
+
+// browserNavigateHandler — drive the visible Firefox to a URL.
+func browserNavigateHandler(params map[string]interface{}) (interface{}, error) {
+	u, _ := params["url"].(string)
+	if u == "" {
+		return nil, fmt.Errorf("missing 'url'")
+	}
+	return postJSON(browserURL()+"/navigate", map[string]interface{}{"url": u})
+}
+
+// browserWindowHandler — current window title: "what am I looking at".
+func browserWindowHandler(params map[string]interface{}) (interface{}, error) {
+	return getJSON(browserURL() + "/window")
+}
+
 func browserURL() string {
 	if u := os.Getenv("BROWSER_URL"); u != "" {
 		return u
@@ -75,6 +99,33 @@ func browserURL() string {
 
 func sandboxExecHandler(params map[string]interface{}) (interface{}, error) {
 	return postJSON(sandboxURL()+"/exec", params)
+}
+
+// sandboxShellHandler — persistent shell: cwd/env survive between calls.
+// The same session_id can be shared with the human web terminal.
+func sandboxShellHandler(params map[string]interface{}) (interface{}, error) {
+	return postJSON(sandboxURL()+"/shell/exec", params)
+}
+
+// sandboxTreeHandler — filesystem tree (JSON or ASCII "vision" of the fs).
+func sandboxTreeHandler(params map[string]interface{}) (interface{}, error) {
+	path, _ := params["path"].(string)
+	if path == "" {
+		path = "/"
+	}
+	depth := "4"
+	if d, ok := params["depth"]; ok {
+		depth = fmt.Sprintf("%v", d)
+	}
+	format, _ := params["format"].(string)
+	if format == "" {
+		format = "json"
+	}
+	q := url.Values{}
+	q.Set("path", path)
+	q.Set("depth", depth)
+	q.Set("format", format)
+	return getJSON(sandboxURL() + "/tree?" + q.Encode())
 }
 
 func sandboxFileListHandler(params map[string]interface{}) (interface{}, error) {
@@ -173,6 +224,34 @@ func RegisterAllTools() {
 		Returns: "{ ok: bool }",
 		Handler: browserInputHandler,
 	})
+	RegisterTool(Tool{
+		ID:          "browser.fetch",
+		Description: "Fetch a web page and read it as markdown-ish text with links (Khadyota — no GUI parsing needed)",
+		Category:    "browser",
+		Params: map[string]ParamSpec{
+			"url": {Type: "string", Required: true, Description: "Page URL (http:// or https://)"},
+		},
+		Returns: "{ title: string, text: string, links: [{text, href}], final_url: string, status: int }",
+		Handler: browserFetchHandler,
+	})
+	RegisterTool(Tool{
+		ID:          "browser.navigate",
+		Description: "Navigate the visible Firefox window to a URL",
+		Category:    "browser",
+		Params: map[string]ParamSpec{
+			"url": {Type: "string", Required: true, Description: "Destination URL"},
+		},
+		Returns: "{ ok: bool }",
+		Handler: browserNavigateHandler,
+	})
+	RegisterTool(Tool{
+		ID:          "browser.window",
+		Description: "Get the current browser window title — what page is being shown",
+		Category:    "browser",
+		Params:      map[string]ParamSpec{},
+		Returns:     "{ title: string, width: int, height: int }",
+		Handler:     browserWindowHandler,
+	})
 
 	RegisterTool(Tool{
 		ID:          "sandbox.exec",
@@ -184,6 +263,30 @@ func RegisterAllTools() {
 		},
 		Returns: "{ stdout: string, stderr: string, exit_code: int }",
 		Handler: sandboxExecHandler,
+	})
+	RegisterTool(Tool{
+		ID:          "sandbox.shell",
+		Description: "Run a command in a persistent shell session — cwd and env survive between calls. Use the same session_id as the human (e.g. 'main') to share context, or your own.",
+		Category:    "sandbox",
+		Params: map[string]ParamSpec{
+			"command":    {Type: "string", Required: true, Description: "Shell command (curl, jq, git, python3...)"},
+			"session_id": {Type: "string", Required: false, Description: "Shell session id", Default: "main"},
+			"timeout":    {Type: "int", Required: false, Description: "Timeout in seconds (max 600)", Default: 60},
+		},
+		Returns: "{ output: string, exit_code: int, cwd: string, session_id: string }",
+		Handler: sandboxShellHandler,
+	})
+	RegisterTool(Tool{
+		ID:          "sandbox.tree",
+		Description: "Get the sandbox filesystem as a tree. format=ascii returns a single text block (├── └──) — the fastest way to 'see' the whole filesystem at once.",
+		Category:    "sandbox",
+		Params: map[string]ParamSpec{
+			"path":   {Type: "string", Required: false, Description: "Root path (/ , /files, /downloads...)", Default: "/"},
+			"depth":  {Type: "int", Required: false, Description: "Recursion depth (0-8)", Default: 4},
+			"format": {Type: "string", Required: false, Description: "json or ascii", Default: "json"},
+		},
+		Returns: "{ root: {name, path, type, size, children[]}, truncated: bool } or { ascii: string }",
+		Handler: sandboxTreeHandler,
 	})
 	RegisterTool(Tool{
 		ID:          "sandbox.file_list",
@@ -236,12 +339,17 @@ func RegisterDefaultKarakas() {
 		Capabilities: []string{"read_logs", "analyze_day", "suggest_action"},
 		Tools: map[string]string{
 			"sandbox.exec":       "ask",
+			"sandbox.shell":      "ask",
+			"sandbox.tree":       "allow",
 			"sandbox.file_read":  "allow",
 			"sandbox.file_list":  "allow",
 			"sandbox.file_write": "ask",
 			"sandbox.storage":    "allow",
 			"browser.status":     "allow",
 			"browser.screenshot": "allow",
+			"browser.fetch":      "allow",
+			"browser.window":     "allow",
+			"browser.navigate":   "ask",
 			"browser.input":      "deny",
 		},
 		MaxSteps: 10,

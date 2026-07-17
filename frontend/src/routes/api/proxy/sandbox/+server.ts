@@ -269,6 +269,11 @@ export const GET: RequestHandler = async ({ url }) => {
 		vpcPath = `/api/web/sandbox/storage-vpc?token=${encodeURIComponent(token)}`;
 	} else if (action === 'files') {
 		vpcPath = `/api/web/sandbox${fpath}?token=${encodeURIComponent(token)}`;
+	} else if (action === 'tree') {
+		const depth = url.searchParams.get('depth') || '5';
+		const format = url.searchParams.get('format') || 'json';
+		const tpath = fpath || '/';
+		vpcPath = `/api/web/sandbox/tree?token=${encodeURIComponent(token)}&path=${encodeURIComponent(tpath)}&depth=${encodeURIComponent(depth)}&format=${encodeURIComponent(format)}`;
 	} else {
 		return json({ error: 'Unknown action' }, { status: 400 });
 	}
@@ -291,6 +296,9 @@ export const POST: RequestHandler = async ({ url, request }) => {
 		vpcPath = `/api/web/sandbox/stop?token=${encodeURIComponent(token)}`;
 	} else if (action === 'exec') {
 		vpcPath = `/api/web/sandbox/exec?token=${encodeURIComponent(token)}`;
+		body = await request.text();
+	} else if (action === 'shell') {
+		vpcPath = `/api/web/sandbox/shell/exec?token=${encodeURIComponent(token)}`;
 		body = await request.text();
 	} else {
 		return json({ error: 'Unknown action' }, { status: 400 });

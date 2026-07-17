@@ -291,6 +291,20 @@ export const GET: RequestHandler = async ({ url }) => {
 		return proxyStream(url, new Request(url));
 	}
 
+	if (action === 'fetch') {
+		const target = url.searchParams.get('url') || '';
+		if (!target) return json({ error: 'Missing url param' }, { status: 400 });
+		const vpcPath = `/api/web/browser/fetch?token=${encodeURIComponent(token)}&url=${encodeURIComponent(target)}`;
+		const result = await vpcRequest(vpcUrl, token, 'GET', vpcPath);
+		return json(result.data, { status: result.status });
+	}
+
+	if (action === 'window') {
+		const vpcPath = `/api/web/browser/window?token=${encodeURIComponent(token)}`;
+		const result = await vpcRequest(vpcUrl, token, 'GET', vpcPath);
+		return json(result.data, { status: result.status });
+	}
+
 	return json({ error: 'Unknown action' }, { status: 400 });
 };
 
@@ -314,6 +328,13 @@ export const POST: RequestHandler = async ({ url, request }) => {
 
 	if (action === 'input') {
 		return proxyInput(url, request);
+	}
+
+	if (action === 'navigate') {
+		const vpcPath = `/api/web/browser/navigate?token=${encodeURIComponent(token)}`;
+		const body = await request.text();
+		const result = await vpcRequest(vpcUrl, token, 'POST', vpcPath, body);
+		return json(result.data, { status: result.status });
 	}
 
 	return json({ error: 'Unknown action' }, { status: 400 });

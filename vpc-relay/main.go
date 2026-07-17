@@ -281,6 +281,10 @@ func main() {
 	mux.HandleFunc("GET /api/web/browser/stream", sessionMiddleware(browser.StreamHandler))
 	mux.HandleFunc("POST /api/web/browser/input", sessionMiddleware(browser.InputHandler))
 	mux.HandleFunc("OPTIONS /api/web/browser/input", sessionMiddleware(browser.InputHandler))
+	// Vātāyana agent endpoints (Manifest 23 — Khadyota): read the web as text, drive Firefox
+	mux.HandleFunc("GET /api/web/browser/fetch", sessionMiddleware(browser.FetchHandler))
+	mux.HandleFunc("POST /api/web/browser/navigate", sessionMiddleware(browser.NavigateHandler))
+	mux.HandleFunc("GET /api/web/browser/window", sessionMiddleware(browser.WindowHandler))
 	mux.HandleFunc("/browser/", sessionMiddleware(browser.ProxyHandler))
 
 	// Sandbox (Manifest 24 — Yantraśālā)

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import FileTree from './FileTree.svelte';
+  import type { TreeNode } from './FileTreeNode.svelte';
 
   let {
     vpcUrl = '',
@@ -15,6 +17,8 @@
   let statusMsg = $state('');
   let pollInterval: ReturnType<typeof setInterval> | null = null;
 
+  let fileTree = $state<{ refresh: () => Promise<void> } | undefined>(undefined);
+
   onMount(() => { fetchStatus(); pollInterval = setInterval(fetchStatus, 8000); });
   onDestroy(() => { if (pollInterval) clearInterval(pollInterval); });
 
@@ -25,9 +29,10 @@
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`);
       if (res.ok) {
         const data: any = await res.json();
+        const wasRunning = sandboxRunning;
         sandboxRunning = data.running;
         if (data.error) errorMsg = data.error;
-        if (sandboxRunning) { loadFiles(); loadStorage(); }
+        if (sandboxRunning && !wasRunning) { fileTree?.refresh(); loadStorage(); }
       }
     } catch {}
   }
@@ -39,7 +44,7 @@
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'wake' });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`, { method: 'POST' });
       const data: any = await res.json();
-      if (res.ok) { sandboxRunning = true; statusMsg = 'Sandbox ready'; loadFiles(); loadStorage(); }
+      if (res.ok) { sandboxRunning = true; statusMsg = 'Sandbox ready'; fileTree?.refresh(); loadStorage(); }
       else { errorMsg = data.error || 'Failed to start'; statusMsg = ''; }
     } catch (err: any) { errorMsg = err.message || 'Network error'; statusMsg = ''; }
     finally { isLoading = false; }
@@ -52,15 +57,20 @@
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'stop' });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`, { method: 'POST' });
       const data: any = await res.json();
-      if (res.ok) { sandboxRunning = false; terminalOutput = ''; files = []; vpcStorage = null; statusMsg = 'Stopped'; }
-      else { errorMsg = data.error || 'Failed'; statusMsg = ''; }
+      if (res.ok) {
+        sandboxRunning = false; terminalOutput = ''; vpcStorage = null;
+        selectedNode = null; filePreview = ''; shellCwd = '/sandbox';
+        statusMsg = 'Stopped';
+      } else { errorMsg = data.error || 'Failed'; statusMsg = ''; }
     } catch (err: any) { errorMsg = err.message; statusMsg = ''; }
     finally { isLoading = false; }
   }
 
-  // ─── Terminal ───
+  // ─── Persistent shell terminal (shared with Kāraka agents via sandbox.shell) ───
+  const SHELL_SESSION = 'main';
   let terminalInput = $state('');
   let terminalOutput = $state('');
+  let shellCwd = $state('/sandbox');
   let execBusy = $state(false);
   let cmdHistory: string[] = [];
   let historyIdx = $state(-1);
@@ -73,22 +83,33 @@
     if (cmdHistory.length > 50) cmdHistory.pop();
     historyIdx = -1;
     terminalInput = '';
-    terminalOutput += `$ ${cmd}\n`;
+    terminalOutput += `${shortCwd(shellCwd)} $ ${cmd}\n`;
     execBusy = true;
     await tick();
     scrollTerm();
     try {
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'exec' });
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'shell' });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd, timeout: 30 })
+        body: JSON.stringify({ command: cmd, session_id: SHELL_SESSION, timeout: 120 })
       });
       const data: any = await res.json().catch(() => ({}));
-      if (data.stdout) terminalOutput += data.stdout;
-      if (data.stderr) terminalOutput += data.stderr;
-      if (data.error) terminalOutput += `Error: ${data.error}\n`;
+      if (data.output) terminalOutput += data.output + '\n';
+      if (data.cwd) shellCwd = data.cwd;
+      if (data.error) {
+        terminalOutput += `[${data.error}]${data.note ? ' ' + data.note : ''}\n`;
+        if (data.error === 'session_dead') terminalOutput += '(fresh shell will start on next command)\n';
+      } else if (typeof data.exit_code === 'number' && data.exit_code !== 0) {
+        terminalOutput += `(exit ${data.exit_code})\n`;
+      }
+      // A command may have created/changed files — refresh tree quietly.
+      fileTree?.refresh();
     } catch (err: any) { terminalOutput += `Error: ${err.message}\n`; }
     finally { execBusy = false; await tick(); scrollTerm(); }
+  }
+
+  function shortCwd(cwd: string): string {
+    return cwd.replace(/^\/sandbox\/?/, '~/').replace(/^~$/, '~');
   }
 
   function scrollTerm() { if (termScroll) termScroll.scrollTop = termScroll.scrollHeight; }
@@ -112,83 +133,61 @@
 
   function clearTerminal() { terminalOutput = ''; }
 
-  // ─── Files ───
-  let files: any[] = $state([]);
-  let currentPath = $state('/files');
-  let fileBusy = $state(false);
-  let selectedFile: any | null = $state(null);
+  // ─── Tree selection & file preview ───
+  let selectedNode: TreeNode | null = $state(null);
   let filePreview: string = $state('');
   let filePreviewType: 'text' | 'image' | 'binary' = $state('binary');
-  let dragOver = $state(false);
 
-  const DIRS = [
-    { path: '/files', label: 'Files' },
-    { path: '/downloads', label: 'Downloads' },
-    { path: '/screenshots', label: 'Screenshots' },
-    { path: '/scripts', label: 'Scripts' },
-    { path: '/tmp', label: 'Tmp' },
-  ];
-
-  async function loadFiles() {
-    if (!vpcUrl || !sessionToken) return;
-    fileBusy = true; selectedFile = null; filePreview = '';
-    try {
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'files', path: currentPath });
-      const res = await fetch(`/api/proxy/sandbox?${params.toString()}`);
-      if (res.ok) { const data: any = await res.json(); files = data.entries || []; }
-    } catch {} finally { fileBusy = false; }
-  }
-
-  function navigateTo(path: string) { currentPath = path; loadFiles(); }
-
-  async function clickFile(f: any) {
-    if (f.type === 'dir') {
-      currentPath = currentPath === '/' ? `/${f.name}` : `${currentPath}/${f.name}`;
-      loadFiles();
-      return;
-    }
-    selectedFile = f;
+  async function handleSelect(node: TreeNode) {
+    selectedNode = node;
+    if (node.type === 'dir') { selectedFileReset(); return; }
     filePreview = ''; filePreviewType = 'binary';
-    const ext = f.name.split('.').pop()?.toLowerCase() || '';
+    const ext = node.name.split('.').pop()?.toLowerCase() || '';
     if (['txt', 'md', 'json', 'js', 'ts', 'py', 'sh', 'yml', 'yaml', 'csv', 'xml', 'html', 'css', 'log', 'conf'].includes(ext)) {
       filePreviewType = 'text';
       try {
-        const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: `${currentPath}/${f.name}` });
+        const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: node.path });
         const res = await fetch(`/api/proxy/sandbox?${params.toString()}`);
         if (res.ok) filePreview = await res.text();
       } catch { filePreview = 'Failed to load'; }
     } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) {
       filePreviewType = 'image';
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: `${currentPath}/${f.name}` });
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: node.path });
       filePreview = `/api/proxy/sandbox?${params.toString()}`;
     }
   }
 
-  async function deleteFile(f: any) {
-    if (!confirm(`Delete ${f.name}?`)) return;
+  function selectedFileReset() { filePreview = ''; filePreviewType = 'binary'; }
+
+  async function handleDelete(node: TreeNode) {
+    if (!confirm(`Delete ${node.path}?`)) return;
     try {
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, path: `${currentPath}/${f.name}` });
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, path: node.path });
       await fetch(`/api/proxy/sandbox?${params.toString()}`, { method: 'DELETE' });
-      loadFiles();
-      if (selectedFile?.name === f.name) { selectedFile = null; filePreview = ''; }
+      fileTree?.refresh();
+      if (selectedNode?.path === node.path) { selectedNode = null; selectedFileReset(); }
+      loadStorage();
     } catch {}
   }
 
-  async function downloadFile(f: any) {
-    const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: `${currentPath}/${f.name}`, download: '1' });
+  async function handleDownload(node: TreeNode) {
+    const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'file', path: node.path, download: '1' });
     const a = document.createElement('a');
     a.href = `/api/proxy/sandbox?${params.toString()}`;
-    a.download = f.name;
+    a.download = node.name;
     a.click();
   }
 
-  async function handleDrop(e: DragEvent) {
-    e.preventDefault();
-    dragOver = false;
-    const droppedFiles = e.dataTransfer?.files;
-    if (!droppedFiles || droppedFiles.length === 0) return;
-    for (const f of Array.from(droppedFiles)) {
-      const path = `${currentPath}/${f.name}`;
+  // Upload target: selected dir, or parent dir of selected file, fallback /files.
+  function uploadDir(): string {
+    if (!selectedNode) return '/files';
+    if (selectedNode.type === 'dir') return selectedNode.path;
+    return selectedNode.path.split('/').slice(0, -1).join('/') || '/files';
+  }
+
+  async function uploadFiles(list: FileList | File[]) {
+    for (const f of Array.from(list)) {
+      const path = `${uploadDir()}/${f.name}`;
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, path });
       await fetch(`/api/proxy/sandbox?${params.toString()}`, {
         method: 'PUT',
@@ -196,34 +195,14 @@
         body: f
       });
     }
-    loadFiles();
+    fileTree?.refresh();
+    loadStorage();
   }
 
   async function uploadViaInput(e: Event) {
     const target = e.target as HTMLInputElement;
-    const uploaded = target.files;
-    if (!uploaded) return;
-    for (const f of Array.from(uploaded)) {
-      const path = `${currentPath}/${f.name}`;
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, path });
-      await fetch(`/api/proxy/sandbox?${params.toString()}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': f.type || 'application/octet-stream' },
-        body: f
-      });
-    }
-    loadFiles();
+    if (target.files) await uploadFiles(target.files);
     target.value = '';
-  }
-
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  function formatDate(ts: number): string {
-    return new Date(ts * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   // ─── Storage ───
@@ -272,63 +251,39 @@
 
   {#if sandboxRunning}
     <div class="sb-body">
-      <!-- LEFT: Files -->
+      <!-- LEFT: File tree -->
       <div class="sb-left">
-        <div class="sb-section-title">Files</div>
-        <div class="dir-tabs">
-          {#each DIRS as d}
-            <button class="dir-tab" class:active={currentPath === d.path} onclick={() => navigateTo(d.path)}>{d.label}</button>
-          {/each}
-        </div>
-        <div class="breadcrumb">{currentPath}</div>
+        <FileTree
+          bind:this={fileTree}
+          {vpcUrl}
+          {sessionToken}
+          running={sandboxRunning}
+          selectedPath={selectedNode?.path ?? ''}
+          onselect={handleSelect}
+          ondownload={handleDownload}
+          ondelete={handleDelete}
+          ondropfiles={(files) => uploadFiles(files)}
+        />
 
-        <div
-          class="file-drop-zone"
-          class:dragover={dragOver}
-          ondragover={(e) => { e.preventDefault(); dragOver = true; }}
-          ondragleave={() => { dragOver = false; }}
-          ondrop={handleDrop}
-        >
-          {#if fileBusy}
-            <div class="file-empty">Loading...</div>
-          {:else if files.length === 0}
-            <div class="file-empty">Empty — drag files here</div>
-          {:else}
-            {#each files as f}
-              <div class="file-row" class:selected={selectedFile?.name === f.name}>
-                <button class="file-row__main" onclick={() => clickFile(f)}>
-                  <span class="file-icon">{f.type === 'dir' ? '📁' : '📄'}</span>
-                  <span class="file-name">{f.name}</span>
-                </button>
-                <span class="file-size">{f.type === 'dir' ? '' : formatSize(f.size)}</span>
-                {#if f.type !== 'dir'}
-                  <button class="file-action" title="Download" onclick={() => downloadFile(f)}>⬇</button>
-                  <button class="file-action file-action--del" title="Delete" onclick={() => deleteFile(f)}>✕</button>
-                {/if}
-              </div>
-            {/each}
-          {/if}
+        <div class="sb-left__footer">
+          <label class="upload-btn" title="Upload to {uploadDir()}">
+            + Upload → {uploadDir()}
+            <input type="file" multiple onchange={uploadViaInput} hidden />
+          </label>
         </div>
-
-        <label class="upload-btn">
-          + Upload
-          <input type="file" multiple onchange={uploadViaInput} hidden />
-        </label>
 
         <!-- File preview -->
-        {#if selectedFile}
+        {#if selectedNode && selectedNode.type === 'file' && filePreviewType !== 'binary'}
           <div class="preview">
             <div class="preview__header">
-              <span>{selectedFile.name}</span>
-              <button class="file-action" onclick={() => { selectedFile = null; filePreview = ''; }}>✕</button>
+              <span class="preview__name">{selectedNode.path}</span>
+              <button class="file-action" onclick={() => { selectedNode = null; selectedFileReset(); }}>✕</button>
             </div>
             <div class="preview__body">
               {#if filePreviewType === 'text'}
                 <pre>{filePreview || 'Loading...'}</pre>
               {:else if filePreviewType === 'image'}
-                <img src={filePreview} alt={selectedFile.name} />
-              {:else}
-                <p class="file-empty">Binary file — click ⬇ to download</p>
+                <img src={filePreview} alt={selectedNode.name} />
               {/if}
             </div>
           </div>
@@ -339,20 +294,20 @@
       <div class="sb-right">
         <div class="sb-right-top">
           <div class="sb-section-title">
-            Terminal
+            <span>Terminal <span class="sb-session-tag">session "{SHELL_SESSION}" · shared with agents</span></span>
             <button class="btn-sm btn-ghost" onclick={clearTerminal}>Clear</button>
           </div>
           <div class="terminal" bind:this={termScroll}>
-            <pre class="terminal__out">{terminalOutput || '$ Sandbox ready. Type a command.\n'}</pre>
+            <pre class="terminal__out">{terminalOutput || `$ Persistent bash (session "${SHELL_SESSION}") — cwd & env survive between commands.\n$ Agents reach this same shell via Kāraka sandbox.shell.\n`}</pre>
           </div>
           <div class="terminal__input-row">
-            <span class="terminal__prompt">$</span>
+            <span class="terminal__prompt">{shortCwd(shellCwd)} $</span>
             <input
               type="text"
               bind:value={terminalInput}
               onkeydown={handleTermKeydown}
               disabled={execBusy}
-              placeholder="ls -la /sandbox/files"
+              placeholder="curl -s https://example.com | jq ."
             />
             {#if execBusy}<span class="terminal__busy">⏳</span>{/if}
           </div>
@@ -382,7 +337,7 @@
   {:else}
     <div class="sb-placeholder">
       <p>Alpine Linux Sandbox</p>
-      <span>Terminal · Files · Storage</span>
+      <span>Persistent shell · File tree · Storage</span>
       <span>bash, curl, python3, jq, sqlite3, git, vim, tmux...</span>
     </div>
   {/if}
@@ -414,48 +369,33 @@
   .sb-status { padding: 6px 16px; font-size: 12px; color: #5f6368; }
 
   .sb-body { flex: 1; min-height: 0; display: flex; gap: 1px; background: #dfe1e5; overflow: hidden; }
-  .sb-left { flex: 0 0 42%; min-width: 0; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+  .sb-left { flex: 0 0 44%; min-width: 0; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+  .sb-left__footer { flex-shrink: 0; border-top: 1px solid #f1f3f4; }
   .sb-right { flex: 1; min-width: 0; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
   .sb-right-top { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .sb-right-bottom { flex: 0 0 auto; max-height: 220px; overflow-y: auto; border-top: 1px solid #dfe1e5; }
 
   .sb-section-title { padding: 6px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #80868b; border-bottom: 1px solid #f1f3f4; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-
-  .dir-tabs { display: flex; gap: 2px; padding: 4px 8px; flex-shrink: 0; }
-  .dir-tab { padding: 3px 8px; border: 1px solid #dfe1e5; border-radius: 3px; background: #fff; font-size: 11px; color: #5f6368; cursor: pointer; }
-  .dir-tab.active { background: #202124; color: #fff; border-color: #202124; }
-
-  .breadcrumb { padding: 2px 12px; font-size: 11px; color: #80868b; font-family: monospace; flex-shrink: 0; }
-
-  .file-drop-zone { flex: 1; min-height: 0; overflow-y: auto; border: 2px dashed transparent; }
-  .file-drop-zone.dragover { border-color: #202124; background: #f8f9fa; }
+  .sb-session-tag { font-weight: 400; text-transform: none; letter-spacing: 0; color: #9aa0a6; font-size: 10px; margin-left: 6px; }
 
   .file-empty { padding: 16px; text-align: center; color: #80868b; font-size: 12px; }
-
-  .file-row { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid #f8f9fa; }
-  .file-row:hover { background: #f1f3f4; }
-  .file-row.selected { background: #e8f0fe; }
-  .file-row__main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: none; background: transparent; cursor: pointer; text-align: left; padding: 0; }
-  .file-icon { flex-shrink: 0; font-size: 14px; }
-  .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #202124; }
-  .file-size { flex-shrink: 0; font-size: 11px; color: #80868b; font-variant-numeric: tabular-nums; }
   .file-action { flex-shrink: 0; border: none; background: transparent; cursor: pointer; font-size: 12px; color: #5f6368; padding: 2px 4px; border-radius: 3px; }
   .file-action:hover { background: #e8eaed; }
-  .file-action--del:hover { color: #d93025; }
 
-  .upload-btn { display: block; padding: 6px 12px; margin: 4px 8px; text-align: center; border: 1px solid #dfe1e5; border-radius: 4px; font-size: 12px; font-weight: 600; color: #5f6368; cursor: pointer; }
+  .upload-btn { display: block; padding: 6px 12px; margin: 4px 8px; text-align: center; border: 1px solid #dfe1e5; border-radius: 4px; font-size: 11px; font-weight: 600; color: #5f6368; cursor: pointer; font-family: 'SF Mono', Menlo, monospace; }
   .upload-btn:hover { background: #f1f3f4; }
 
   .preview { border-top: 1px solid #dfe1e5; flex-shrink: 0; max-height: 200px; display: flex; flex-direction: column; }
-  .preview__header { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; background: #f8f9fa; font-size: 12px; font-weight: 600; color: #202124; }
+  .preview__header { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; background: #f8f9fa; }
+  .preview__name { font-size: 11px; font-weight: 600; color: #202124; font-family: 'SF Mono', Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preview__body { flex: 1; overflow: auto; padding: 8px 12px; }
-  .preview__body pre { margin: 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; font-family: monospace; color: #202124; }
+  .preview__body pre { margin: 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; font-family: 'SF Mono', Menlo, monospace; color: #202124; }
   .preview__body img { max-width: 100%; max-height: 160px; object-fit: contain; }
 
   .terminal { flex: 1; min-height: 0; overflow-y: auto; background: #1a1a1a; padding: 8px 12px; }
   .terminal__out { margin: 0; font-size: 12px; font-family: 'SF Mono', Menlo, monospace; color: #e0e0e0; white-space: pre-wrap; word-break: break-all; line-height: 1.4; }
   .terminal__input-row { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: #1a1a1a; border-top: 1px solid #333; }
-  .terminal__prompt { color: #4fc3f7; font-family: monospace; font-size: 13px; flex-shrink: 0; }
+  .terminal__prompt { color: #4fc3f7; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; flex-shrink: 0; }
   .terminal__input-row input { flex: 1; background: transparent; border: none; color: #e0e0e0; font-family: 'SF Mono', Menlo, monospace; font-size: 13px; outline: none; }
   .terminal__busy { font-size: 12px; }
 

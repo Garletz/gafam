@@ -352,6 +352,57 @@
 
     sendInput({ type: 'key', key });
   }
+
+  // ─── Agent console (Khadyota: read the web as text, drive Firefox) ───
+  let agentOpen = $state(false);
+  let agentUrl = $state('');
+  let agentBusy = $state(false);
+  let agentResult: any = $state(null);
+  let agentError = $state('');
+  let windowTitle = $state('');
+  let agentTab: 'text' | 'links' = $state('text');
+
+  async function agentFetchWindow() {
+    if (!vpcUrl || !sessionToken) return;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'window' });
+      const res = await fetch(`/api/proxy/browser?${params.toString()}`);
+      if (res.ok) { const d: any = await res.json(); windowTitle = d.title || ''; }
+    } catch {}
+  }
+
+  async function agentNavigate() {
+    if (!agentUrl.trim() || agentBusy) return;
+    agentBusy = true; agentError = '';
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'navigate' });
+      const res = await fetch(`/api/proxy/browser?${params.toString()}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: agentUrl.trim() })
+      });
+      const data: any = await res.json();
+      if (!res.ok || data.error || data.ok === false) agentError = data.error || 'navigate failed';
+      else setTimeout(agentFetchWindow, 1500);
+    } catch (e: any) { agentError = e.message; }
+    finally { agentBusy = false; }
+  }
+
+  async function agentFetch() {
+    if (!agentUrl.trim() || agentBusy) return;
+    agentBusy = true; agentError = ''; agentResult = null;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'fetch', url: agentUrl.trim() });
+      const res = await fetch(`/api/proxy/browser?${params.toString()}`);
+      const data: any = await res.json();
+      if (!res.ok || data.error) agentError = data.error || 'fetch failed';
+      else { agentResult = data; agentTab = 'text'; }
+    } catch (e: any) { agentError = e.message; }
+    finally { agentBusy = false; }
+  }
+
+  function handleAgentKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') { e.preventDefault(); agentFetch(); }
+  }
 </script>
 
 <div class="browser-view">
@@ -423,6 +474,78 @@
       </div>
     {/if}
   </div>
+
+  {#if browserRunning}
+    <div class="agent">
+      <button class="agent__toggle" onclick={() => { agentOpen = !agentOpen; if (agentOpen) agentFetchWindow(); }}>
+        <span class="agent__chevron">{agentOpen ? '▾' : '▸'}</span>
+        Agent console
+        <span class="agent__hint">Khadyota — read the web as text</span>
+        {#if windowTitle && agentOpen}
+          <span class="agent__window">· {windowTitle}</span>
+        {/if}
+      </button>
+
+      {#if agentOpen}
+        <div class="agent__body">
+          <div class="agent__bar">
+            <input
+              class="agent__url"
+              type="text"
+              bind:value={agentUrl}
+              onkeydown={handleAgentKeydown}
+              placeholder="https://example.com"
+              disabled={agentBusy}
+            />
+            <button class="btn btn--ghost btn--sm" onclick={agentNavigate} disabled={agentBusy || !agentUrl.trim()} title="Drive the visible Firefox to this URL">
+              Navigate
+            </button>
+            <button class="btn btn--primary btn--sm" onclick={agentFetch} disabled={agentBusy || !agentUrl.trim()} title="Fetch the page and read it as text">
+              {agentBusy ? '…' : 'Fetch'}
+            </button>
+            <button class="btn btn--ghost btn--sm" onclick={agentFetchWindow} title="Refresh current window title">
+              ⌂
+            </button>
+          </div>
+
+          {#if agentError}
+            <div class="agent__error">{agentError}</div>
+          {/if}
+
+          {#if agentResult}
+            <div class="agent__result">
+              <div class="agent__result-head">
+                <div class="agent__result-title">
+                  {agentResult.title || '(no title)'}
+                  <span class="agent__result-url">{agentResult.final_url}</span>
+                </div>
+                <div class="agent__tabs">
+                  <button class="agent__tab" class:active={agentTab === 'text'} onclick={() => (agentTab = 'text')}>text</button>
+                  <button class="agent__tab" class:active={agentTab === 'links'} onclick={() => (agentTab = 'links')}>
+                    links ({(agentResult.links ?? []).length})
+                  </button>
+                </div>
+              </div>
+              {#if agentTab === 'text'}
+                <pre class="agent__text">{agentResult.text || '(empty page text)'}</pre>
+              {:else}
+                <div class="agent__links">
+                  {#each agentResult.links ?? [] as link}
+                    <button class="agent__link" title={link.href} onclick={() => { agentUrl = link.href; }}>
+                      <span class="agent__link-text">{link.text}</span>
+                      <span class="agent__link-href">{link.href}</span>
+                    </button>
+                  {:else}
+                    <div class="agent__empty">No links found</div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -599,4 +722,163 @@
   .browser-view__placeholder span {
     font-size: 13px;
   }
+
+  /* ─── Agent console ─── */
+  .agent {
+    flex-shrink: 0;
+    border-top: 1px solid #dfe1e5;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    max-height: 45%;
+  }
+
+  .agent__toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border: none;
+    background: #f8f9fa;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #5f6368;
+    text-align: left;
+  }
+  .agent__toggle:hover { background: #f1f3f4; }
+  .agent__chevron { font-size: 10px; color: #80868b; }
+  .agent__hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #9aa0a6; }
+  .agent__window {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #80868b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 40%;
+  }
+
+  .agent__body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .agent__bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 16px;
+    border-bottom: 1px solid #f1f3f4;
+    flex-shrink: 0;
+  }
+  .agent__url {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid #dfe1e5;
+    border-radius: 4px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: 'SF Mono', Menlo, monospace;
+    color: #202124;
+    outline: none;
+  }
+  .agent__url:focus { border-color: #202124; }
+
+  .btn--sm { padding: 5px 12px; font-size: 12px; }
+
+  .agent__error {
+    padding: 6px 16px;
+    font-size: 12px;
+    color: #d93025;
+    background: #fce8e6;
+    flex-shrink: 0;
+  }
+
+  .agent__result {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .agent__result-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 16px;
+    border-bottom: 1px solid #f1f3f4;
+    flex-shrink: 0;
+  }
+  .agent__result-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #202124;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .agent__result-url {
+    font-weight: 400;
+    font-size: 11px;
+    color: #9aa0a6;
+    font-family: 'SF Mono', Menlo, monospace;
+    margin-left: 6px;
+  }
+  .agent__tabs { display: flex; gap: 4px; flex-shrink: 0; }
+  .agent__tab {
+    border: 1px solid #dfe1e5;
+    background: #fff;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: 'SF Mono', Menlo, monospace;
+    color: #5f6368;
+    cursor: pointer;
+    padding: 2px 8px;
+  }
+  .agent__tab.active { background: #202124; color: #fff; border-color: #202124; }
+
+  .agent__text {
+    flex: 1;
+    min-height: 120px;
+    overflow: auto;
+    margin: 0;
+    padding: 10px 16px;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: #202124;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #fafbfc;
+  }
+
+  .agent__links {
+    flex: 1;
+    min-height: 120px;
+    overflow: auto;
+    padding: 4px 8px;
+    display: flex;
+    flex-direction: column;
+  }
+  .agent__link {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .agent__link:hover { background: #f1f3f4; }
+  .agent__link-text { font-size: 12px; color: #1a73e8; flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent__link-href { font-size: 11px; color: #9aa0a6; font-family: 'SF Mono', Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent__empty { padding: 16px; text-align: center; color: #9aa0a6; font-size: 12px; }
 </style>
