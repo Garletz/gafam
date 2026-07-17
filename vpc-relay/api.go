@@ -339,6 +339,11 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		bodyStr = *params.Body
 	}
 
+	// Self-phone remote quest trigger (Saṃyojaka via SMS, Settings → self_phone)
+	if instr, isSelfQuest := selfQuestInstruction(senderStr, bodyStr); isSelfQuest {
+		triggerSelfQuest(senderStr, instr)
+	}
+
 	// Emergency Recovery Check
 	var guardianKeyword string
 	

@@ -321,19 +321,10 @@ func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !orchestratorMu.TryLock() {
+	if !launchOrchestration(missionID, req.KarakaID, req.MaxQuests, nil) {
 		sendJSON(w, http.StatusConflict, map[string]string{"error": "orchestrator_busy", "mission_id": orchestratorMission})
 		return
 	}
-
-	setOrchestratorState(true, missionID)
-	go func() {
-		defer orchestratorMu.Unlock()
-		defer setOrchestratorState(false, "")
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-		defer cancel()
-		runOrchestration(ctx, missionID, req.KarakaID, req.MaxQuests)
-	}()
 
 	sendJSON(w, http.StatusAccepted, map[string]interface{}{
 		"status":     "planning",
@@ -351,4 +342,118 @@ func orchestratorStatusHandler(w http.ResponseWriter, r *http.Request) {
 		"mission_id": orchestratorMission,
 		"since":      orchestratorSince,
 	})
+}
+
+// launchOrchestration starts the loop in the background (one run at a time).
+// onDone, if set, receives the final mission state — used by the self-phone
+// SMS trigger to text the result back.
+func launchOrchestration(missionID, karakaID string, maxQuests int, onDone func(*moksa.Mission)) bool {
+	if !orchestratorMu.TryLock() {
+		return false
+	}
+	setOrchestratorState(true, missionID)
+	go func() {
+		defer orchestratorMu.Unlock()
+		defer setOrchestratorState(false, "")
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		runOrchestration(ctx, missionID, karakaID, maxQuests)
+		if onDone != nil {
+			if m, ok := moksa.GetMission(missionID); ok {
+				onDone(m)
+			}
+		}
+	}()
+	return true
+}
+
+// ─── Self-phone remote trigger (SMS → quest) ───
+
+// selfQuestInstruction checks whether an incoming SMS is a remote quest
+// command from the owner's self phone (Settings → self_phone).
+// Trigger: body starts with "/q " or "/quest " (case-insensitive).
+func selfQuestInstruction(sender, body string) (string, bool) {
+	self := getSetting("self_phone")
+	if self == "" || !phonesMatch(sender, self) {
+		return "", false
+	}
+	trimmed := strings.TrimSpace(body)
+	lower := strings.ToLower(trimmed)
+	for _, prefix := range []string{"/q ", "/quest "} {
+		if strings.HasPrefix(lower, prefix) {
+			if instr := strings.TrimSpace(trimmed[len(prefix):]); instr != "" {
+				return instr, true
+			}
+		}
+	}
+	return "", false
+}
+
+// phonesMatch compares two phone numbers on their last 9 digits
+// (same convention as the guardian recovery check).
+func phonesMatch(a, b string) bool {
+	digits := func(s string) string {
+		out := make([]byte, 0, len(s))
+		for i := 0; i < len(s); i++ {
+			if s[i] >= '0' && s[i] <= '9' {
+				out = append(out, s[i])
+			}
+		}
+		if len(out) >= 9 {
+			return string(out[len(out)-9:])
+		}
+		return string(out)
+	}
+	ca, cb := digits(a), digits(b)
+	return ca != "" && cb != "" && ca == cb
+}
+
+// triggerSelfQuest creates a mission from an SMS instruction and runs
+// Saṃyojaka on it, texting confirmations back to the self phone.
+func triggerSelfQuest(selfPhone, instruction string) {
+	m := moksa.CreateEmptyMission(instruction)
+	log.Printf("self-quest: mission %s created from self phone SMS", m.ID)
+
+	ok := launchOrchestration(m.ID, "suparna_vpc", 6, func(done *moksa.Mission) {
+		if done.Status == "cancelled" {
+			queueSmsReply(selfPhone, "GAFAM ❌ "+done.ID+": planning failed — see dashboard for details")
+			return
+		}
+		total := len(done.Quests)
+		failedN := 0
+		for _, q := range done.Quests {
+			if q.Status == "failed" || q.Status == "cancelled" {
+				failedN++
+			}
+		}
+		status := "✅"
+		if failedN > 0 {
+			status = "⚠️"
+		}
+		queueSmsReply(selfPhone, fmt.Sprintf(
+			"GAFAM %s %s: %d/%d quests OK. Report: /files/missions/%s/report.md (sandbox)",
+			status, done.ID, total-failedN, total, done.ID,
+		))
+	})
+	if !ok {
+		// Busy — drop the placeholder mission so the board stays clean.
+		moksa.DeleteMission(m.ID)
+		queueSmsReply(selfPhone, "GAFAM ⏳ agent busy on another mission — retry in a few minutes")
+		return
+	}
+	queueSmsReply(selfPhone, fmt.Sprintf("GAFAM ⚡ quest %s started — I'll text you when done", m.ID))
+}
+
+// queueSmsReply appends an SMS to the outbox (the relay phone sends it)
+// and mirrors it in the chat history.
+func queueSmsReply(recipient, body string) {
+	if _, err := db.Exec(`INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`, recipient, body); err != nil {
+		log.Printf("self-quest: outbox insert failed: %v", err)
+		return
+	}
+	ts := time.Now().UnixMilli()
+	_, _ = db.Exec(
+		`INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
+		recipient, body, ts, "outbound",
+	)
 }

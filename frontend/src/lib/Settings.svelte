@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { encryptAESGCM, decryptAESGCM } from '$lib/crypto';
 
   let {
     vpcUrl,
@@ -281,9 +282,61 @@
     }
   }
 
+  // ─── Self phone (SMS → quest remote trigger) ───
+  let selfPhone = $state('');
+  let selfPhoneLoaded = $state('');
+  let selfPhoneMsg = $state('');
+  let selfPhoneSaving = $state(false);
+
+  async function loadSelfPhone() {
+    if (!vpcUrl || !sessionToken) return;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const res = await fetch(`/api/proxy/settings?${params.toString()}`);
+      if (!res.ok) return;
+      const payload: any = await res.json();
+      if (payload.encrypted_data && payload.iv) {
+        const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+        const obj = JSON.parse(plaintext);
+        if (obj.self_phone) {
+          selfPhone = obj.self_phone;
+          selfPhoneLoaded = obj.self_phone;
+        }
+      }
+    } catch {}
+  }
+
+  async function saveSelfPhone() {
+    if (selfPhoneSaving) return;
+    selfPhoneSaving = true;
+    selfPhoneMsg = '';
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const plaintext = JSON.stringify({ key: 'self_phone', value: selfPhone.trim() });
+      const encrypted = await encryptAESGCM(plaintext, sessionToken);
+      const res = await fetch(`/api/proxy/settings?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(encrypted)
+      });
+      if (res.ok) {
+        selfPhoneLoaded = selfPhone.trim();
+        selfPhoneMsg = 'Saved ✓';
+      } else {
+        selfPhoneMsg = 'Save failed';
+      }
+    } catch {
+      selfPhoneMsg = 'Network error';
+    } finally {
+      selfPhoneSaving = false;
+      setTimeout(() => (selfPhoneMsg = ''), 4000);
+    }
+  }
+
   onMount(() => {
     fetchGuardians();
     fetchVpcStatus();
+    loadSelfPhone();
   });
 
   $effect(() => {
@@ -462,6 +515,28 @@
       <section class="panel">
         <div class="panel__intro">
           <p>Trusted contacts who can trigger emergency login codes if you lose your device.</p>
+        </div>
+
+        <!-- Self phone: the only number allowed to trigger a quest by SMS -->
+        <div class="selfphone-card">
+          <div class="selfphone-card__head">
+            <h3 class="form-card__title">Self phone</h3>
+            {#if selfPhoneLoaded}
+              <span class="selfphone-card__badge">active · {selfPhoneLoaded}</span>
+            {/if}
+          </div>
+          <p class="selfphone-card__hint">
+            Your own number — the <strong>only one</strong> allowed to trigger a quest remotely.
+            Send <code>/q your instruction</code> by SMS to the relay phone: Saṃyojaka plans it,
+            executes it, and texts you back the result.
+          </p>
+          <div class="form-row">
+            <input type="tel" placeholder="+33 6 12 34 56 78" bind:value={selfPhone} />
+            <button type="button" class="btn-primary" onclick={saveSelfPhone} disabled={selfPhoneSaving}>
+              {selfPhoneSaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+          {#if selfPhoneMsg}<p class="selfphone-card__msg">{selfPhoneMsg}</p>{/if}
         </div>
 
         <div class="guardian-list">
@@ -961,6 +1036,58 @@
     font-size: 14px;
     font-weight: 600;
     color: #202124;
+  }
+
+  .selfphone-card {
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    background: #ffffff;
+  }
+
+  .selfphone-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .selfphone-card__head .form-card__title {
+    margin: 0;
+  }
+
+  .selfphone-card__badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #188038;
+    background: #ceead6;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+    white-space: nowrap;
+  }
+
+  .selfphone-card__hint {
+    margin: 0 0 10px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #5f6368;
+  }
+
+  .selfphone-card__hint code {
+    background: #f1f3f4;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11.5px;
+  }
+
+  .selfphone-card__msg {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: #188038;
+    font-family: ui-monospace, monospace;
   }
 
   .form-row {
