@@ -115,7 +115,7 @@ Rules:
 - 2-4 sweep angles; each has 1-2 short concrete web search queries.
 - Include at least one adversarial angle ("criticism of X", "limitations of X") when relevant.
 - Output ONLY the JSON object.`
-	raw, err := researchChat(ctx, system, "Canonical instruction:\n"+instruction, 700)
+	raw, err := researchChat(ctx, system, "Canonical instruction:\n"+instruction, 1500)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ Rules:
 - Each claim cites its source note ids.
 - Output ONLY the JSON object.`
 
-	raw, err := researchChat(ctx, system, b.String(), 1200)
+	raw, err := researchChat(ctx, system, b.String(), 2500)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +292,7 @@ Rules:
 - Use only the digest claims; cite sources inline as [n<id>].
 - Structure: ## Findings (direct answers), ## Details, ## Open questions.
 - Max 1200 words. No filler.`
-	return researchChat(ctx, system, b.String(), 2000)
+	return researchChat(ctx, system, b.String(), 4000)
 }
 
 func researchCritic(ctx context.Context, instruction, draft string, digest *digestResult) (*criticResult, error) {
@@ -312,7 +312,7 @@ Rules:
 - If the draft is sound, output {"findings": []}.
 - Output ONLY the JSON object.`
 
-	raw, err := researchChat(ctx, system, b.String(), 900)
+	raw, err := researchChat(ctx, system, b.String(), 1500)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +343,7 @@ You receive the draft and the critic findings. Apply the findings SURGICALLY:
 - never regenerate the whole report from scratch.
 - keep [n<id>] citations.
 Output the FULL patched report in markdown (untouched sections unchanged).`
-	return researchChat(ctx, system, b.String(), 2200)
+	return researchChat(ctx, system, b.String(), 4000)
 }
 
 // ─── Archive ───

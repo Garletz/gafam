@@ -127,7 +127,7 @@ func chatWithActiveEngine(ctx context.Context, system, prompt, engineOverride st
 		engine = activeEngine()
 	}
 	if maxTokens <= 0 {
-		maxTokens = 512
+		maxTokens = 1024
 	}
 
 	switch {
@@ -164,7 +164,7 @@ func chatProvider(ctx context.Context, p LLMProvider, system, prompt string, max
 		"model":       p.Model,
 		"messages":    messages,
 		"max_tokens":  maxTokens,
-		"temperature": 0.3,
+		"temperature": 1.0, // kimi-k3 accepts only 1; 1 is also the OpenAI default — the safe universal value.
 	})
 
 	base := strings.TrimRight(p.BaseURL, "/")
@@ -192,7 +192,8 @@ func chatProvider(ctx context.Context, p LLMProvider, system, prompt string, max
 	var out struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content           string `json:"content"`
+				ReasoningContent  string `json:"reasoning_content"`
 			} `json:"message"`
 		} `json:"choices"`
 	}
@@ -202,8 +203,14 @@ func chatProvider(ctx context.Context, p LLMProvider, system, prompt string, max
 	if len(out.Choices) == 0 {
 		return nil, fmt.Errorf("provider %s: empty choices", p.Name)
 	}
+	msg := out.Choices[0].Message
+	content := strings.TrimSpace(msg.Content)
+	if content == "" && strings.TrimSpace(msg.ReasoningContent) != "" {
+		// Reasoning model (kimi-k3): all budget went to reasoning — tell the caller to raise max_tokens.
+		return nil, fmt.Errorf("provider %s: empty content (reasoning model consumed the token budget — raise max_tokens)", p.Name)
+	}
 	return &chatResult{
-		Content:   strings.TrimSpace(out.Choices[0].Message.Content),
+		Content:   content,
 		Engine:    "provider:" + p.ID,
 		Model:     p.Model,
 		LatencyMs: latency,
@@ -430,7 +437,7 @@ func llmTestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	res, err := chatProvider(ctx, p, "", "Reply with exactly: OK", 8)
+	res, err := chatProvider(ctx, p, "", "Reply with exactly: OK", 512)
 	if err != nil {
 		sendJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": err.Error()})
 		return
