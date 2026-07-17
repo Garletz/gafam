@@ -5,7 +5,7 @@ import (
 	"net/url"
 )
 
-// Agent-facing handlers (Khadyota spirit): let a kāraka read the web as
+// Kāraka-facing handlers (Khadyota spirit): let a kāraka read the web as
 // markdown-ish text and drive the visible Firefox without parsing pixels.
 
 // FetchHandler — GET /api/web/browser/fetch?url=https://...

@@ -10,6 +10,7 @@
   import BrowserView from '$lib/BrowserView.svelte';
   import SandboxView from '$lib/SandboxView.svelte';
   import QuestBoard from '$lib/QuestBoard.svelte';
+  import VaultView from '$lib/VaultView.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
@@ -63,7 +64,7 @@
   let isProfileMenuOpen = $state(false);
 
   // Navigation: Chat (left), Organic Tools (center), Settings (right)
-  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests';
+  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault';
   let showContactsInChat = $state(false);
   let toolsWiggle = $state(false);
   let appsMenuOpen = $state(false);
@@ -73,9 +74,10 @@
     { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI', icon: 'suparna' },
     { id: 'browser', label: 'Browser', hint: 'Vātāyana', icon: 'browser' },
     { id: 'sandbox', label: 'Sandbox', hint: 'Yantraśālā', icon: 'sandbox' },
+    { id: 'vault', label: 'Vault', hint: 'Research memory', icon: 'vault' },
     { id: 'logs', label: 'Logs', hint: 'Phone activity', icon: 'logs' },
   ];
-  const isToolTab = $derived(['quests', 'suparna', 'browser', 'sandbox', 'logs'].includes(sidebarTab));
+  const isToolTab = $derived(['quests', 'suparna', 'browser', 'sandbox', 'vault', 'logs'].includes(sidebarTab));
   const toolsMenuActive = $derived(isToolTab);
 
   function selectSidebarTab(tab: SidebarTab) {
@@ -954,6 +956,11 @@
             />
           {:else if sidebarTab === 'sandbox'}
             <SandboxView
+              {sessionToken}
+              {vpcUrl}
+            />
+          {:else if sidebarTab === 'vault'}
+            <VaultView
               {sessionToken}
               {vpcUrl}
             />

@@ -43,7 +43,7 @@ func getProxy() *httputil.ReverseProxy {
 				req.URL.Path = "/exec"
 				req.URL.RawQuery = ""
 			case path == "/api/web/sandbox/tree":
-				// Filesystem tree (JSON or ASCII — agent "vision" of the fs).
+				// Filesystem tree (JSON or ASCII — kāraka "vision" of the fs).
 				req.URL.Path = "/tree"
 				req.URL.RawQuery = stripTokenQuery(req.URL.RawQuery)
 			case strings.HasPrefix(path, "/api/web/sandbox/shell/"):

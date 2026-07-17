@@ -29,6 +29,7 @@
     instruction: string;
     quests: Quest[];
     status: string;
+    mode?: string;
     world_card: string;
     summary?: string;
     created_at?: string;
@@ -127,10 +128,10 @@
     }
   }
 
-  // ─── Saṃyojaka: autonomous agent run (plan → execute → synthesize) ───
+  // ─── Saṃyojaka: autonomous kāraka run (plan → execute → synthesize) ───
   let autoRunning = $state(false);
 
-  async function autoRun() {
+  async function autoRun(mode: 'action' | 'research' = 'action') {
     if (!instruction.trim() || busy || autoRunning) return;
     autoRunning = true;
     errorMsg = '';
@@ -140,13 +141,13 @@
       const res = await fetch(`/api/proxy/mission?${q({ action: 'orchestrate' })}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: instruction.trim(), karaka_id: 'suparna_vpc' })
+        body: JSON.stringify({ instruction: instruction.trim(), karaka_id: 'suparna_vpc', mode })
       });
       const data: any = await res.json();
       if (!res.ok) {
         errorMsg = data.error || 'Orchestrator failed to start';
         if (res.status === 409 && data.mission_id) {
-          errorMsg = `Agent already running on ${data.mission_id}`;
+          errorMsg = `Saṃyojaka already running on ${data.mission_id}`;
         }
         return;
       }
@@ -323,12 +324,21 @@
       </button>
       <button
         type="button"
-        class="qb-btn agent"
-        onclick={autoRun}
+        class="qb-btn samyojaka"
+        onclick={() => autoRun('action')}
         disabled={busy || autoRunning || !instruction.trim()}
-        title="Saṃyojaka — the agent plans the quests, runs them and writes the report"
+        title="Saṃyojaka — plans the quests, runs them, writes the report"
       >
-        {autoRunning ? 'Starting agent…' : '⚡ Auto-run agent'}
+        {autoRunning ? 'Starting saṃyojaka…' : '⚡ Saṃyojaka'}
+      </button>
+      <button
+        type="button"
+        class="qb-btn research"
+        onclick={() => autoRun('research')}
+        disabled={busy || autoRunning || !instruction.trim()}
+        title="Research pipeline — decompose → vault+web sweep → digest → draft → critic → patch → archive"
+      >
+        {autoRunning ? 'Starting…' : '🔬 Research'}
       </button>
       <button type="button" class="qb-btn ghost" onclick={() => (showWorld = !showWorld)}>
         World card
@@ -354,10 +364,13 @@
       {#if mission}
         <span class="mono">· {mission.id}</span>
         <span class="pill" class:pill-pulse={mission.status === 'planning' || mission.status === 'synthesizing'}>{mission.status}</span>
+        {#if mission.mode === 'research'}
+          <span class="pill pill-research">research</span>
+        {/if}
         {#if mission.status === 'planning'}
-          <span class="agent-working">⚡ agent planning quests…</span>
+          <span class="samyojaka-working">⚡ saṃyojaka planning quests…</span>
         {:else if mission.status === 'synthesizing'}
-          <span class="agent-working">⚡ agent writing report…</span>
+          <span class="samyojaka-working">⚡ saṃyojaka writing report…</span>
         {/if}
       {:else}
         <span class="muted">· empty — pose a demand above</span>
@@ -531,13 +544,25 @@
     color: #fff;
     border-color: #202124;
   }
-  .qb-btn.agent {
+  .qb-btn.samyojaka {
     background: #1a73e8;
     color: #fff;
     border-color: #1a73e8;
   }
-  .qb-btn.agent:hover:not(:disabled) {
+  .qb-btn.samyojaka:hover:not(:disabled) {
     background: #1765cc;
+  }
+  .qb-btn.research {
+    background: #137333;
+    color: #fff;
+    border-color: #137333;
+  }
+  .qb-btn.research:hover:not(:disabled) {
+    background: #0d5626;
+  }
+  .pill.pill-research {
+    background: #e6f4ea;
+    color: #137333;
   }
   .qb-btn.ghost {
     background: transparent;
@@ -546,13 +571,13 @@
     color: #c5221f;
     border-color: #f6c1c0;
   }
-  .agent-working {
+  .samyojaka-working {
     font-size: 12px;
     color: #1a73e8;
     font-weight: 600;
-    animation: agentpulse 1.4s ease-in-out infinite;
+    animation: samyojakapulse 1.4s ease-in-out infinite;
   }
-  @keyframes agentpulse {
+  @keyframes samyojakapulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
@@ -625,7 +650,7 @@
   .pill.pill-pulse {
     background: #e8f0fe;
     color: #1a73e8;
-    animation: agentpulse 1.4s ease-in-out infinite;
+    animation: samyojakapulse 1.4s ease-in-out infinite;
   }
   .verdict-done {
     background: #e6f4ea;

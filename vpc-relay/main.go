@@ -207,6 +207,9 @@ func main() {
 
 	initDB()
 	initLogsStore()
+	initVault()
+	initMissionStore()
+	registerVaultTools()
 
 	karaka.RegisterAllTools()
 	karaka.RegisterDefaultKarakas()
@@ -310,7 +313,7 @@ func main() {
 	mux.HandleFunc("GET /api/web/browser/stream", sessionMiddleware(browser.StreamHandler))
 	mux.HandleFunc("POST /api/web/browser/input", sessionMiddleware(browser.InputHandler))
 	mux.HandleFunc("OPTIONS /api/web/browser/input", sessionMiddleware(browser.InputHandler))
-	// Vātāyana agent endpoints (Manifest 23 — Khadyota): read the web as text, drive Firefox
+	// Vātāyana kāraka endpoints (Manifest 23 — Khadyota): read the web as text, drive Firefox
 	mux.HandleFunc("GET /api/web/browser/fetch", sessionMiddleware(browser.FetchHandler))
 	mux.HandleFunc("POST /api/web/browser/navigate", sessionMiddleware(browser.NavigateHandler))
 	mux.HandleFunc("GET /api/web/browser/window", sessionMiddleware(browser.WindowHandler))
@@ -338,6 +341,11 @@ func main() {
 	mux.HandleFunc("POST /api/web/llm/engine", sessionMiddleware(llmEngineHandler))
 	mux.HandleFunc("POST /api/web/llm/test", sessionMiddleware(llmTestHandler))
 	mux.HandleFunc("POST /api/web/llm/chat", sessionMiddleware(llmChatHandler))
+
+	// The Vault — research memory (notes = markdown truth, FTS5 = cache)
+	mux.HandleFunc("GET /api/web/research/search", sessionMiddleware(researchSearchHandler))
+	mux.HandleFunc("GET /api/web/research/notes", sessionMiddleware(researchNotesHandler))
+	mux.HandleFunc("GET /api/web/research/note", sessionMiddleware(researchNoteHandler))
 
 	// Saṃyojaka — autonomous orchestrator loop (Manifest 25)
 	mux.HandleFunc("POST /api/web/orchestrator/run", sessionMiddleware(orchestratorRunHandler))

@@ -25,8 +25,8 @@
   let truncated = $state(false);
   let loading = $state(false);
   let error = $state('');
-  let viewMode: 'tree' | 'agent' = $state('tree');
-  let agentAscii = $state('');
+  let viewMode: 'tree' | 'karaka' = $state('tree');
+  let karakaAscii = $state('');
   let copied = $state(false);
   let dragOver = $state(false);
 
@@ -53,7 +53,7 @@
     }
   }
 
-  async function loadAgentView() {
+  async function loadKarakaView() {
     if (!vpcUrl || !sessionToken) return;
     try {
       const params = new URLSearchParams({
@@ -61,20 +61,20 @@
       });
       const res = await fetch(`/api/proxy/sandbox?${params.toString()}`);
       const data: any = await res.json();
-      if (res.ok && data.ascii) agentAscii = data.ascii;
+      if (res.ok && data.ascii) karakaAscii = data.ascii;
     } catch {}
   }
 
   async function toggleMode() {
-    viewMode = viewMode === 'tree' ? 'agent' : 'tree';
-    if (viewMode === 'agent' && !agentAscii) await loadAgentView();
-    if (viewMode === 'agent') await loadAgentView();
+    viewMode = viewMode === 'tree' ? 'karaka' : 'tree';
+    if (viewMode === 'karaka' && !karakaAscii) await loadKarakaView();
+    if (viewMode === 'karaka') await loadKarakaView();
   }
 
   async function copyAscii() {
-    if (!agentAscii) await loadAgentView();
+    if (!karakaAscii) await loadKarakaView();
     try {
-      await navigator.clipboard.writeText(agentAscii);
+      await navigator.clipboard.writeText(karakaAscii);
       copied = true;
       setTimeout(() => (copied = false), 1500);
     } catch {}
@@ -93,8 +93,8 @@
     <div class="ftree__tools">
       <button
         class="ftree__tool"
-        class:active={viewMode === 'agent'}
-        title="Agent view — what an agent sees in one call (sandbox.tree ascii)"
+        class:active={viewMode === 'karaka'}
+        title="Kāraka view — what a kāraka sees in one call (sandbox.tree ascii)"
         onclick={toggleMode}
       >ascii</button>
       <button class="ftree__tool" title="Refresh" onclick={refresh} disabled={loading}>
@@ -107,13 +107,13 @@
     <div class="ftree__error">{error}</div>
   {/if}
 
-  {#if viewMode === 'agent'}
-    <div class="ftree__agent">
-      <div class="ftree__agent-bar">
+  {#if viewMode === 'karaka'}
+    <div class="ftree__karaka">
+      <div class="ftree__karaka-bar">
         <span>sandbox.tree · format=ascii</span>
         <button class="ftree__tool" onclick={copyAscii}>{copied ? '✓ copied' : 'copy'}</button>
       </div>
-      <pre class="ftree__ascii">{agentAscii || 'Loading…'}</pre>
+      <pre class="ftree__ascii">{karakaAscii || 'Loading…'}</pre>
     </div>
   {:else}
     <div
@@ -123,6 +123,7 @@
       ondragleave={() => { dragOver = false; }}
       ondrop={handleDrop}
       role="tree"
+      tabindex="-1"
     >
       {#if !root}
         <div class="ftree__empty">{loading ? 'Loading tree…' : running ? 'No tree yet — hit ↻' : 'Wake the sandbox to see files'}</div>
@@ -212,8 +213,8 @@
     font-style: italic;
   }
 
-  .ftree__agent { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .ftree__agent-bar {
+  .ftree__karaka { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .ftree__karaka-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;

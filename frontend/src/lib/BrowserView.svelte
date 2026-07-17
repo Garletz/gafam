@@ -353,16 +353,16 @@
     sendInput({ type: 'key', key });
   }
 
-  // ─── Agent console (Khadyota: read the web as text, drive Firefox) ───
-  let agentOpen = $state(false);
-  let agentUrl = $state('');
-  let agentBusy = $state(false);
-  let agentResult: any = $state(null);
-  let agentError = $state('');
+  // ─── Khadyota console (read the web as text, drive Firefox) ───
+  let khadyotaOpen = $state(false);
+  let khadyotaUrl = $state('');
+  let khadyotaBusy = $state(false);
+  let khadyotaResult: any = $state(null);
+  let khadyotaError = $state('');
   let windowTitle = $state('');
-  let agentTab: 'text' | 'links' = $state('text');
+  let khadyotaTab: 'text' | 'links' = $state('text');
 
-  async function agentFetchWindow() {
+  async function khadyotaFetchWindow() {
     if (!vpcUrl || !sessionToken) return;
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'window' });
@@ -371,37 +371,37 @@
     } catch {}
   }
 
-  async function agentNavigate() {
-    if (!agentUrl.trim() || agentBusy) return;
-    agentBusy = true; agentError = '';
+  async function khadyotaNavigate() {
+    if (!khadyotaUrl.trim() || khadyotaBusy) return;
+    khadyotaBusy = true; khadyotaError = '';
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'navigate' });
       const res = await fetch(`/api/proxy/browser?${params.toString()}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: agentUrl.trim() })
+        body: JSON.stringify({ url: khadyotaUrl.trim() })
       });
       const data: any = await res.json();
-      if (!res.ok || data.error || data.ok === false) agentError = data.error || 'navigate failed';
-      else setTimeout(agentFetchWindow, 1500);
-    } catch (e: any) { agentError = e.message; }
-    finally { agentBusy = false; }
+      if (!res.ok || data.error || data.ok === false) khadyotaError = data.error || 'navigate failed';
+      else setTimeout(khadyotaFetchWindow, 1500);
+    } catch (e: any) { khadyotaError = e.message; }
+    finally { khadyotaBusy = false; }
   }
 
-  async function agentFetch() {
-    if (!agentUrl.trim() || agentBusy) return;
-    agentBusy = true; agentError = ''; agentResult = null;
+  async function khadyotaFetch() {
+    if (!khadyotaUrl.trim() || khadyotaBusy) return;
+    khadyotaBusy = true; khadyotaError = ''; khadyotaResult = null;
     try {
-      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'fetch', url: agentUrl.trim() });
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'fetch', url: khadyotaUrl.trim() });
       const res = await fetch(`/api/proxy/browser?${params.toString()}`);
       const data: any = await res.json();
-      if (!res.ok || data.error) agentError = data.error || 'fetch failed';
-      else { agentResult = data; agentTab = 'text'; }
-    } catch (e: any) { agentError = e.message; }
-    finally { agentBusy = false; }
+      if (!res.ok || data.error) khadyotaError = data.error || 'fetch failed';
+      else { khadyotaResult = data; khadyotaTab = 'text'; }
+    } catch (e: any) { khadyotaError = e.message; }
+    finally { khadyotaBusy = false; }
   }
 
-  function handleAgentKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); agentFetch(); }
+  function handleKhadyotaKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') { e.preventDefault(); khadyotaFetch(); }
   }
 </script>
 
@@ -476,67 +476,67 @@
   </div>
 
   {#if browserRunning}
-    <div class="agent">
-      <button class="agent__toggle" onclick={() => { agentOpen = !agentOpen; if (agentOpen) agentFetchWindow(); }}>
-        <span class="agent__chevron">{agentOpen ? '▾' : '▸'}</span>
-        Agent console
-        <span class="agent__hint">Khadyota — read the web as text</span>
-        {#if windowTitle && agentOpen}
-          <span class="agent__window">· {windowTitle}</span>
+    <div class="khadyota">
+      <button class="khadyota__toggle" onclick={() => { khadyotaOpen = !khadyotaOpen; if (khadyotaOpen) khadyotaFetchWindow(); }}>
+        <span class="khadyota__chevron">{khadyotaOpen ? '▾' : '▸'}</span>
+        Khadyota console
+        <span class="khadyota__hint">Khadyota — read the web as text</span>
+        {#if windowTitle && khadyotaOpen}
+          <span class="khadyota__window">· {windowTitle}</span>
         {/if}
       </button>
 
-      {#if agentOpen}
-        <div class="agent__body">
-          <div class="agent__bar">
+      {#if khadyotaOpen}
+        <div class="khadyota__body">
+          <div class="khadyota__bar">
             <input
-              class="agent__url"
+              class="khadyota__url"
               type="text"
-              bind:value={agentUrl}
-              onkeydown={handleAgentKeydown}
+              bind:value={khadyotaUrl}
+              onkeydown={handleKhadyotaKeydown}
               placeholder="https://example.com"
-              disabled={agentBusy}
+              disabled={khadyotaBusy}
             />
-            <button class="btn btn--ghost btn--sm" onclick={agentNavigate} disabled={agentBusy || !agentUrl.trim()} title="Drive the visible Firefox to this URL">
+            <button class="btn btn--ghost btn--sm" onclick={khadyotaNavigate} disabled={khadyotaBusy || !khadyotaUrl.trim()} title="Drive the visible Firefox to this URL">
               Navigate
             </button>
-            <button class="btn btn--primary btn--sm" onclick={agentFetch} disabled={agentBusy || !agentUrl.trim()} title="Fetch the page and read it as text">
-              {agentBusy ? '…' : 'Fetch'}
+            <button class="btn btn--primary btn--sm" onclick={khadyotaFetch} disabled={khadyotaBusy || !khadyotaUrl.trim()} title="Fetch the page and read it as text">
+              {khadyotaBusy ? '…' : 'Fetch'}
             </button>
-            <button class="btn btn--ghost btn--sm" onclick={agentFetchWindow} title="Refresh current window title">
+            <button class="btn btn--ghost btn--sm" onclick={khadyotaFetchWindow} title="Refresh current window title">
               ⌂
             </button>
           </div>
 
-          {#if agentError}
-            <div class="agent__error">{agentError}</div>
+          {#if khadyotaError}
+            <div class="khadyota__error">{khadyotaError}</div>
           {/if}
 
-          {#if agentResult}
-            <div class="agent__result">
-              <div class="agent__result-head">
-                <div class="agent__result-title">
-                  {agentResult.title || '(no title)'}
-                  <span class="agent__result-url">{agentResult.final_url}</span>
+          {#if khadyotaResult}
+            <div class="khadyota__result">
+              <div class="khadyota__result-head">
+                <div class="khadyota__result-title">
+                  {khadyotaResult.title || '(no title)'}
+                  <span class="khadyota__result-url">{khadyotaResult.final_url}</span>
                 </div>
-                <div class="agent__tabs">
-                  <button class="agent__tab" class:active={agentTab === 'text'} onclick={() => (agentTab = 'text')}>text</button>
-                  <button class="agent__tab" class:active={agentTab === 'links'} onclick={() => (agentTab = 'links')}>
-                    links ({(agentResult.links ?? []).length})
+                <div class="khadyota__tabs">
+                  <button class="khadyota__tab" class:active={khadyotaTab === 'text'} onclick={() => (khadyotaTab = 'text')}>text</button>
+                  <button class="khadyota__tab" class:active={khadyotaTab === 'links'} onclick={() => (khadyotaTab = 'links')}>
+                    links ({(khadyotaResult.links ?? []).length})
                   </button>
                 </div>
               </div>
-              {#if agentTab === 'text'}
-                <pre class="agent__text">{agentResult.text || '(empty page text)'}</pre>
+              {#if khadyotaTab === 'text'}
+                <pre class="khadyota__text">{khadyotaResult.text || '(empty page text)'}</pre>
               {:else}
-                <div class="agent__links">
-                  {#each agentResult.links ?? [] as link}
-                    <button class="agent__link" title={link.href} onclick={() => { agentUrl = link.href; }}>
-                      <span class="agent__link-text">{link.text}</span>
-                      <span class="agent__link-href">{link.href}</span>
+                <div class="khadyota__links">
+                  {#each khadyotaResult.links ?? [] as link}
+                    <button class="khadyota__link" title={link.href} onclick={() => { khadyotaUrl = link.href; }}>
+                      <span class="khadyota__link-text">{link.text}</span>
+                      <span class="khadyota__link-href">{link.href}</span>
                     </button>
                   {:else}
-                    <div class="agent__empty">No links found</div>
+                    <div class="khadyota__empty">No links found</div>
                   {/each}
                 </div>
               {/if}
@@ -723,8 +723,8 @@
     font-size: 13px;
   }
 
-  /* ─── Agent console ─── */
-  .agent {
+  /* ─── Khadyota console ─── */
+  .khadyota {
     flex-shrink: 0;
     border-top: 1px solid #dfe1e5;
     background: #fff;
@@ -733,7 +733,7 @@
     max-height: 45%;
   }
 
-  .agent__toggle {
+  .khadyota__toggle {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -748,10 +748,10 @@
     color: #5f6368;
     text-align: left;
   }
-  .agent__toggle:hover { background: #f1f3f4; }
-  .agent__chevron { font-size: 10px; color: #80868b; }
-  .agent__hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #9aa0a6; }
-  .agent__window {
+  .khadyota__toggle:hover { background: #f1f3f4; }
+  .khadyota__chevron { font-size: 10px; color: #80868b; }
+  .khadyota__hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #9aa0a6; }
+  .khadyota__window {
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
@@ -762,21 +762,21 @@
     max-width: 40%;
   }
 
-  .agent__body {
+  .khadyota__body {
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
   }
 
-  .agent__bar {
+  .khadyota__bar {
     display: flex;
     gap: 6px;
     padding: 8px 16px;
     border-bottom: 1px solid #f1f3f4;
     flex-shrink: 0;
   }
-  .agent__url {
+  .khadyota__url {
     flex: 1;
     min-width: 0;
     border: 1px solid #dfe1e5;
@@ -787,11 +787,11 @@
     color: #202124;
     outline: none;
   }
-  .agent__url:focus { border-color: #202124; }
+  .khadyota__url:focus { border-color: #202124; }
 
   .btn--sm { padding: 5px 12px; font-size: 12px; }
 
-  .agent__error {
+  .khadyota__error {
     padding: 6px 16px;
     font-size: 12px;
     color: #d93025;
@@ -799,13 +799,13 @@
     flex-shrink: 0;
   }
 
-  .agent__result {
+  .khadyota__result {
     display: flex;
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
   }
-  .agent__result-head {
+  .khadyota__result-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -814,7 +814,7 @@
     border-bottom: 1px solid #f1f3f4;
     flex-shrink: 0;
   }
-  .agent__result-title {
+  .khadyota__result-title {
     font-size: 12px;
     font-weight: 600;
     color: #202124;
@@ -823,15 +823,15 @@
     white-space: nowrap;
     min-width: 0;
   }
-  .agent__result-url {
+  .khadyota__result-url {
     font-weight: 400;
     font-size: 11px;
     color: #9aa0a6;
     font-family: 'SF Mono', Menlo, monospace;
     margin-left: 6px;
   }
-  .agent__tabs { display: flex; gap: 4px; flex-shrink: 0; }
-  .agent__tab {
+  .khadyota__tabs { display: flex; gap: 4px; flex-shrink: 0; }
+  .khadyota__tab {
     border: 1px solid #dfe1e5;
     background: #fff;
     border-radius: 3px;
@@ -841,9 +841,9 @@
     cursor: pointer;
     padding: 2px 8px;
   }
-  .agent__tab.active { background: #202124; color: #fff; border-color: #202124; }
+  .khadyota__tab.active { background: #202124; color: #fff; border-color: #202124; }
 
-  .agent__text {
+  .khadyota__text {
     flex: 1;
     min-height: 120px;
     overflow: auto;
@@ -858,7 +858,7 @@
     background: #fafbfc;
   }
 
-  .agent__links {
+  .khadyota__links {
     flex: 1;
     min-height: 120px;
     overflow: auto;
@@ -866,7 +866,7 @@
     display: flex;
     flex-direction: column;
   }
-  .agent__link {
+  .khadyota__link {
     display: flex;
     gap: 8px;
     align-items: baseline;
@@ -877,8 +877,8 @@
     border-radius: 3px;
     cursor: pointer;
   }
-  .agent__link:hover { background: #f1f3f4; }
-  .agent__link-text { font-size: 12px; color: #1a73e8; flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .agent__link-href { font-size: 11px; color: #9aa0a6; font-family: 'SF Mono', Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .agent__empty { padding: 16px; text-align: center; color: #9aa0a6; font-size: 12px; }
+  .khadyota__link:hover { background: #f1f3f4; }
+  .khadyota__link-text { font-size: 12px; color: #1a73e8; flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .khadyota__link-href { font-size: 11px; color: #9aa0a6; font-family: 'SF Mono', Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .khadyota__empty { padding: 16px; text-align: center; color: #9aa0a6; font-size: 12px; }
 </style>

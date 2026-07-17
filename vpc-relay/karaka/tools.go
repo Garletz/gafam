@@ -352,6 +352,10 @@ func RegisterDefaultKarakas() {
 			"browser.navigate":   "ask",
 			"browser.input":      "deny",
 			"llm.chat":           "ask",
+			"research.fetch":     "ask",
+			"research.search":    "allow",
+			"research.note_show": "allow",
+			"research.list":      "allow",
 		},
 		MaxSteps: 10,
 	})
@@ -362,9 +366,10 @@ func RegisterDefaultKarakas() {
 		Status:       "sleeping",
 		Capabilities: []string{"deep_analyze", "long_context", "multi_turn"},
 		Tools: map[string]string{
-			"sandbox.*": "allow",
-			"browser.*": "allow",
-			"llm.chat":  "allow",
+			"sandbox.*":  "allow",
+			"browser.*":  "allow",
+			"research.*": "allow",
+			"llm.chat":   "allow",
 		},
 		MaxSteps: 15,
 	})

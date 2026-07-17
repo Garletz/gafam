@@ -66,7 +66,7 @@
     finally { isLoading = false; }
   }
 
-  // ─── Persistent shell terminal (shared with Kāraka agents via sandbox.shell) ───
+  // ─── Persistent shell terminal (shared with kāraka via sandbox.shell) ───
   const SHELL_SESSION = 'main';
   let terminalInput = $state('');
   let terminalOutput = $state('');
@@ -294,11 +294,11 @@
       <div class="sb-right">
         <div class="sb-right-top">
           <div class="sb-section-title">
-            <span>Terminal <span class="sb-session-tag">session "{SHELL_SESSION}" · shared with agents</span></span>
+            <span>Terminal <span class="sb-session-tag">session "{SHELL_SESSION}" · shared with kāraka</span></span>
             <button class="btn-sm btn-ghost" onclick={clearTerminal}>Clear</button>
           </div>
           <div class="terminal" bind:this={termScroll}>
-            <pre class="terminal__out">{terminalOutput || `$ Persistent bash (session "${SHELL_SESSION}") — cwd & env survive between commands.\n$ Agents reach this same shell via Kāraka sandbox.shell.\n`}</pre>
+            <pre class="terminal__out">{terminalOutput || `$ Persistent bash (session "${SHELL_SESSION}") — cwd & env survive between commands.\n$ Kāraka reach this same shell via sandbox.shell.\n`}</pre>
           </div>
           <div class="terminal__input-row">
             <span class="terminal__prompt">{shortCwd(shellCwd)} $</span>

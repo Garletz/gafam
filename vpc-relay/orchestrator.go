@@ -217,56 +217,8 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 		log.Printf("orchestrator: planned %d quests for %s", len(questIDs), missionID)
 	}
 
-	// ── EXECUTE ──
-	m, _ = moksa.GetMission(missionID)
-	if m == nil {
-		return
-	}
-	failed := map[string]bool{}
-	for _, quest := range m.Quests {
-		if ctx.Err() != nil {
-			break
-		}
-		if quest.Status != "pending" {
-			continue
-		}
-		// Skip if any dependency failed/cancelled.
-		depFailed := false
-		for _, dep := range quest.DependsOn {
-			if failed[dep] {
-				depFailed = true
-				break
-			}
-		}
-		if depFailed {
-			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
-				if q := miss.FindQuest(quest.ID); q != nil {
-					q.Status = "cancelled"
-					q.Error = "dependency failed"
-				}
-				return nil
-			})
-			failed[quest.ID] = true
-			continue
-		}
-
-		if _, err := moksa.ClaimQuest(missionID, quest.ID, karakaID); err != nil {
-			log.Printf("orchestrator: claim %s failed: %v", quest.ID, err)
-			failed[quest.ID] = true
-			continue
-		}
-		log.Printf("orchestrator: running quest %s (%s)", quest.ID, quest.Tool)
-		updated, err := moksa.RunQuest(missionID, quest.ID)
-		if err != nil {
-			log.Printf("orchestrator: run %s failed: %v", quest.ID, err)
-			failed[quest.ID] = true
-			continue
-		}
-		if q := updated.FindQuest(quest.ID); q != nil && q.Status == "failed" {
-			log.Printf("orchestrator: quest %s failed: %s", quest.ID, q.Error)
-			failed[quest.ID] = true
-		}
-	}
+	// ── EXECUTE (topological levels — independent quests run in parallel) ──
+	failed := executeQuestLevels(ctx, missionID, karakaID)
 
 	// ── SYNTHESIZE ──
 	_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
@@ -276,7 +228,136 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 	if _, err := moksa.Synthesize(missionID); err != nil {
 		log.Printf("orchestrator: synthesize %s failed: %v", missionID, err)
 	}
-	log.Printf("orchestrator: run finished for mission %s (%d/%d quests failed)", missionID, len(failed), len(m.Quests))
+	m, _ = moksa.GetMission(missionID)
+	questCount := 0
+	if m != nil {
+		questCount = len(m.Quests)
+	}
+	log.Printf("orchestrator: run finished for mission %s (%d/%d quests failed)", missionID, len(failed), questCount)
+}
+
+// executeQuestLevels runs pending quests level by level: all quests whose
+// dependencies are satisfied run in parallel (bounded). A quest whose
+// dependency failed is cancelled; a dependency cycle cancels the rest.
+func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[string]bool {
+	const maxParallel = 4
+
+	m, _ := moksa.GetMission(missionID)
+	if m == nil {
+		return map[string]bool{}
+	}
+
+	pending := map[string]moksa.Quest{}
+	done := map[string]bool{}
+	failed := map[string]bool{}
+	for _, q := range m.Quests {
+		switch q.Status {
+		case "pending":
+			pending[q.ID] = q
+		case "done":
+			done[q.ID] = true
+		case "failed", "cancelled":
+			failed[q.ID] = true
+		}
+	}
+	var stateMu sync.Mutex
+
+	cancelQuest := func(qid, reason string) {
+		_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+			if q := miss.FindQuest(qid); q != nil {
+				q.Status = "cancelled"
+				q.Error = reason
+			}
+			return nil
+		})
+		stateMu.Lock()
+		failed[qid] = true
+		stateMu.Unlock()
+	}
+
+	runOne := func(q moksa.Quest) {
+		if _, err := moksa.ClaimQuest(missionID, q.ID, karakaID); err != nil {
+			log.Printf("orchestrator: claim %s failed: %v", q.ID, err)
+			stateMu.Lock()
+			failed[q.ID] = true
+			stateMu.Unlock()
+			return
+		}
+		log.Printf("orchestrator: running quest %s (%s)", q.ID, q.Tool)
+		updated, err := moksa.RunQuest(missionID, q.ID)
+		stateMu.Lock()
+		defer stateMu.Unlock()
+		if err != nil {
+			log.Printf("orchestrator: run %s failed: %v", q.ID, err)
+			failed[q.ID] = true
+			return
+		}
+		if rq := updated.FindQuest(q.ID); rq != nil && rq.Status == "failed" {
+			log.Printf("orchestrator: quest %s failed: %s", q.ID, rq.Error)
+			failed[q.ID] = true
+			return
+		}
+		done[q.ID] = true
+	}
+
+	for len(pending) > 0 {
+		if ctx.Err() != nil {
+			break
+		}
+		// Collect the runnable level + cancel quests whose deps failed.
+		var level []moksa.Quest
+		for _, q := range pending {
+			depFailed := false
+			depOK := true
+			for _, dep := range q.DependsOn {
+				stateMu.Lock()
+				f, d := failed[dep], done[dep]
+				stateMu.Unlock()
+				if f {
+					depFailed = true
+					break
+				}
+				if !d {
+					depOK = false
+					break
+				}
+			}
+			if depFailed {
+				cancelQuest(q.ID, "dependency failed")
+				delete(pending, q.ID)
+				continue
+			}
+			if depOK {
+				level = append(level, q)
+			}
+		}
+
+		if len(level) == 0 {
+			// Nothing runnable but quests remain: dependency cycle.
+			for id := range pending {
+				cancelQuest(id, "dependency cycle — unsatisfiable")
+				delete(pending, id)
+			}
+			break
+		}
+
+		// Run the level in parallel (bounded).
+		sem := make(chan struct{}, maxParallel)
+		var wg sync.WaitGroup
+		for _, q := range level {
+			delete(pending, q.ID)
+			wg.Add(1)
+			go func(quest moksa.Quest) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				runOne(quest)
+			}(q)
+		}
+		wg.Wait()
+	}
+
+	return failed
 }
 
 // ─── HTTP handlers ───
@@ -290,6 +371,7 @@ func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 		MissionID   string `json:"mission_id"`
 		KarakaID    string `json:"karaka_id"`
 		MaxQuests   int    `json:"max_quests"`
+		Mode        string `json:"mode"` // "" | action | research
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -303,6 +385,10 @@ func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MaxQuests > 12 {
 		req.MaxQuests = 12
+	}
+	if req.Mode != "" && req.Mode != "action" && req.Mode != "research" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid mode (action|research)"})
+		return
 	}
 
 	var missionID string
@@ -321,7 +407,7 @@ func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !launchOrchestration(missionID, req.KarakaID, req.MaxQuests, nil) {
+	if !launchOrchestration(missionID, req.KarakaID, req.MaxQuests, req.Mode, nil) {
 		sendJSON(w, http.StatusConflict, map[string]string{"error": "orchestrator_busy", "mission_id": orchestratorMission})
 		return
 	}
@@ -345,9 +431,10 @@ func orchestratorStatusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // launchOrchestration starts the loop in the background (one run at a time).
+// mode: "" / "action" (free planner) | "research" (fixed pipeline).
 // onDone, if set, receives the final mission state — used by the self-phone
 // SMS trigger to text the result back.
-func launchOrchestration(missionID, karakaID string, maxQuests int, onDone func(*moksa.Mission)) bool {
+func launchOrchestration(missionID, karakaID string, maxQuests int, mode string, onDone func(*moksa.Mission)) bool {
 	if !orchestratorMu.TryLock() {
 		return false
 	}
@@ -355,9 +442,13 @@ func launchOrchestration(missionID, karakaID string, maxQuests int, onDone func(
 	go func() {
 		defer orchestratorMu.Unlock()
 		defer setOrchestratorState(false, "")
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 		defer cancel()
-		runOrchestration(ctx, missionID, karakaID, maxQuests)
+		if mode == "research" {
+			runResearchPipeline(ctx, missionID)
+		} else {
+			runOrchestration(ctx, missionID, karakaID, maxQuests)
+		}
 		if onDone != nil {
 			if m, ok := moksa.GetMission(missionID); ok {
 				onDone(m)
@@ -371,22 +462,31 @@ func launchOrchestration(missionID, karakaID string, maxQuests int, onDone func(
 
 // selfQuestInstruction checks whether an incoming SMS is a remote quest
 // command from the owner's self phone (Settings → self_phone).
-// Trigger: body starts with "/q " or "/quest " (case-insensitive).
-func selfQuestInstruction(sender, body string) (string, bool) {
+// Triggers: "/q " = action mission, "/r " = research mission (case-insensitive).
+func selfQuestInstruction(sender, body string) (instruction, mode string, ok bool) {
 	self := getSetting("self_phone")
 	if self == "" || !phonesMatch(sender, self) {
-		return "", false
+		return "", "", false
 	}
 	trimmed := strings.TrimSpace(body)
 	lower := strings.ToLower(trimmed)
-	for _, prefix := range []string{"/q ", "/quest "} {
-		if strings.HasPrefix(lower, prefix) {
-			if instr := strings.TrimSpace(trimmed[len(prefix):]); instr != "" {
-				return instr, true
+	prefixes := []struct {
+		p    string
+		mode string
+	}{
+		{"/r ", "research"},
+		{"/research ", "research"},
+		{"/q ", "action"},
+		{"/quest ", "action"},
+	}
+	for _, pre := range prefixes {
+		if strings.HasPrefix(lower, pre.p) {
+			if instr := strings.TrimSpace(trimmed[len(pre.p):]); instr != "" {
+				return instr, pre.mode, true
 			}
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // phonesMatch compares two phone numbers on their last 9 digits
@@ -410,13 +510,13 @@ func phonesMatch(a, b string) bool {
 
 // triggerSelfQuest creates a mission from an SMS instruction and runs
 // Saṃyojaka on it, texting confirmations back to the self phone.
-func triggerSelfQuest(selfPhone, instruction string) {
+func triggerSelfQuest(selfPhone, instruction, mode string) {
 	m := moksa.CreateEmptyMission(instruction)
-	log.Printf("self-quest: mission %s created from self phone SMS", m.ID)
+	log.Printf("self-quest: mission %s created from self phone SMS (mode=%s)", m.ID, mode)
 
-	ok := launchOrchestration(m.ID, "suparna_vpc", 6, func(done *moksa.Mission) {
+	ok := launchOrchestration(m.ID, "suparna_vpc", 6, mode, func(done *moksa.Mission) {
 		if done.Status == "cancelled" {
-			queueSmsReply(selfPhone, "GAFAM ❌ "+done.ID+": planning failed — see dashboard for details")
+			queueSmsReply(selfPhone, "GAFAM ❌ "+done.ID+": failed — see dashboard for details")
 			return
 		}
 		total := len(done.Quests)
@@ -430,6 +530,13 @@ func triggerSelfQuest(selfPhone, instruction string) {
 		if failedN > 0 {
 			status = "⚠️"
 		}
+		if mode == "research" {
+			queueSmsReply(selfPhone, fmt.Sprintf(
+				"GAFAM %s research %s done. Report: /files/research/missions/%s/report.md",
+				status, done.ID, done.ID,
+			))
+			return
+		}
 		queueSmsReply(selfPhone, fmt.Sprintf(
 			"GAFAM %s %s: %d/%d quests OK. Report: /files/missions/%s/report.md (sandbox)",
 			status, done.ID, total-failedN, total, done.ID,
@@ -438,7 +545,11 @@ func triggerSelfQuest(selfPhone, instruction string) {
 	if !ok {
 		// Busy — drop the placeholder mission so the board stays clean.
 		moksa.DeleteMission(m.ID)
-		queueSmsReply(selfPhone, "GAFAM ⏳ agent busy on another mission — retry in a few minutes")
+		queueSmsReply(selfPhone, "GAFAM ⏳ saṃyojaka busy on another mission — retry in a few minutes")
+		return
+	}
+	if mode == "research" {
+		queueSmsReply(selfPhone, fmt.Sprintf("GAFAM 🔬 research %s started — vault checked first, then web sweep. I'll text you the report path", m.ID))
 		return
 	}
 	queueSmsReply(selfPhone, fmt.Sprintf("GAFAM ⚡ quest %s started — I'll text you when done", m.ID))

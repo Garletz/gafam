@@ -445,7 +445,7 @@ func llmTestHandler(w http.ResponseWriter, r *http.Request) {
 
 // llmChatHandler — POST {prompt, system?, engine?, max_tokens?}
 // The single entry point the web console (and humans) use to talk to the
-// active orchestration engine. Kāraka agents use the llm.chat tool instead.
+// active orchestration engine. Kāraka use the llm.chat tool instead.
 func llmChatHandler(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Prompt    string `json:"prompt"`

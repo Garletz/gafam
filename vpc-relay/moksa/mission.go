@@ -31,6 +31,7 @@ type Mission struct {
 	Instruction string    `json:"instruction"`
 	Quests      []Quest   `json:"quests"`
 	Status      string    `json:"status"` // planning | active | synthesizing | done | cancelled
+	Mode        string    `json:"mode,omitempty"` // "" (action) | research
 	WorldCard   string    `json:"world_card"`
 	Summary     string    `json:"summary,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
