@@ -3,9 +3,11 @@ package main
 // Triggering a clean GitHub Action build
 
 import (
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	mrand "math/rand"
 	"net/http"
@@ -208,6 +210,33 @@ func main() {
 
 	karaka.RegisterAllTools()
 	karaka.RegisterDefaultKarakas()
+	// llm.chat routes through the active orchestration engine (Suparna → Provider tab).
+	// Registered here because it lives in package main (chatWithActiveEngine).
+	karaka.RegisterTool(karaka.Tool{
+		ID:          "llm.chat",
+		Description: "Chat with the active orchestration engine (VPC Qwen / provider like Kimi K3). This is the single LLM entry point for kāraka, quests and lucioles.",
+		Category:    "llm",
+		Params: map[string]karaka.ParamSpec{
+			"prompt":     {Type: "string", Required: true, Description: "User prompt"},
+			"system":     {Type: "string", Required: false, Description: "System prompt"},
+			"max_tokens": {Type: "int", Required: false, Description: "Max completion tokens", Default: 512},
+		},
+		Returns: "{ content: string, engine: string, model: string, latency_ms: int }",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			prompt, _ := params["prompt"].(string)
+			if prompt == "" {
+				return nil, fmt.Errorf("missing 'prompt'")
+			}
+			system, _ := params["system"].(string)
+			maxTokens := 512
+			if mt, ok := params["max_tokens"].(float64); ok && mt > 0 {
+				maxTokens = int(mt)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+			defer cancel()
+			return chatWithActiveEngine(ctx, system, prompt, "", maxTokens)
+		},
+	})
 	log.Println("Kāraka tool registry initialized.")
 
 	mux := http.NewServeMux()
@@ -300,6 +329,15 @@ func main() {
 	mux.HandleFunc("GET /api/web/karaka/tools", sessionMiddleware(karaka.ToolsListHandler))
 	mux.HandleFunc("GET /api/web/karaka/status", sessionMiddleware(karaka.KarakasListHandler))
 	mux.HandleFunc("POST /api/web/karaka/execute", sessionMiddleware(karaka.ExecuteHandler))
+
+	// LLM providers & orchestration engine (Suparna → Provider tab)
+	mux.HandleFunc("GET /api/web/llm/providers", sessionMiddleware(llmProvidersHandler))
+	mux.HandleFunc("POST /api/web/llm/providers", sessionMiddleware(llmProvidersHandler))
+	mux.HandleFunc("DELETE /api/web/llm/providers", sessionMiddleware(llmProvidersHandler))
+	mux.HandleFunc("GET /api/web/llm/engine", sessionMiddleware(llmEngineHandler))
+	mux.HandleFunc("POST /api/web/llm/engine", sessionMiddleware(llmEngineHandler))
+	mux.HandleFunc("POST /api/web/llm/test", sessionMiddleware(llmTestHandler))
+	mux.HandleFunc("POST /api/web/llm/chat", sessionMiddleware(llmChatHandler))
 
 	// Mokṣa — Method4 quest board (Organic Tools)
 	mux.HandleFunc("GET /api/web/mission/world-card", sessionMiddleware(moksa.WorldCardHandler))

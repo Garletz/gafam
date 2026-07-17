@@ -351,6 +351,7 @@ func RegisterDefaultKarakas() {
 			"browser.window":     "allow",
 			"browser.navigate":   "ask",
 			"browser.input":      "deny",
+			"llm.chat":           "ask",
 		},
 		MaxSteps: 10,
 	})
@@ -363,6 +364,7 @@ func RegisterDefaultKarakas() {
 		Tools: map[string]string{
 			"sandbox.*": "allow",
 			"browser.*": "allow",
+			"llm.chat":  "allow",
 		},
 		MaxSteps: 15,
 	})

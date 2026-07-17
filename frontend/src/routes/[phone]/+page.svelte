@@ -36,7 +36,7 @@
   let contacts: Record<string, string> = $state({});
   let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
-  let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' = $state('vpc');
+  let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' | 'providers' = $state('vpc');
   let contactSearchQuery: string = $state('');
   let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
