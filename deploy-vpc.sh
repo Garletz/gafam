@@ -271,16 +271,63 @@ if [ "${INSTALL_SANDBOX:-1}" = "1" ]; then
     install_sandbox_sidecar || echo "[!] Sandbox install skipped/failed (non-fatal)."
 fi
 
+# 10. Sidecar Chromium — lighter headless browser with persistent Google sessions
+install_chromium_sidecar() {
+    local CHROMIUM_IMAGE="${CHROMIUM_IMAGE:-ghcr.io/garletz/gafam:chromium}"
+    mkdir -p /root/gafam_data/browser-chromium
+
+    echo "[*] Pulling chromium image $CHROMIUM_IMAGE..."
+    if ! docker pull "$CHROMIUM_IMAGE"; then
+        echo "[!] GHCR pull failed — building from Dockerfile.chromium fallback"
+        local work="/root/gafam-setup"
+        mkdir -p "$work/vpc-relay"
+        local SCRIPT_DIR
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+        if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.chromium" ]; then
+            cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.chromium" "$work/vpc-relay/"
+            cp -f "$SCRIPT_DIR/vpc-relay/entrypoint-chromium.sh" "$work/vpc-relay/"
+            cp -f "$SCRIPT_DIR/vpc-relay/stream.py" "$work/vpc-relay/"
+        else
+            curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.chromium" -o "$work/vpc-relay/Dockerfile.chromium"
+            curl -fsSL "$REPO_RAW/vpc-relay/entrypoint-chromium.sh" -o "$work/vpc-relay/entrypoint-chromium.sh"
+            curl -fsSL "$REPO_RAW/vpc-relay/stream.py" -o "$work/vpc-relay/stream.py"
+        fi
+        chmod +x "$work/vpc-relay/entrypoint-chromium.sh" "$work/vpc-relay/stream.py"
+        docker build -t gafam-chromium -f "$work/vpc-relay/Dockerfile.chromium" "$work/vpc-relay"
+        CHROMIUM_IMAGE="gafam-chromium"
+    fi
+
+    echo "[*] Creating gafam-chromium container (stopped)..."
+    docker rm -f gafam-chromium 2>/dev/null || true
+    docker run -d \
+      --name gafam-chromium \
+      --network gafam-net \
+      --memory=400m \
+      --memory-swap=1g \
+      --tmpfs /tmp:size=128m \
+      --tmpfs /dev/shm:size=128m \
+      --restart no \
+      -v /root/gafam_data/browser-chromium:/home/browser/data \
+      "$CHROMIUM_IMAGE"
+    docker stop gafam-chromium
+}
+
+if [ "${INSTALL_CHROMIUM:-1}" = "1" ]; then
+    echo "[*] Installing Chromium sidecar (stopped until wake)..."
+    install_chromium_sidecar || echo "[!] Chromium install skipped/failed (non-fatal)."
+fi
+
 echo ""
 echo "=========================================="
 echo "✅ GAFAM VPC successfully deployed!"
 echo "=========================================="
 echo "🌐 API is running on port 5150 (HTTPS, self-signed TLS)"
 echo "🔑 Your JWT Secret (save this): $JWT_SECRET"
-echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes (gafam-api + gafam-browser + gafam-sandbox)."
+echo "🔄 Auto-updates: Watchtower polls GHCR every 5 minutes (gafam-api + gafam-browser + gafam-sandbox + gafam-chromium)."
 echo "🖱️  Manual update: Settings → VPS Node on gafam.cloud."
 echo "🪶 Qwen: stopped by default (1 Go). Auto wake via Suparna API."
 echo "🌐 Browser: stopped by default (ghcr.io/garletz/gafam:browser). Wake via Browser tab."
 echo "🛠️  Sandbox: stopped by default (ghcr.io/garletz/gafam:sandbox). Wake via Sandbox tab."
+echo "🔮 Chromium: stopped by default (ghcr.io/garletz/gafam:chromium). Wake via Browser tab ?mode=chromium."
 echo "   Swap 4G: enabled by this script (SKIP_SWAP=1 to skip)."
 echo "=========================================="

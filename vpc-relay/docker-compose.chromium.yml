@@ -1,0 +1,15 @@
+services:
+  gafam-chromium:
+    image: ghcr.io/garletz/gafam:chromium
+    container_name: gafam-chromium
+    network_mode: gafam-net
+    restart: "no"
+    mem_limit: 400m
+    memswap_limit: 1g
+    volumes:
+      - /root/gafam_data/browser-chromium:/home/browser/data
+    tmpfs:
+      - /tmp:size=128m
+      - /dev/shm:size=128m
+    ports:
+      - "127.0.0.1:6081:6080"

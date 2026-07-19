@@ -15,11 +15,52 @@ import (
 )
 
 const (
-	dockerSock       = "/var/run/docker.sock"
-	browserContainer = "gafam-browser"
-	dockerAPIBase    = "http://localhost"
-	defaultImage     = "ghcr.io/garletz/gafam:browser"
+	dockerSock         = "/var/run/docker.sock"
+	browserContainer   = "gafam-browser"
+	chromiumContainer  = "gafam-chromium"
+	dockerAPIBase      = "http://localhost"
+	defaultImage       = "ghcr.io/garletz/gafam:browser"
+	defaultChromiumImg = "ghcr.io/garletz/gafam:chromium"
 )
+
+func browserEngine() string {
+	if e := os.Getenv("BROWSER_ENGINE"); e == "chromium" {
+		return "chromium"
+	}
+	return "firefox"
+}
+
+func activeContainer() string {
+	if browserEngine() == "chromium" {
+		return chromiumContainer
+	}
+	return browserContainer
+}
+
+func browserImage() string {
+	if u := os.Getenv("BROWSER_IMAGE"); u != "" {
+		return u
+	}
+	if browserEngine() == "chromium" {
+		return defaultChromiumImg
+	}
+	return defaultImage
+}
+
+func browserBaseURL() string {
+	port := "6080"
+	if browserEngine() == "chromium" {
+		port = "6081"
+	}
+	return "http://" + activeContainer() + ":" + port
+}
+
+func browserMemoryLimit() int64 {
+	if browserEngine() == "chromium" {
+		return int64(400) * 1024 * 1024
+	}
+	return int64(600) * 1024 * 1024
+}
 
 func dockerHTTP() *http.Client {
 	return &http.Client{
@@ -38,18 +79,11 @@ func dockerSockPresent() bool {
 	return err == nil && st.Mode()&os.ModeSocket != 0
 }
 
-func browserImage() string {
-	if u := os.Getenv("BROWSER_IMAGE"); u != "" {
-		return u
-	}
-	return defaultImage
-}
-
 func containerState() (running bool, err error) {
 	if !dockerSockPresent() {
 		return false, fmt.Errorf("docker.sock unavailable — mount /var/run/docker.sock on gafam-api")
 	}
-	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/containers/"+browserContainer+"/json", nil)
+	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/containers/"+activeContainer()+"/json", nil)
 	if err != nil {
 		return false, err
 	}
@@ -60,7 +94,7 @@ func containerState() (running bool, err error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusNotFound {
-		return false, fmt.Errorf("container %s missing", browserContainer)
+		return false, fmt.Errorf("container %s missing", activeContainer())
 	}
 	if resp.StatusCode >= 400 {
 		return false, fmt.Errorf("docker inspect: %s", strings.TrimSpace(string(body)))
@@ -80,7 +114,7 @@ func containerExists() (bool, error) {
 	if !dockerSockPresent() {
 		return false, fmt.Errorf("docker.sock unavailable — mount /var/run/docker.sock on gafam-api")
 	}
-	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/containers/"+browserContainer+"/json", nil)
+	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/containers/"+activeContainer()+"/json", nil)
 	if err != nil {
 		return false, err
 	}
@@ -184,7 +218,7 @@ func createContainer(image string) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/create?name="+url.QueryEscape(browserContainer), bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/create?name="+url.QueryEscape(activeContainer()), bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
@@ -206,7 +240,7 @@ func createContainer(image string) error {
 }
 
 func removeContainer() error {
-	req, err := http.NewRequest(http.MethodDelete, dockerAPIBase+"/containers/"+browserContainer+"?force=true", nil)
+	req, err := http.NewRequest(http.MethodDelete, dockerAPIBase+"/containers/"+activeContainer()+"?force=true", nil)
 	if err != nil {
 		return err
 	}
@@ -246,7 +280,7 @@ func startContainer() error {
 	if err := recreateContainer(); err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+browserContainer+"/start", nil)
+	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+activeContainer()+"/start", nil)
 	if err != nil {
 		return err
 	}
@@ -266,7 +300,7 @@ func startContainer() error {
 }
 
 func stopContainer() error {
-	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+browserContainer+"/stop?t=10", nil)
+	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+activeContainer()+"/stop?t=10", nil)
 	if err != nil {
 		return err
 	}
@@ -286,13 +320,6 @@ func stopContainer() error {
 		return fmt.Errorf("docker stop: %s", strings.TrimSpace(string(body)))
 	}
 	return nil
-}
-
-func browserBaseURL() string {
-	if u := os.Getenv("BROWSER_URL"); u != "" {
-		return strings.TrimRight(u, "/")
-	}
-	return "http://gafam-browser:6080"
 }
 
 func waitBrowserReady(ctx context.Context) error {

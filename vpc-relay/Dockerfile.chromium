@@ -1,0 +1,31 @@
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:99
+ENV HOME=/home/browser
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    fonts-dejavu-core \
+    fonts-liberation \
+    xvfb \
+    xdotool \
+    python3 \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash browser && \
+    mkdir -p /home/browser/chromium-data && \
+    chown -R browser:browser /home/browser
+
+COPY stream.py /stream.py
+COPY entrypoint-chromium.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /stream.py
+
+EXPOSE 6080 9222
+
+USER browser
+WORKDIR /home/browser
+
+CMD ["/entrypoint.sh"]
