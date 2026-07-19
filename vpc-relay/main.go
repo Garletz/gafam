@@ -220,11 +220,12 @@ func main() {
 	// Registered here because it lives in package main (chatWithActiveEngine).
 	karaka.RegisterTool(karaka.Tool{
 		ID:          "llm.chat",
-		Description: "Chat with the active orchestration engine (VPC Qwen / provider like Kimi K3). This is the single LLM entry point for kāraka, quests and lucioles.",
+		Description: "Chat with the active orchestration engine. Uses scope-based routing with automatic failover (orchestrator → light_task → read_only → VPC Qwen).",
 		Category:    "llm",
 		Params: map[string]karaka.ParamSpec{
 			"prompt":     {Type: "string", Required: true, Description: "User prompt"},
 			"system":     {Type: "string", Required: false, Description: "System prompt"},
+			"scope":      {Type: "string", Required: false, Description: "Scope: orchestrator (heavy reasoning), light_task (fast), read_only (search/classify)", Default: "light_task"},
 			"max_tokens": {Type: "int", Required: false, Description: "Max completion tokens", Default: 512},
 		},
 		Returns: "{ content: string, engine: string, model: string, latency_ms: int }",
@@ -234,13 +235,17 @@ func main() {
 				return nil, fmt.Errorf("missing 'prompt'")
 			}
 			system, _ := params["system"].(string)
+			scope, _ := params["scope"].(string)
+			if scope == "" {
+				scope = "light_task"
+			}
 			maxTokens := 512
 			if mt, ok := params["max_tokens"].(float64); ok && mt > 0 {
 				maxTokens = int(mt)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 			defer cancel()
-			return chatWithActiveEngine(ctx, system, prompt, "", maxTokens)
+			return chatWithEngine(ctx, scope, system, prompt, maxTokens)
 		},
 	})
 	log.Println("Kāraka tool registry initialized.")
@@ -345,6 +350,8 @@ func main() {
 	mux.HandleFunc("POST /api/web/llm/engine", sessionMiddleware(llmEngineHandler))
 	mux.HandleFunc("POST /api/web/llm/test", sessionMiddleware(llmTestHandler))
 	mux.HandleFunc("POST /api/web/llm/chat", sessionMiddleware(llmChatHandler))
+	mux.HandleFunc("GET /api/web/llm/scopes", sessionMiddleware(llmScopesHandler))
+	mux.HandleFunc("POST /api/web/llm/scopes", sessionMiddleware(llmScopesHandler))
 
 	// The Vault — research memory (notes = markdown truth, FTS5 = cache)
 	mux.HandleFunc("GET /api/web/research/search", sessionMiddleware(researchSearchHandler))

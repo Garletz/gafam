@@ -112,7 +112,7 @@ func extractJSON(s string) string {
 
 func planQuests(ctx context.Context, instruction string, maxQuests int) (*planResult, string, error) {
 	system, user := buildPlannerPrompt(instruction, maxQuests)
-	res, err := chatWithActiveEngine(ctx, system, user, "", 2048)
+	res, err := chatWithEngine(ctx, "orchestrator", system, user, 2048)
 	if err != nil {
 		return nil, "", fmt.Errorf("planner LLM: %w", err)
 	}

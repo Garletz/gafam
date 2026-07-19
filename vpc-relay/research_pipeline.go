@@ -97,11 +97,10 @@ func researchFailMission(missionID, step string, err error) {
 }
 
 func researchChat(ctx context.Context, system, user string, maxTokens int) (string, error) {
-	res, err := chatWithActiveEngine(ctx, system, user, "", maxTokens)
+	res, err := chatWithEngine(ctx, "light_task", system, user, maxTokens)
 	if err != nil && strings.Contains(err.Error(), "empty content") && maxTokens < 6000 {
-		// Reasoning model ate the token budget — one retry with double.
 		log.Printf("research: empty content at %d tokens, retrying with %d", maxTokens, maxTokens*2)
-		res, err = chatWithActiveEngine(ctx, system, user, "", maxTokens*2)
+		res, err = chatWithEngine(ctx, "light_task", system, user, maxTokens*2)
 	}
 	if err != nil && strings.Contains(err.Error(), "unreachable") {
 		// Transient network/provider hiccup — one retry after a short pause.
@@ -111,7 +110,7 @@ func researchChat(ctx context.Context, system, user string, maxTokens int) (stri
 			return "", ctx.Err()
 		case <-time.After(5 * time.Second):
 		}
-		res, err = chatWithActiveEngine(ctx, system, user, "", maxTokens)
+		res, err = chatWithEngine(ctx, "light_task", system, user, maxTokens)
 	}
 	if err != nil {
 		return "", err

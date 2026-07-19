@@ -87,6 +87,8 @@ export const GET: RequestHandler = async ({ url }) => {
 		vpcPath = `/api/web/llm/providers?token=${encodeURIComponent(token)}`;
 	} else if (action === 'engine') {
 		vpcPath = `/api/web/llm/engine?token=${encodeURIComponent(token)}`;
+	} else if (action === 'scopes') {
+		vpcPath = `/api/web/llm/scopes?token=${encodeURIComponent(token)}`;
 	} else {
 		return json({ error: 'Unknown action' }, { status: 400 });
 	}
@@ -116,6 +118,8 @@ export const POST: RequestHandler = async ({ url, request }) => {
 		vpcPath = `/api/web/llm/test?token=${encodeURIComponent(token)}`;
 	} else if (action === 'chat') {
 		vpcPath = `/api/web/llm/chat?token=${encodeURIComponent(token)}`;
+	} else if (action === 'scopes') {
+		vpcPath = `/api/web/llm/scopes?token=${encodeURIComponent(token)}`;
 	} else {
 		return json({ error: 'Unknown action' }, { status: 400 });
 	}

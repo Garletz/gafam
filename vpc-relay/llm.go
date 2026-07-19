@@ -35,7 +35,14 @@ type LLMProvider struct {
 const (
 	settingLLMProviders = "llm_providers"
 	settingLLMEngine    = "llm_engine"
+	settingLLMScopes    = "llm_scopes"
 )
+
+// ScopeRouting maps scopes to primary engine + fallback chain.
+type ScopeRouting struct {
+	Primary   string   `json:"primary"`
+	Fallbacks []string `json:"fallbacks"`
+}
 
 func getSetting(key string) string {
 	var v string
@@ -119,7 +126,63 @@ func activeEngine() string {
 	return e
 }
 
-// ─── Engine router ───
+// getScopeRouting returns the engine routing table for a scope.
+// Falls back to sensible defaults if nothing configured.
+func getScopeRouting(scope string) ScopeRouting {
+	raw := getSetting(settingLLMScopes)
+	if raw != "" {
+		var table map[string]ScopeRouting
+		if json.Unmarshal([]byte(raw), &table) == nil {
+			if r, ok := table[scope]; ok {
+				return r
+			}
+		}
+	}
+	// Smart defaults: pick first available enabled provider for platform scopes
+	switch scope {
+	case "orchestrator":
+		for _, p := range loadLLMProviders() {
+			if p.Enabled && p.APIKey != "" {
+				return ScopeRouting{Primary: "provider:" + p.ID, Fallbacks: []string{"vpc"}}
+			}
+		}
+		return ScopeRouting{Primary: "vpc"}
+	case "light_task":
+		for _, p := range loadLLMProviders() {
+			if p.Enabled && p.APIKey != "" {
+				return ScopeRouting{Primary: "provider:" + p.ID, Fallbacks: []string{"vpc"}}
+			}
+		}
+		return ScopeRouting{Primary: "vpc"}
+	case "read_only":
+		return ScopeRouting{Primary: "vpc"}
+	default:
+		return ScopeRouting{Primary: activeEngine()}
+	}
+}
+
+func setScopeRouting(table map[string]ScopeRouting) error {
+	raw, err := json.Marshal(table)
+	if err != nil {
+		return err
+	}
+	return setSetting(settingLLMScopes, string(raw))
+}
+
+// isTransientError returns true for errors that are worth retrying on a fallback.
+func isTransientError(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, "unreachable") ||
+		strings.Contains(s, "timeout") ||
+		strings.Contains(s, "429") ||
+		strings.Contains(s, "503") ||
+		strings.Contains(s, "502") ||
+		strings.Contains(s, "EOF") ||
+		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "context deadline exceeded")
+}
+
+// ─── Engine router with scope support ───
 
 type chatResult struct {
 	Content   string `json:"content"`
@@ -128,15 +191,36 @@ type chatResult struct {
 	LatencyMs int64  `json:"latency_ms"`
 }
 
-func chatWithActiveEngine(ctx context.Context, system, prompt, engineOverride string, maxTokens int) (*chatResult, error) {
-	engine := engineOverride
-	if engine == "" {
-		engine = activeEngine()
-	}
+// chatWithEngine routes by scope, with failover across the fallback chain.
+func chatWithEngine(ctx context.Context, scope, system, prompt string, maxTokens int) (*chatResult, error) {
+	routing := getScopeRouting(scope)
 	if maxTokens <= 0 {
 		maxTokens = 1024
 	}
 
+	candidates := append([]string{routing.Primary}, routing.Fallbacks...)
+	var lastErr error
+	for _, engine := range candidates {
+		if engine == "" {
+			continue
+		}
+		res, err := callOneEngine(ctx, engine, system, prompt, maxTokens)
+		if err == nil {
+			return res, nil
+		}
+		lastErr = err
+		if !isTransientError(err) {
+			return nil, err // non-retriable
+		}
+		log.Printf("llm: scope=%s engine=%s failed (transient), trying next: %v", scope, engine, err)
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("scope=%s: all engines exhausted: %w", scope, lastErr)
+	}
+	return nil, fmt.Errorf("scope=%s: no engines configured", scope)
+}
+
+func callOneEngine(ctx context.Context, engine, system, prompt string, maxTokens int) (*chatResult, error) {
 	switch {
 	case engine == "vpc":
 		return chatVPC(ctx, prompt, maxTokens)
@@ -157,6 +241,15 @@ func chatWithActiveEngine(ctx context.Context, system, prompt, engineOverride st
 	default:
 		return nil, fmt.Errorf("unknown engine: %s", engine)
 	}
+}
+
+// chatWithActiveEngine — backward-compat wrapper: if engineOverride is set, bypass scope routing.
+func chatWithActiveEngine(ctx context.Context, system, prompt, engineOverride string, maxTokens int) (*chatResult, error) {
+	if engineOverride != "" {
+		return callOneEngine(ctx, engineOverride, system, prompt, maxTokens)
+	}
+	// Default scope for the global chat handler: orchestrator
+	return chatWithEngine(ctx, "orchestrator", system, prompt, maxTokens)
 }
 
 // chatProvider calls an OpenAI-compatible /chat/completions endpoint.
@@ -457,26 +550,82 @@ func llmTestHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// llmChatHandler — POST {prompt, system?, engine?, max_tokens?}
-// The single entry point the web console (and humans) use to talk to the
-// active orchestration engine. Kāraka use the llm.chat tool instead.
+// llmChatHandler — POST {prompt, system?, engine?, scope?, max_tokens?}
 func llmChatHandler(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Prompt    string `json:"prompt"`
 		System    string `json:"system"`
 		Engine    string `json:"engine"`
+		Scope     string `json:"scope"`
 		MaxTokens int    `json:"max_tokens"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || strings.TrimSpace(in.Prompt) == "" {
 		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "missing prompt"})
 		return
 	}
+	if in.Scope == "" {
+		in.Scope = "orchestrator"
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
 	defer cancel()
-	res, err := chatWithActiveEngine(ctx, in.System, in.Prompt, in.Engine, in.MaxTokens)
+	var res *chatResult
+	var err error
+	if in.Engine != "" {
+		res, err = chatWithActiveEngine(ctx, in.System, in.Prompt, in.Engine, in.MaxTokens)
+	} else {
+		res, err = chatWithEngine(ctx, in.Scope, in.System, in.Prompt, in.MaxTokens)
+	}
 	if err != nil {
 		sendJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	sendJSON(w, http.StatusOK, res)
+}
+
+// llmScopesHandler — GET (list) / POST (upsert)
+func llmScopesHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		scopes := map[string]ScopeRouting{}
+		raw := getSetting(settingLLMScopes)
+		if raw != "" {
+			json.Unmarshal([]byte(raw), &scopes)
+		}
+		// Fill in active defaults for reference
+		for _, s := range []string{"orchestrator", "light_task", "read_only"} {
+			if _, ok := scopes[s]; !ok {
+				scopes[s] = getScopeRouting(s)
+			}
+		}
+		sendJSON(w, http.StatusOK, map[string]interface{}{"scopes": scopes})
+
+	case http.MethodPost:
+		var in struct {
+			Scope     string   `json:"scope"`
+			Primary   string   `json:"primary"`
+			Fallbacks []string `json:"fallbacks"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Scope == "" {
+			sendJSON(w, http.StatusBadRequest, map[string]string{"error": "scope required"})
+			return
+		}
+		if in.Fallbacks == nil {
+			in.Fallbacks = []string{}
+		}
+		scopes := map[string]ScopeRouting{}
+		raw := getSetting(settingLLMScopes)
+		if raw != "" {
+			json.Unmarshal([]byte(raw), &scopes)
+		}
+		scopes[in.Scope] = ScopeRouting{Primary: in.Primary, Fallbacks: in.Fallbacks}
+		if err := setScopeRouting(scopes); err != nil {
+			sendJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		log.Printf("llm: scope %s → primary=%s fallbacks=%v", in.Scope, in.Primary, in.Fallbacks)
+		sendJSON(w, http.StatusOK, map[string]string{"scope": in.Scope, "primary": in.Primary})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
