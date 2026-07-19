@@ -17,6 +17,8 @@
   let connected = $state(false);
   let streamWidth = $state(1280);
   let streamHeight = $state(720);
+  let browserEngine = $state<'firefox' | 'chromium'>('firefox');
+  let browserMode = $state<'main' | 'agent'>('main');
 
   let streamAbort: AbortController | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -58,9 +60,11 @@
     if (!vpcUrl || !sessionToken) return;
     isLoading = true;
     errorMsg = '';
-    statusMsg = 'Starting browser...';
+    statusMsg = `Starting ${browserEngine === 'chromium' ? 'Chromium' : 'Firefox'} ${browserMode}...`;
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'wake' });
+      if (browserMode !== 'main') params.set('mode', browserMode);
+      if (browserEngine !== 'firefox') params.set('engine', browserEngine);
       const res = await fetch(`/api/proxy/browser?${params.toString()}`, { method: 'POST' });
       const data: any = await res.json();
       if (res.ok) {
@@ -426,6 +430,16 @@
 
   <div class="browser-view__controls">
     {#if !browserRunning}
+      <div class="browser-selects">
+        <select bind:value={browserEngine}>
+          <option value="firefox">Firefox</option>
+          <option value="chromium">Chromium</option>
+        </select>
+        <select bind:value={browserMode}>
+          <option value="main">GUI (main)</option>
+          <option value="agent">Headless (agent)</option>
+        </select>
+      </div>
       <button
         type="button"
         class="btn btn--primary"
@@ -627,6 +641,25 @@
     padding: 8px 16px;
     border-bottom: 1px solid #e8eaed;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .browser-selects {
+    display: flex;
+    gap: 6px;
+  }
+
+  .browser-selects select {
+    padding: 6px 8px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 12px;
+    background: #fff;
+    color: #202124;
+    cursor: pointer;
   }
 
   .btn {

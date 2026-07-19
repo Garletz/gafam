@@ -315,7 +315,11 @@ export const POST: RequestHandler = async ({ url, request }) => {
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
 
 	if (action === 'wake') {
-		const vpcPath = `/api/web/browser/wake?token=${encodeURIComponent(token)}`;
+		const mode = url.searchParams.get('mode') || '';
+		const engine = url.searchParams.get('engine') || '';
+		let vpcPath = `/api/web/browser/wake?token=${encodeURIComponent(token)}`;
+		if (mode) vpcPath += `&mode=${encodeURIComponent(mode)}`;
+		if (engine) vpcPath += `&engine=${encodeURIComponent(engine)}`;
 		const result = await vpcRequest(vpcUrl, token, 'POST', vpcPath, '{}');
 		return json(result.data, { status: result.status });
 	}

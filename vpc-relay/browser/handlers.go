@@ -55,10 +55,15 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mode := r.URL.Query().Get("mode") // "" = main (GUI), "agent" = headless
+	mode := r.URL.Query().Get("mode")     // "" = main (GUI), "agent" = headless
+	engine := r.URL.Query().Get("engine") // "" = firefox, "chromium" = chromium
 	if mode == "agent" {
 		os.Setenv("BROWSER_PROFILE", "agent")
 		defer os.Unsetenv("BROWSER_PROFILE")
+	}
+	if engine == "chromium" {
+		os.Setenv("BROWSER_ENGINE", "chromium")
+		defer os.Unsetenv("BROWSER_ENGINE")
 	}
 
 	if !mu.TryLock() {
