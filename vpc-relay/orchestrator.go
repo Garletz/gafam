@@ -22,10 +22,11 @@ import (
 var (
 	orchestratorMu sync.Mutex
 
-	orchestratorStateMu sync.RWMutex
-	orchestratorRunning = false
-	orchestratorMission = ""
-	orchestratorSince   time.Time
+	orchestratorStateMu   sync.RWMutex
+	orchestratorRunning   = false
+	orchestratorMission   = ""
+	orchestratorSince     time.Time
+	orchestratorPublishTo string // recipient phone for feed publish ("*" = broadcast)
 )
 
 func setOrchestratorState(running bool, missionID string) {
@@ -35,6 +36,8 @@ func setOrchestratorState(running bool, missionID string) {
 	orchestratorMission = missionID
 	if running {
 		orchestratorSince = time.Now()
+	} else {
+		orchestratorPublishTo = ""
 	}
 }
 
@@ -367,11 +370,14 @@ func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[str
 //    or: { "mission_id": "m…", "karaka_id"?: … } to execute an existing board.
 func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Instruction string `json:"instruction"`
-		MissionID   string `json:"mission_id"`
-		KarakaID    string `json:"karaka_id"`
-		MaxQuests   int    `json:"max_quests"`
-		Mode        string `json:"mode"` // "" | action | research
+		Instruction    string `json:"instruction"`
+		MissionID      string `json:"mission_id"`
+		KarakaID       string `json:"karaka_id"`
+		MaxQuests      int    `json:"max_quests"`
+		Mode           string `json:"mode"`           // "" | action | research
+		PublishFeed    bool   `json:"publish_feed"`   // publish synthesis to /feed when done
+		RecipientPhone string `json:"recipient_phone"` // target for feed publish (default: *)
+		RequireApproval bool  `json:"require_approval"` // pause before each quest for human approval
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -407,7 +413,7 @@ func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !launchOrchestration(missionID, req.KarakaID, req.MaxQuests, req.Mode, nil) {
+	if !launchOrchestration(missionID, req.KarakaID, req.MaxQuests, req.Mode, nil, req.PublishFeed, req.RecipientPhone) {
 		sendJSON(w, http.StatusConflict, map[string]string{"error": "orchestrator_busy", "mission_id": orchestratorMission})
 		return
 	}
@@ -424,9 +430,10 @@ func orchestratorStatusHandler(w http.ResponseWriter, r *http.Request) {
 	orchestratorStateMu.RLock()
 	defer orchestratorStateMu.RUnlock()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
-		"running":    orchestratorRunning,
-		"mission_id": orchestratorMission,
-		"since":      orchestratorSince,
+		"running":     orchestratorRunning,
+		"mission_id":  orchestratorMission,
+		"since":       orchestratorSince,
+		"publish_to":  orchestratorPublishTo,
 	})
 }
 
@@ -434,11 +441,19 @@ func orchestratorStatusHandler(w http.ResponseWriter, r *http.Request) {
 // mode: "" / "action" (free planner) | "research" (fixed pipeline).
 // onDone, if set, receives the final mission state — used by the self-phone
 // SMS trigger to text the result back.
-func launchOrchestration(missionID, karakaID string, maxQuests int, mode string, onDone func(*moksa.Mission)) bool {
+func launchOrchestration(missionID, karakaID string, maxQuests int, mode string, onDone func(*moksa.Mission), publishFeed bool, recipientPhone string) bool {
 	if !orchestratorMu.TryLock() {
 		return false
 	}
 	setOrchestratorState(true, missionID)
+	if publishFeed {
+		orchestratorStateMu.Lock()
+		orchestratorPublishTo = recipientPhone
+		if orchestratorPublishTo == "" {
+			orchestratorPublishTo = "*"
+		}
+		orchestratorStateMu.Unlock()
+	}
 	go func() {
 		defer orchestratorMu.Unlock()
 		defer setOrchestratorState(false, "")
@@ -453,6 +468,12 @@ func launchOrchestration(missionID, karakaID string, maxQuests int, mode string,
 			if m, ok := moksa.GetMission(missionID); ok {
 				onDone(m)
 			}
+		}
+		// Publish synthesis to feed if requested
+		if publishFeed && recipientPhone != "" {
+			publishMissionResult(missionID, recipientPhone)
+		} else if publishFeed {
+			publishMissionResult(missionID, "*")
 		}
 	}()
 	return true
@@ -541,7 +562,7 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 			"GAFAM %s %s: %d/%d quests OK. Report: /files/missions/%s/report.md (sandbox)",
 			status, done.ID, total-failedN, total, done.ID,
 		))
-	})
+	}, false, "")
 	if !ok {
 		// Busy — drop the placeholder mission so the board stays clean.
 		moksa.DeleteMission(m.ID)
@@ -567,4 +588,47 @@ func queueSmsReply(recipient, body string) {
 		`INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
 		recipient, body, ts, "outbound",
 	)
+}
+
+// publishMissionResult publishes a mission's summary to the VPC feed
+// so federated nodes can scan it via their /links/{phone}/scan endpoint.
+func publishMissionResult(missionID, recipientPhone string) {
+	m, ok := moksa.GetMission(missionID)
+	if !ok {
+		log.Printf("feed-publish: mission %s not found", missionID)
+		return
+	}
+	selfPhone := getSelfPhone()
+	if selfPhone == "" {
+		log.Printf("feed-publish: self_phone not set — skipping")
+		return
+	}
+	content := fmt.Sprintf(
+		"Saṃyojaka mission %s: %s\nStatus: %s — %d/%d quests completed\nSummary: %s",
+		missionID, m.Instruction, m.Status,
+		countDoneQuests(m), len(m.Quests),
+		m.Summary,
+	)
+	if len(content) > 2000 {
+		content = content[:1996] + "..."
+	}
+	if _, err := db.Exec(
+		`INSERT INTO gafam_envelopes (author_phone, recipient_phone, content, created_at) 
+		 VALUES (?, ?, ?, datetime('now'))`,
+		selfPhone, recipientPhone, content,
+	); err != nil {
+		log.Printf("feed-publish: insert envelope failed: %v", err)
+		return
+	}
+	log.Printf("feed-publish: mission %s published to feed for %s", missionID, recipientPhone)
+}
+
+func countDoneQuests(m *moksa.Mission) int {
+	n := 0
+	for _, q := range m.Quests {
+		if q.Status == "done" {
+			n++
+		}
+	}
+	return n
 }

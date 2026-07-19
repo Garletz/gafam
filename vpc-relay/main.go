@@ -207,6 +207,7 @@ func main() {
 	// TLS removed to allow Cloudflare Workers TCP Socket to connect
 
 	initDB()
+	initFeedTables()
 	initLogsStore()
 	initVault()
 	initMissionStore()
@@ -248,6 +249,7 @@ func main() {
 
 	// Public Routes
 	mux.HandleFunc("GET /api/_ping", pingHandler)
+	mux.HandleFunc("GET /feed", publicFeedHandler)
 
 	// Protected Routes (Bearer token from APK)
 	mux.HandleFunc("POST /api/gafam/pair-device", authMiddleware(pairDeviceHandler))
@@ -352,6 +354,19 @@ func main() {
 	// Saṃyojaka — autonomous orchestrator loop (Manifest 25)
 	mux.HandleFunc("POST /api/web/orchestrator/run", sessionMiddleware(orchestratorRunHandler))
 	mux.HandleFunc("GET /api/web/orchestrator/status", sessionMiddleware(orchestratorStatusHandler))
+
+	// VPC↔VPC Federation (Manifest 17 — Poneglyph Part 3)
+	mux.HandleFunc("GET /api/web/links", sessionMiddleware(linksHandler))
+	mux.HandleFunc("POST /api/web/links", sessionMiddleware(linksHandler))
+	mux.HandleFunc("DELETE /api/web/links", sessionMiddleware(linksHandler))
+	mux.HandleFunc("GET /api/web/links/{phone}/scan", sessionMiddleware(feedScanHandler))
+	mux.HandleFunc("POST /api/web/feed/publish", sessionMiddleware(feedPublishHandler))
+	mux.HandleFunc("GET /api/web/feed", sessionMiddleware(feedOwnHandler))
+	mux.HandleFunc("GET /api/web/inbox", sessionMiddleware(inboxHandler))
+	mux.HandleFunc("GET /api/web/circles", sessionMiddleware(circlesHandler))
+	mux.HandleFunc("POST /api/web/circles", sessionMiddleware(circlesHandler))
+	mux.HandleFunc("DELETE /api/web/circles", sessionMiddleware(circlesHandler))
+	mux.HandleFunc("GET /api/web/circles/{name}", sessionMiddleware(circleFeedHandler))
 
 	// Mokṣa — Method4 quest board (Organic Tools)
 	mux.HandleFunc("GET /api/web/mission/world-card", sessionMiddleware(moksa.WorldCardHandler))
