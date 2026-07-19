@@ -5,10 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
-import java.net.HttpURLConnection
-import java.net.URL
-import kotlin.concurrent.thread
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import kotlin.concurrent.thread
 
 class SmsDeliverReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -58,14 +59,8 @@ class SmsDeliverReceiver : BroadcastReceiver() {
 
         thread {
             try {
-                val vpcUrl = URL("$apiUrl/api/sms/") 
-                val connection = vpcUrl.openConnection() as HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
-                connection.requestMethod = "POST"
-                connection.setRequestProperty("Content-Type", "application/json")
-                connection.setRequestProperty("Authorization", "Bearer $jwtSecret")
-                connection.doOutput = true
+                val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/")
+                val client = ApiClient.getClient(context) ?: return@thread
 
                 val jsonBody = JSONObject().apply {
                     put("sender", sender)
@@ -73,14 +68,40 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                     put("timestamp", System.currentTimeMillis())
                 }
 
-                connection.outputStream.use { os ->
-                    val input = jsonBody.toString().toByteArray(Charsets.UTF_8)
-                    os.write(input, 0, input.size)
+                val plaintext = jsonBody.toString().toByteArray(Charsets.UTF_8)
+                
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val keyBytes = digest.digest(jwtSecret.toByteArray(Charsets.UTF_8))
+                val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
+
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                val iv = ByteArray(12)
+                java.security.SecureRandom().nextBytes(iv)
+                val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
+                cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
+                
+                val ciphertext = cipher.doFinal(plaintext)
+                
+                val encryptedPayload = JSONObject().apply {
+                    put("encrypted_data", android.util.Base64.encodeToString(ciphertext, android.util.Base64.NO_WRAP))
+                    put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
                 }
-                val responseCode = connection.responseCode
-                Log.d("GAFAM_Relay", "Réponse VPC: $responseCode")
+
+                val bodyPayload = encryptedPayload.toString().toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url(spoofedUrl)
+                    .post(bodyPayload)
+                    .addHeader("Authorization", "Bearer $jwtSecret")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                Log.d("GAFAM_Relay", "Réponse VPC: ${response.code}")
+                if (!response.isSuccessful) {
+                    LogShipper.event(context, "W", "sms", "VPC SMS sync HTTP ${response.code}")
+                }
             } catch (e: Exception) {
                 Log.e("GAFAM_Relay", "Erreur d'envoi VPC", e)
+                LogShipper.event(context, "E", "sms", "VPC SMS sync failed: ${e.message}")
             } finally {
                 pendingResult?.finish()
             }

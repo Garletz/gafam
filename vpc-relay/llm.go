@@ -59,6 +59,9 @@ func loadLLMProviders() []LLMProvider {
 	if raw == "" {
 		return []LLMProvider{}
 	}
+	if decrypted, err := unsealSettingsValue(raw); err == nil {
+		raw = string(decrypted)
+	}
 	var out []LLMProvider
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
 		log.Printf("llm: corrupt providers setting, resetting: %v", err)
@@ -72,7 +75,11 @@ func saveLLMProviders(list []LLMProvider) error {
 	if err != nil {
 		return err
 	}
-	return setSetting(settingLLMProviders, string(raw))
+	sealed, err := sealSettingsValue(raw)
+	if err != nil {
+		return fmt.Errorf("llm: seal providers failed: %w", err)
+	}
+	return setSetting(settingLLMProviders, sealed)
 }
 
 func maskedProvider(p LLMProvider) LLMProvider {

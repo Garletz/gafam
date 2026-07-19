@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/pbkdf2"
 )
 
 // --- Crypto Helpers ---
@@ -39,54 +40,9 @@ func phoneToSubdomain(phone string) string {
 	return digits
 }
 
-// PBKDF2 implementation (no external dependency needed)
+// pbkdf2Key derives a key using PBKDF2-HMAC-SHA256 (via x/crypto/pbkdf2).
 func pbkdf2Key(password, salt []byte, iterations, keyLen int) []byte {
-	hmacSha256 := func(key, data []byte) []byte {
-		// HMAC-SHA256
-		blockSize := 64
-		if len(key) > blockSize {
-			h := sha256.Sum256(key)
-			key = h[:]
-		}
-		if len(key) < blockSize {
-			key = append(key, make([]byte, blockSize-len(key))...)
-		}
-		ipad := make([]byte, blockSize)
-		opad := make([]byte, blockSize)
-		for i := 0; i < blockSize; i++ {
-			ipad[i] = key[i] ^ 0x36
-			opad[i] = key[i] ^ 0x5c
-		}
-		inner := sha256.Sum256(append(ipad, data...))
-		outer := sha256.Sum256(append(opad, inner[:]...))
-		return outer[:]
-	}
-
-	numBlocks := (keyLen + 31) / 32
-	dk := make([]byte, 0, numBlocks*32)
-
-	for block := 1; block <= numBlocks; block++ {
-		// U1 = PRF(Password, Salt || INT_32_BE(i))
-		saltBlock := make([]byte, len(salt)+4)
-		copy(saltBlock, salt)
-		saltBlock[len(salt)+0] = byte(block >> 24)
-		saltBlock[len(salt)+1] = byte(block >> 16)
-		saltBlock[len(salt)+2] = byte(block >> 8)
-		saltBlock[len(salt)+3] = byte(block)
-
-		u := hmacSha256(password, saltBlock)
-		result := make([]byte, 32)
-		copy(result, u)
-
-		for i := 1; i < iterations; i++ {
-			u = hmacSha256(password, u)
-			for j := 0; j < 32; j++ {
-				result[j] ^= u[j]
-			}
-		}
-		dk = append(dk, result...)
-	}
-	return dk[:keyLen]
+	return pbkdf2.Key(password, salt, iterations, keyLen, sha256.New)
 }
 
 func encryptAESGCM(key []byte, plaintext []byte) (string, string, error) {
@@ -127,6 +83,34 @@ func decryptAESGCM(key []byte, encryptedBase64 string, ivBase64 string) ([]byte,
 		return nil, errors.New("invalid IV length")
 	}
 	return aesgcm.Open(nil, iv, ciphertext, nil)
+}
+
+// sealSettingsValue encrypts a plaintext settings value at rest with AES-256-GCM.
+// Returns a "seal:"-prefixed envelope that unsealSettingsValue can decrypt.
+func sealSettingsValue(plaintext []byte) (string, error) {
+	key := deriveKey(string(jwtSecret))
+	encrypted, iv, err := encryptAESGCM(key, plaintext)
+	if err != nil {
+		return "", err
+	}
+	return "seal:" + iv + ":" + encrypted, nil
+}
+
+// unsealSettingsValue decrypts a value sealed with sealSettingsValue.
+// Returns nil error if the value is not sealed (plaintext backward-compat).
+func unsealSettingsValue(blob string) ([]byte, error) {
+	if !strings.HasPrefix(blob, "seal:") {
+		return nil, errors.New("not sealed")
+	}
+	rest := blob[5:]
+	idx := strings.Index(rest, ":")
+	if idx < 0 {
+		return nil, errors.New("invalid seal format")
+	}
+	iv := rest[:idx]
+	encrypted := rest[idx+1:]
+	key := deriveKey(string(jwtSecret))
+	return decryptAESGCM(key, encrypted, iv)
 }
 
 // --- Outbox Handlers ---
@@ -849,8 +833,76 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		// 2. E2E decryption layer (AES-256-GCM with session token)
+		useE2E := r.Header.Get("X-GAFAM-E2E") == "1"
+		if useE2E && r.Body != nil && r.ContentLength > 0 {
+			var payload EncryptedPayload
+			bodyBytes, readErr := io.ReadAll(r.Body)
+			r.Body.Close()
+			if readErr == nil {
+				if jsonErr := json.Unmarshal(bodyBytes, &payload); jsonErr == nil && payload.EncryptedData != "" {
+					key := deriveKey(token)
+					if plaintext, decErr := decryptAESGCM(key, payload.EncryptedData, payload.IV); decErr == nil {
+						r.Body = io.NopCloser(bytes.NewReader(plaintext))
+						r.ContentLength = int64(len(plaintext))
+					} else {
+						r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+					}
+				} else {
+					r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+				}
+			}
+		}
+
+		// 3. E2E encryption wrapper for response
+		if useE2E {
+			key := deriveKey(token)
+			buf := &bytes.Buffer{}
+			e2eW := &e2eResponseWriter{ResponseWriter: w, buf: buf, key: key, statusCode: http.StatusOK}
+			next.ServeHTTP(e2eW, r)
+			if buf.Len() > 0 && strings.HasPrefix(e2eW.header.Get("Content-Type"), "application/json") {
+				encrypted, ivB64, encErr := encryptAESGCM(key, buf.Bytes())
+				if encErr == nil {
+					w.Header().Set("Content-Type", "application/json")
+					json.NewEncoder(w).Encode(EncryptedPayload{EncryptedData: encrypted, IV: ivB64})
+					return
+				}
+			}
+			// Fallback: write buffered response as-is
+			if e2eW.wroteHeader {
+				w.WriteHeader(e2eW.statusCode)
+			}
+			w.Write(buf.Bytes())
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	}
+}
+
+type e2eResponseWriter struct {
+	http.ResponseWriter
+	buf        *bytes.Buffer
+	key        []byte
+	statusCode int
+	wroteHeader bool
+	header     http.Header
+}
+
+func (w *e2eResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = w.ResponseWriter.Header().Clone()
+	}
+	return w.header
+}
+
+func (w *e2eResponseWriter) Write(b []byte) (int, error) {
+	return w.buf.Write(b)
+}
+
+func (w *e2eResponseWriter) WriteHeader(statusCode int) {
+	w.wroteHeader = true
+	w.statusCode = statusCode
 }
 
 // Generate a cryptographically random alphanumeric token

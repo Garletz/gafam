@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"crypto/tls"
 	"database/sql"
 	"encoding/json"
@@ -168,7 +169,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		tokenString := parts[1]
-		if tokenString != string(jwtSecret) {
+		if subtle.ConstantTimeCompare([]byte(tokenString), jwtSecret) != 1 {
 			http.Error(w, "Invalid Token", http.StatusForbidden)
 			return
 		}
