@@ -1,94 +1,160 @@
 # GAFAM — Architecture Guide
 
-> Quick reference for any developer or agent working on this project.
-> Read this first before touching any code.
+> Accurate as of 2026-07-19. Read this first before touching any code.
 
 ## What is GAFAM?
 
-A self-hosted Personal VPC (Virtual Private Cloud) system. The user deploys their own private server on a cloud provider, their Android phone silently relays incoming SMS to it, and they control everything from a desktop app or web dashboard.
+A self-hosted sovereign personal node (VPC) running on a $6/mo VPS. Your Android phone relays SMS to it, you control everything from a web dashboard, and agents live inside it. Federation allows multiple nodes to publish/scan each other's feeds.
 
 **Core flow:**
-1. User launches the Desktop Manager → creates a VPC on DigitalOcean (or manually)
-2. The VPC runs a Rust API server inside Docker
-3. User installs the Android relay on their phone → it silently forwards every incoming SMS to the VPC
-4. User opens the Web Frontend from any browser → reads SMS, contacts, notes stored on their personal VPC
+
+1. Desktop Manager (Tauri) creates a VPC on DigitalOcean in 1 click
+2. VPC runs the Go relay binary inside Docker (ports 5150/5151)
+3. Android APK forwards every incoming SMS via AES-GCM + cert pinning
+4. Web dashboard (Cloudflare + SvelteKit) connects via TCP socket proxy
+5. VPC nodes federate via publish/scan (Poneglyph model)
 
 ## Project Map
 
 ```
 GAFAM/
-├── backend/          ← Rust API server (the VPC brain)
-├── gafam-manager/    ← Desktop app for macOS (creates the VPC)
-├── android/          ← Android SMS relay agent
-├── frontend/         ← Web dashboard (Svelte)
-├── deploy-vpc.sh     ← One-liner deploy script for any VPS
-├── docker-compose.yml← Local dev setup
-├── .github/workflows/← CI/CD (Docker image build + push to GHCR)
-├── outline-server/   ← [Phase 4] Outline VPN server (not started)
-└── outline-apps/     ← [Phase 4] Outline VPN client (not started)
+├── vpc-relay/         ← Go API server (the VPC brain)
+│   ├── main.go        ← Entry point, ~60 routes, initDB
+│   ├── api.go         ← Crypto, handlers, sessionMiddleware
+│   ├── feed.go        ← VPC↔VPC federation (links, envelopes, inbox, circles)
+│   ├── llm.go         ← LLM provider router (OpenAI-compat, Qwen local)
+│   ├── orchestrator.go← Saṃyojaka agent loop (plan → execute → synthesize)
+│   ├── scrcpy_hub.go  ← Remote phone control (H.264 + ADB shell)
+│   ├── research.go    ← The Vault (markdown notes + FTS5 search)
+│   ├── browser/       ← Vātāyana: Firefox sidecar control
+│   ├── sandbox/       ← Yantraśālā: terminal + file sandbox
+│   ├── edge/          ← L2 inference on the phone (ONNX Qwen3)
+│   ├── suparna/       ← L1 log analyst (Qwen3 GGUF via llama.cpp)
+│   ├── karaka/        ← Tool registry + permissions
+│   ├── moksa/         ← Quest board (pose, claim, run, reward, synthesize)
+│   ├── scripts/       ← qwen-install.sh, qwen-ctl.sh, etc.
+│   ├── Dockerfile     ← Multi-stage: golang:alpine → debian:bookworm-slim
+│   ├── Dockerfile.browser  ← Firefox ESR + Xvfb + MJPEG streamer
+│   └── Dockerfile.sandbox  ← Alpine + bash/python/sqlite/jq/tmux
+│
+├── frontend/          ← Web dashboard (SvelteKit 5 + Cloudflare Workers)
+│   ├── src/routes/[phone]/+page.svelte  ← Main dashboard (1870 lines)
+│   ├── src/routes/+page.svelte          ← Landing (phone input)
+│   ├── src/routes/api/proxy/            ← TCP socket proxy routes
+│   ├── src/lib/*                        ← Components + helpers
+│   └── wrangler.jsonc                   ← Deploy config (gafam.cloud + D1)
+│
+├── frontend-old/      ← Legacy 3D deck POC (archived)
+│
+├── android/           ← Kotlin APK: SMS relay + edge inference
+│   └── app/src/../relay/
+│       ├── SmsReceiver.kt        ← AES-GCM SMS forwarder (cert-pinned)
+│       ├── SmsDeliverReceiver.kt ← Default SMS handler (unified)
+│       ├── ApiClient.kt          ← OkHttp + SHA-256 cert pinning
+│       ├── RelayForegroundService.kt ← Outbox poller + edge sync
+│       ├── EdgeInferenceService.kt   ← ONNX Qwen3 on-device
+│       └── ...
+│
+├── gafam-manager/     ← Tauri v2 desktop (macOS)
+│   ├── src/routes/+page.svelte  ← UI: DO OAuth + manual deploy
+│   ├── src/routes/tray/         ← Tray window (QR + ADB status)
+│   └── src-tauri/src/
+│       ├── lib.rs               ← DO droplet creation + cert gen
+│       └── scrcpy_bridge.rs     ← ADB↔VPC bridge (H.264 + touch)
+│
+├── manifest/          ← 27 architecture specs (the nervous system)
+│   ├── README.md              ← Index + layer map
+│   ├── 9b_tcp_socket_tls_solution.md  ← Cloudflare proxy design
+│   ├── 12_synchronous_mechanical_rendezvous.md ← Auth challenge
+│   ├── 17_poneglyph_conjugation_channel.md    ← Federation (3 parts)
+│   ├── 20-27_*.md             ← Sanskrit agent layer (Suparna→Dakṣiṇā)
+│   └── moksa/                 ← Method specs for agent orchestration
+│
+├── ghostd/            ← [WIP] Go daemon (ADB log stream → LLM, skeleton)
+├── device/            ← Concept: hardware relay (ESP32 + eSIM)
+├── META-INF/          ← Residual AAR metadata (candidate for removal)
+│
+├── deploy-vpc.sh      ← One-liner: Docker + sidecars + swap + Watchtower
+└── .github/workflows/
+    └── docker-publish.yml ← CI: build api/browser/sandbox → GHCR
 ```
 
 ---
 
 ## Components
 
-### 1. `backend/` — Rust API Server
+### 1. `vpc-relay/` — Go API Server
 
 | | |
 |---|---|
-| **Tech** | Rust, Loco framework, SeaORM, SQLite |
-| **Entry point** | `src/bin/main.rs` |
-| **Config** | `config/development.yaml`, `config/production.yaml` |
-| **Run locally** | `cargo loco start` (port 5150) |
-| **Build Docker** | `docker build -t gafam ./backend` |
+| **Tech** | Go 1.26, stdlib `net/http`, `modernc.org/sqlite` |
+| **Size** | ~11,750 lines (9,100 prod + 650 tests + 1,060 Python sidecars) |
+| **Entry** | `main.go` |
+| **Run** | `go run .` (port 5150), TLS optional on 5151 |
+| **Docker** | `ghcr.io/garletz/gafam:latest` |
 
-**Key files:**
-- `src/controllers/gafam.rs` — Main API: trust-device, reserve-vpc, contacts, notes
-- `src/controllers/sms.rs` — SMS receive + list (SeaORM, single source of truth)
-- `src/controllers/auth.rs` — User auth (Loco default)
-- `src/models/_entities/sms.rs` — SMS database entity (auto-generated)
-- `migration/` — Database migrations (SeaORM)
-- `Dockerfile` — Multi-stage build: `rust:latest` → `debian:bookworm-slim`
-- `.dockerignore` — Excludes `target/` from Docker context
+**Key routes (non-exhaustive):**
 
-**API Routes:**
-
-| Route | Method | What it does |
+| Group | Endpoint | Purpose |
 |---|---|---|
-| `POST /api/sms/` | POST | Receive an SMS (from Android relay) |
-| `GET /api/sms/` | GET | List all stored SMS |
-| `POST /api/gafam/trust-device` | POST | Device trust handshake (mock) |
-| `POST /api/gafam/reserve-vpc` | POST | Reserve a VPC (mock) |
-| `GET /api/gafam/vpc-status` | GET | VPC health check (mock) |
-| `GET /api/gafam/contacts` | GET | List contacts |
-| `POST /api/gafam/contacts` | POST | Create a contact |
-| `GET /api/gafam/notes` | GET | Read personal note |
-| `POST /api/gafam/notes` | POST | Save personal note |
+| **Public** | `GET /api/_ping` | Health check |
+| **Public** | `GET /feed` | VPC↔VPC federation feed |
+| **APK** | `POST /api/auth/sms/` | Encrypted SMS receive |
+| **APK** | `GET /api/auth/sms/outbox` | Outbox polling |
+| **APK** | `POST /api/auth/edge/sync` | L2 inference sync |
+| **Web** | `GET /api/web/sms` | SMS inbox |
+| **Web** | `GET /api/web/logs` | Log viewer |
+| **Web** | `GET /api/web/llm/providers` | LLM provider CRUD |
+| **Web** | `POST /api/web/llm/chat` | Single LLM entry point |
+| **Web** | `POST /api/web/orchestrator/run` | Saṃyojaka mission runner |
+| **Web** | `GET/POST /api/web/links` | Federation: link CRUD + scan |
+| **Web** | `GET /api/web/inbox` | Federation: inbox |
+| **Web** | `GET/POST /api/web/feed/publish` | Federation: publish |
+| **Web** | `*/browser/*`, `*/sandbox/*` | Sidecar proxy |
+| **Web** | `GET /ws/scrcpy/bridge` | Remote phone control bridge |
 
-> Routes marked "mock" return hardcoded/simulated data. Real implementation pending.
+**Sidecars (wake-on-demand, all stopped by default):**
+
+| Container | RAM | Purpose |
+|---|---|---|
+| `gafam-browser` (Vātāyana) | 600 MB | Firefox ESR + Xvfb + MJPEG/noVNC |
+| `gafam-sandbox` (Yantraśālā) | 128 MB | Terminal + file API + bash sessions |
+| `gafam-qwen` | 520 MB | llama.cpp server (Qwen3-0.6B GGUF) |
+
+**LLM engine tiers:**
+
+| Tier | Model | Location |
+|---|---|---|
+| L1 | Qwen3-0.6B GGUF | VPC (Suparna analyst) |
+| L2 | Qwen3-0.6B ONNX INT4 | Phone (EdgeInferenceService) |
+| L3 | DeepSeek V4 / Kimi K3 | Cloud provider (orchestration) |
 
 ---
 
-### 2. `gafam-manager/` — Desktop App (macOS)
+### 2. `frontend/` — Web Dashboard
 
 | | |
 |---|---|
-| **Tech** | Tauri v2 (Rust) + SvelteKit (TypeScript) |
-| **Run** | `cd gafam-manager && npm run tauri dev` |
-| **Build** | `npm run tauri build` (produces `.dmg`) |
+| **Tech** | SvelteKit 5 + Svelte 5 runes + TypeScript |
+| **Deploy** | Cloudflare Workers (`gafam.cloud` + `*.gafam.cloud`) |
+| **Database** | Cloudflare D1 (`gafam-directory`) for safe deposits |
+| **Build** | `npm run build && npx wrangler deploy` |
 
-**Key files:**
-- `src/routes/+page.svelte` — Main UI (cloud provider selection, deploy flow)
-- `src/routes/+layout.svelte` — Layout with CSS import
-- `src/app.css` — Styling (white minimalist theme)
-- `src/i18n.ts` + `src/locales/` — i18n setup (English, translation-ready)
-- `src-tauri/src/lib.rs` — Rust backend commands (OAuth simulation, crypto)
-- `src-tauri/Cargo.toml` — Rust dependencies
+**Key components:**
 
-**What the UI does:**
-1. Shows two cards: "DigitalOcean" (auto) or "Advanced" (manual)
-2. DigitalOcean path → calls `start_do_oauth` Rust command → simulated OAuth
-3. Advanced path → shows `curl` deploy script + JSON config paste area
+| Component | Tab | Purpose |
+|---|---|---|
+| `+page.svelte` (main) | Chats, Contacts | SMS conversations + contact list |
+| `Settings` | Settings | Node, recovery guardians, contacts sync |
+| `QuestBoard` | Quests | Mokṣa mission board |
+| `SuparnaPanel` | Suparna | Edge & VPC AI status |
+| `BrowserView` | Browser | Vātāyana (remote Firefox via noVNC) |
+| `SandboxView` | Sandbox | Yantraśālā (terminal + files) |
+| `VaultView` | Vault | Research memory search |
+| `FederationView` | Federation | Links, Inbox, Circles |
+| `RemoteControl` | /[phone]/remote | Screen mirroring (scrcpy overlay) |
+
+**Proxy architecture:** All API calls go through SvelteKit server routes that open raw TCP sockets to the VPC (bypassing Cloudflare Error 1003 on raw IPs). Supports `X-GAFAM-E2E: 1` for AES-256-GCM encryption.
 
 ---
 
@@ -96,64 +162,77 @@ GAFAM/
 
 | | |
 |---|---|
-| **Tech** | Kotlin, Android SDK 34, Gradle |
-| **Build** | `cd android && ./gradlew assembleDebug` |
-| **APK output** | `app/build/outputs/apk/debug/` |
+| **Tech** | Kotlin, SDK 34, OkHttp, ONNX Runtime GenAI |
+| **Build** | `./gradlew assembleDebug` |
+| **APK** | ~38 MB (dominated by ONNX native libs) |
 
-**Key files:**
-- `app/src/main/java/com/gafam/relay/SmsReceiver.kt` — BroadcastReceiver that intercepts every SMS and POSTs it to the VPC as JSON
-- `app/src/main/java/com/gafam/relay/MainActivity.kt` — Requests RECEIVE_SMS permission on launch
-- `app/src/main/AndroidManifest.xml` — Permissions (RECEIVE_SMS, INTERNET) + receiver registration
-
-**Important:** The VPC URL is currently hardcoded to `http://10.0.2.2:5150/api/sms` (Android emulator localhost). This needs to be made configurable before real use.
+**Key capabilities:**
+- AES-256-GCM encrypted SMS relay to VPC
+- SHA-256 certificate pinning + DNS spoofing (`wikipedia.org` → VPC IP)
+- Outbox polling (send SMS from web)
+- SMS history sync (last 400 messages)
+- Contact sync
+- Log shipping (logcat → VPC, batch every 5s)
+- Edge inference: Qwen3-0.6B ONNX INT4, wake/stop/infer from VPC
+- Challenge-based web login (time + click count)
+- Self-phone SMS triggers for Saṃyojaka (`/q`, `/r`)
+- Recovery SMS forwarding to guardians
 
 ---
 
-### 4. `frontend/` — Web Dashboard
+### 4. `gafam-manager/` — Desktop App
 
 | | |
 |---|---|
-| **Tech** | Svelte 4 (Vite), TypeScript |
-| **Run** | `cd frontend && npm run dev` |
-| **Main file** | `src/App.svelte` (29KB, substantial) |
+| **Tech** | Tauri v2 (Rust) + SvelteKit 5 + TypeScript |
+| **Run** | `npm run tauri dev` |
+| **Build** | `npm run tauri build` → `.dmg` |
 
-This is a web-based dashboard that connects to the VPC API to display SMS, contacts, and notes. Pre-existing code, not yet integrated with the live VPC flow.
+**Key flows:**
+- **VPC creation:** OAuth DigitalOcean → create droplet → cloud-init `deploy-vpc.sh`
+- **Crypto setup:** Generate JWT + self-signed cert (SAN `wikipedia.org`) + SHA-256 fingerprint
+- **Pairing:** Display QR code → scanned by Android APK
+- **ADB bridge:** scrcpy H.264 video + touch injection → WebSocket to VPC
+- **Tray:** Persistent icon with QR + ADB status + quick controls
 
 ---
 
 ### 5. DevOps / CI/CD
 
-| File | What it does |
+| File | Purpose |
 |---|---|
-| `.github/workflows/docker-publish.yml` | On push to `main` (backend changes): builds Docker image → pushes to `ghcr.io/garletz/gafam:latest` |
-| `deploy-vpc.sh` | Bash script to run on any VPS: installs Docker, pulls GHCR image, runs the API on port 5150 |
-| `docker-compose.yml` | Local dev: builds backend, mounts SQLite volume, exposes port 5150 |
+| `.github/workflows/docker-publish.yml` | Push to `main` (vpc-relay changes) → build 3 images → push to GHCR |
+| `deploy-vpc.sh` | One-liner: install Docker, swap 4G, pull images, start API + Watchtower + sidecars |
+| `docker-compose.{browser,sandbox,qwen}.yml` | Sidecar definitions (stopped by default, woke on demand) |
 
-**GitHub secrets required:**
-- `CR_PAT` — GitHub Personal Access Token with `write:packages` scope (for pushing Docker images)
+**Docker images:** `ghcr.io/garletz/gafam:{latest,browser,sandbox}`
 
-**Docker image:** `ghcr.io/garletz/gafam:latest`
+**Auto-update:** Watchtower polls GHCR every 5 min → auto-restart `gafam-api` + sidecars
 
 ---
 
 ## Data Flow
 
 ```
-┌─────────────────┐     SMS arrives      ┌──────────────────┐
-│  Android Phone   │ ──────────────────→ │   SmsReceiver.kt  │
-│  (physical)      │                      │   (BroadcastRcvr) │
-└─────────────────┘                      └────────┬─────────┘
-                                                   │ POST /api/sms/
-                                                   ▼
-┌─────────────────┐     GET /api/*       ┌──────────────────┐
-│  Web Frontend    │ ←─────────────────→ │   Rust Loco API   │
-│  (any browser)   │                      │   (Docker on VPC) │
-└─────────────────┘                      └────────┬─────────┘
-                                                   │ SQLite
-┌─────────────────┐     OAuth / Script   ┌────────▼─────────┐
-│  Desktop Manager │ ──────────────────→ │   DigitalOcean     │
-│  (Tauri macOS)   │                      │   (creates VPC)    │
-└─────────────────┘                      └──────────────────┘
+┌──────────────┐   AES-GCM HTTPS:5151    ┌──────────────────┐
+│ Android APK   │ ──────────────────────→ │  Go relay (VPC)   │
+│ cert-pinned   │   SMS + logs + edge sync │  port 5150/5151   │
+└──────┬───────┘                          └────────┬─────────┘
+       │ ADB H.264                                 │
+┌──────▼───────┐   WSS:5150              ┌────────▼─────────┐
+│ Tauri Manager │ ──────────────────────→ │  scrcpy hub      │
+│ scrcpy bridge │   video + touch + shell │  SQLite WAL      │
+└──────────────┘                          └────────┬─────────┘
+                                                   │ TCP socket
+┌──────────────┐   HTTP + AES-GCM        ┌────────▼─────────┐
+│ Cloudflare    │ ←────────────────────── │  Web dashboard   │
+│ Worker proxy  │   (cloudflare:sockets)  │  SvelteKit 5     │
+└──────┬───────┘                          └──────────────────┘
+       │                                         │ GET /feed
+┌──────▼───────┐                          ┌──────▼──────────┐
+│ gafam.cloud   │   D1 directory          │  Other GAFAM     │
+│ (directory)  │   safe deposits           │  VPC nodes       │
+└──────────────┘                          └──────────────────┘
 ```
 
 ---
@@ -162,22 +241,27 @@ This is a web-based dashboard that connects to the VPC API to display SMS, conta
 
 | Layer | Technology |
 |---|---|
-| Backend API | Rust + Loco + SeaORM + SQLite |
-| Desktop App | Tauri v2 + SvelteKit + TypeScript |
-| Android App | Kotlin + Android SDK 34 |
-| Web Frontend | Svelte 4 + Vite + TypeScript |
-| Database | SQLite (embedded in backend) |
-| Container | Docker (multi-stage build) |
-| CI/CD | GitHub Actions → GHCR |
-| VPN (planned) | Outline Server/Client |
+| Backend | Go 1.26 + `net/http` + `modernc.org/sqlite` |
+| Desktop | Tauri v2 + Rust + SvelteKit 5 |
+| Android | Kotlin + OkHttp + ONNX Runtime GenAI |
+| Frontend | SvelteKit 5 + Svelte 5 runes + Cloudflare Workers |
+| Frontend DB | Cloudflare D1 |
+| Database | SQLite (WAL mode, FTS5) |
+| Container | Docker (multi-stage, 3 images) |
+| CI/CD | GitHub Actions → GHCR + Watchtower |
+| Sidecars | Firefox ESR / Alpine / llama.cpp |
+| LLM (L1) | Qwen3-0.6B GGUF (llama.cpp) |
+| LLM (L2) | Qwen3-0.6B ONNX INT4 (onnxruntime-genai) |
+| LLM (L3) | DeepSeek V4 / Kimi K3 (OpenAI-compatible API) |
 
 ---
 
-## Current Status
+## Current Status (2026-07-19)
 
-- **Backend:** Compiles, runs locally, API routes functional. Docker build being fixed on CI.
-- **Desktop Manager:** Runs on macOS via `npm run tauri dev`. OAuth is simulated.
-- **Android Relay:** Code written, not yet compiled/tested on device.
-- **Web Frontend:** Pre-existing code, not yet wired to live VPC.
-- **CI/CD:** GitHub Actions pipeline active, Docker image publishing in progress.
-- **VPN (Phase 4):** Outline submodules present, not started.
+- **Backend:** Compiles, ~60 routes functional, federated, tests passing. Docker image on GHCR.
+- **Frontend:** Deployed on gafam.cloud with all Organic Tools tabs.
+- **Android:** Compiled, installed on device, SMS + edge inference operational.
+- **Desktop Manager:** Runs on macOS, provisions VPCs in 1 click.
+- **CI/CD:** Pushes to main auto-build 3 images → Watchtower auto-updates VPS.
+- **Federation:** VPC↔VPC publish/scan implemented (links, envelopes, inbox, circles).
+- **Security:** AES-256-GCM E2E (Web↔VPC + APK↔VPC), Ed25519 node keypairs.

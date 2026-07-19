@@ -26,8 +26,9 @@ echo "[vatayana] Starting PulseAudio..."
 pulseaudio --start --exit-idle-time=-1 --daemonize=yes 2>/dev/null || true
 sleep 0.5
 
-echo "[vatayana] Starting Firefox ESR (main profile)..."
-firefox-esr -P main --no-remote --new-instance "about:blank" &
+FIREFOX_PROFILE="${FIREFOX_PROFILE:-main}"
+echo "[vatayana] Starting Firefox ESR (${FIREFOX_PROFILE} profile)..."
+firefox-esr -P "${FIREFOX_PROFILE}" --no-remote --new-instance "about:blank" &
 sleep 2
 
 echo "[vatayana] Starting stream server (JPEG over HTTP on port ${STREAM_PORT})..."

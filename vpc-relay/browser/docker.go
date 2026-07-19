@@ -150,6 +150,10 @@ func pullImage(image string) error {
 }
 
 func createContainer(image string) error {
+	profile := "main"
+	if p := os.Getenv("BROWSER_PROFILE"); p != "" {
+		profile = p
+	}
 	cfg := map[string]interface{}{
 		"Image": image,
 		"HostConfig": map[string]interface{}{
@@ -166,6 +170,9 @@ func createContainer(image string) error {
 				"/tmp":     "size=128m",
 				"/dev/shm": "size=128m",
 			},
+		},
+		"Env": []string{
+			"FIREFOX_PROFILE=" + profile,
 		},
 		"NetworkingConfig": map[string]interface{}{
 			"EndpointsConfig": map[string]interface{}{

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +53,12 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	mode := r.URL.Query().Get("mode") // "" = main (GUI), "agent" = headless
+	if mode == "agent" {
+		os.Setenv("BROWSER_PROFILE", "agent")
+		defer os.Unsetenv("BROWSER_PROFILE")
 	}
 
 	if !mu.TryLock() {
