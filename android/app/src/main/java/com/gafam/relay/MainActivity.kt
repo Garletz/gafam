@@ -250,7 +250,12 @@ class MainActivity : AppCompatActivity() {
         smsLogText.setTextColor(android.graphics.Color.LTGRAY)
         smsLogText.text = "No SMS intercepted yet."
         layout.addView(smsLogText)
-        
+
+        val emailBtn = Button(this)
+        setNotifListenerBtn(emailBtn)
+        emailBtn.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        layout.addView(emailBtn)
+
         setContentView(layout)
         updateStatus()
 
@@ -634,5 +639,16 @@ class MainActivity : AppCompatActivity() {
                 Log.e("GAFAM_Relay", "Failed to sync contacts", e)
             }
         }
+    }
+
+    private fun isNotifListenerEnabled(): Boolean {
+        val flat = android.provider.Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
+        return flat.contains("com.gafam.relay")
+    }
+
+    private fun setNotifListenerBtn(btn: Button) {
+        val on = isNotifListenerEnabled()
+        btn.text = if (on) "📧 Email Relay: ACTIVE ✅" else "📧 Email Relay: INACTIVE ❌"
+        btn.setTextColor(if (on) 0xFF00AA00.toInt() else 0xFFAA0000.toInt())
     }
 }
