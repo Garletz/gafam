@@ -170,8 +170,8 @@
 87-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:52:13-48
 88            android:excludeFromRecents="true"
 88-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:55:13-46
-89            android:exported="false"
-89-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:53:13-37
+89            android:exported="true"
+89-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:53:13-36
 90            android:launchMode="singleInstance"
 90-->/Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:56:13-48
 91            android:theme="@android:style/Theme.Translucent.NoTitleBar" />

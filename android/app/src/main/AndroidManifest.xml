@@ -50,7 +50,7 @@
 
         <activity
             android:name=".GmailScrapeActivity"
-            android:exported="false"
+            android:exported="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:launchMode="singleInstance" />

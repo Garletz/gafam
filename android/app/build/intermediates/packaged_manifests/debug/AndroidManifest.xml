@@ -86,7 +86,7 @@
         <activity
             android:name="com.gafam.relay.GmailScrapeActivity"
             android:excludeFromRecents="true"
-            android:exported="false"
+            android:exported="true"
             android:launchMode="singleInstance"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
