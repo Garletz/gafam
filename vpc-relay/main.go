@@ -209,6 +209,8 @@ func main() {
 	initDB()
 	initFeedTables()
 	initLogsStore()
+	initCredentialTables()
+	initEmailTables()
 	initVault()
 	initMissionStore()
 	registerVaultTools()
@@ -316,6 +318,7 @@ func main() {
 	mux.HandleFunc("POST /api/auth/edge/sync", authMiddleware(edgeApkSyncHandler))
 	mux.HandleFunc("GET /api/auth/edge/model", authMiddleware(edgeModelManifestHandler))
 	mux.HandleFunc("GET /api/auth/edge/model/{file}", authMiddleware(edgeModelFileHandler))
+	mux.HandleFunc("POST /api/auth/email/notif", authMiddleware(emailNotifHandler))
 
 	// Auth Routes for Web Client handshake
 	mux.HandleFunc("POST /api/auth/challenge", authMiddleware(challengeAuthHandler))
@@ -423,6 +426,19 @@ func main() {
 	mux.HandleFunc("POST /api/web/circles", sessionMiddleware(circlesHandler))
 	mux.HandleFunc("DELETE /api/web/circles", sessionMiddleware(circlesHandler))
 	mux.HandleFunc("GET /api/web/circles/{name}", sessionMiddleware(circleFeedHandler))
+
+	// Credential vault + TOTP (encrypted at rest)
+	mux.HandleFunc("GET /api/web/credentials", sessionMiddleware(credentialsHandler))
+	mux.HandleFunc("POST /api/web/credentials", sessionMiddleware(credentialsHandler))
+	mux.HandleFunc("DELETE /api/web/credentials", sessionMiddleware(credentialsHandler))
+	mux.HandleFunc("GET /api/web/credentials/otp", sessionMiddleware(credentialsOTPHandler))
+	mux.HandleFunc("GET /api/web/credentials/password", sessionMiddleware(credentialsPasswordHandler))
+
+	// Email inbox (IMAP + Android Notification relay)
+	mux.HandleFunc("GET /api/web/email/inbox", sessionMiddleware(emailInboxHandler))
+	mux.HandleFunc("POST /api/web/email/fetch", sessionMiddleware(emailFetchHandler))
+	mux.HandleFunc("GET /api/web/email/settings", sessionMiddleware(emailSettingsHandler))
+	mux.HandleFunc("POST /api/web/email/settings", sessionMiddleware(emailSettingsHandler))
 
 	// Mokṣa — Method4 quest board (Organic Tools)
 	mux.HandleFunc("GET /api/web/mission/world-card", sessionMiddleware(moksa.WorldCardHandler))
