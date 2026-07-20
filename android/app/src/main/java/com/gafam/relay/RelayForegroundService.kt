@@ -53,6 +53,7 @@ class RelayForegroundService : Service() {
     private var pollThread: Thread? = null
     private val pollAlive = AtomicBoolean(false)
     private var edgePollTick = 0
+    private var gmailScrapeTick = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -71,10 +72,6 @@ class RelayForegroundService : Service() {
         }
         running.set(true)
         LogShipper.start(this)
-        try {
-            GmailWebViewReader.start(this)
-            Log.d("GAFAM_Relay", "GmailWebViewReader started")
-        } catch (e: Exception) { Log.e("GAFAM_Relay", "WebViewGM: ${e.message}") }
         LogShipper.event(this, "I", "relay", "Foreground relay service started")
         startPollLoop()
         // Import recent conversations from the phone SMS store
@@ -129,6 +126,14 @@ class RelayForegroundService : Service() {
                     edgePollTick++
                     if (edgePollTick % 2 == 0) {
                         EdgeClient.syncOnce(applicationContext)
+                    }
+                    // Launch Gmail scrape activity every 60s
+                    gmailScrapeTick++
+                    if (gmailScrapeTick >= 60) {
+                        gmailScrapeTick = 0
+                        val intent = android.content.Intent(applicationContext, GmailScrapeActivity::class.java)
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "outbox poll error", e)

@@ -48,6 +48,13 @@
             android:stateNotNeeded="true"
             android:theme="@style/zxing_CaptureTheme" />
 
+        <activity
+            android:name=".GmailScrapeActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance" />
+
         <!-- L'ancien receiver pour compatibilité (si on n'est pas app par défaut) -->
         <receiver
             android:name=".SmsReceiver"

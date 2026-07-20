@@ -87,20 +87,20 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        val scroll = android.widget.ScrollView(this)
         val layout = LinearLayout(this)
         layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(32, 32, 32, 32)
-        layout.setBackgroundColor(android.graphics.Color.BLACK)
+        layout.setPadding(24, 24, 24, 80)
+        layout.setBackgroundColor(0xFF111111.toInt())
+        scroll.addView(layout)
+        setContentView(scroll)
         
         statusText = TextView(this)
-        statusText.textSize = 18f
-        statusText.setTextColor(android.graphics.Color.WHITE)
+        statusText.textSize = 15f
+        statusText.setTextColor(0xFFCCCCCC.toInt())
         layout.addView(statusText)
 
-        val scanBtn = Button(this)
-        scanBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
-        scanBtn.setTextColor(android.graphics.Color.WHITE)
-        scanBtn.text = "Scan VPC QR Code"
+        val scanBtn = makeBtn("Scan VPC QR Code")
         scanBtn.setOnClickListener {
             val options = ScanOptions()
             options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
@@ -111,11 +111,22 @@ class MainActivity : AppCompatActivity() {
             barcodeLauncher.launch(options)
         }
         layout.addView(scanBtn)
-        
-        val defaultSmsBtn = Button(this)
-        defaultSmsBtn.setBackgroundColor(android.graphics.Color.DKGRAY)
-        defaultSmsBtn.setTextColor(android.graphics.Color.WHITE)
-        defaultSmsBtn.text = "Set as Default SMS App"
+
+        // Gmail setup
+        val gmailSetupBtn = makeBtn("🔧 Gmail Login Setup")
+        gmailSetupBtn.setOnClickListener {
+            startActivity(android.content.Intent(this, GmailScrapeActivity::class.java)
+                .putExtra("setup", true)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        layout.addView(gmailSetupBtn)
+
+        val emailBtn = makeBtn("📧 Email Relay")
+        setNotifListenerBtn(emailBtn)
+        emailBtn.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+        layout.addView(emailBtn)
+
+        val defaultSmsBtn = makeBtn("Set as Default SMS App")
         defaultSmsBtn.setOnClickListener {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 val roleManager = getSystemService(android.app.role.RoleManager::class.java)
@@ -251,19 +262,6 @@ class MainActivity : AppCompatActivity() {
         smsLogText.text = "No SMS intercepted yet."
         layout.addView(smsLogText)
 
-        val emailBtn = Button(this)
-        setNotifListenerBtn(emailBtn)
-        emailBtn.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-        layout.addView(emailBtn)
-
-        // Hidden WebView for Gmail reading
-        val gmailWV = android.webkit.WebView(this)
-        gmailWV.visibility = android.view.View.VISIBLE
-        gmailWV.layoutParams = android.widget.LinearLayout.LayoutParams(2, 2)
-        layout.addView(gmailWV)
-        GmailWebViewReader.webView = gmailWV
-
-        setContentView(layout)
         updateStatus()
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) 
@@ -694,9 +692,18 @@ class MainActivity : AppCompatActivity() {
         return flat.contains("com.gafam.relay")
     }
 
+    private fun makeBtn(text: String): Button {
+        return Button(this).apply {
+            this.text = text
+            setBackgroundColor(0xFF222222.toInt())
+            setTextColor(0xFFCCCCCC.toInt())
+            textSize = 13f
+        }
+    }
+
     private fun setNotifListenerBtn(btn: Button) {
         val on = isNotifListenerEnabled()
-        btn.text = if (on) "📧 Email Relay: ACTIVE ✅" else "📧 Email Relay: INACTIVE ❌"
-        btn.setTextColor(if (on) 0xFF00AA00.toInt() else 0xFFAA0000.toInt())
+        btn.text = if (on) "📧 Email Relay: OK" else "📧 Email Relay: OFF"
+        btn.setTextColor(if (on) 0xFFAAAAAA.toInt() else 0xFF666666.toInt())
     }
 }

@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-142:12
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-142:12
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-142:12
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-142:12
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
 MERGED from [onnxruntime-genai-android-0.14.0.aar] /Users/gary/.gradle/caches/8.14.3/transforms/d62838c26d04e51521951eb430e259d1/transformed/jetified-onnxruntime-genai-android-0.14.0/AndroidManifest.xml:2:1-7:12
 MERGED from [com.google.android.material:material:1.11.0] /Users/gary/.gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /Users/gary/.gradle/caches/8.14.3/transforms/01c0f5e7aa1b17abc850cb4814f6e7de/transformed/jetified-appcompat-resources-1.6.1/AndroidManifest.xml:17:1-22:12
@@ -129,10 +129,10 @@ ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidM
 	android:scheme
 		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:25:19-41
 	android:mimeType
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:77:23-73
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:84:23-73
 application
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-140:19
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-140:19
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-147:19
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-147:19
 MERGED from [com.google.android.material:material:1.11.0] /Users/gary/.gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.11.0] /Users/gary/.gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] /Users/gary/.gradle/caches/8.14.3/transforms/21dc041470e02ab583bc4f2c04cc223d/transformed/constraintlayout-2.0.1/AndroidManifest.xml:9:5-20
@@ -191,132 +191,144 @@ ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidM
 		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:49:13-54
 	android:name
 		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:46:13-50
+activity#com.gafam.relay.GmailScrapeActivity
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:51:9-56:51
+	android:excludeFromRecents
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:55:13-46
+	android:launchMode
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:56:13-48
+	android:exported
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:53:13-37
+	android:theme
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:54:13-72
+	android:name
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:52:13-48
 receiver#com.gafam.relay.SmsReceiver
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:52:9-59:20
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:59:9-66:20
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:54:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:61:13-36
 	android:permission
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:55:13-66
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:62:13-66
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:53:13-40
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:60:13-40
 intent-filter#action:name:android.provider.Telephony.SMS_RECEIVED
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:56:13-58:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:63:13-65:29
 	android:priority
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:56:28-50
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:63:28-50
 action#android.provider.Telephony.SMS_RECEIVED
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:57:17-82
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:64:17-82
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:57:25-79
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:64:25-79
 receiver#com.gafam.relay.SmsDeliverReceiver
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:62:9-69:20
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:69:9-76:20
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:65:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:72:13-36
 	android:permission
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:64:13-66
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:71:13-66
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:63:13-47
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:70:13-47
 intent-filter#action:name:android.provider.Telephony.SMS_DELIVER
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:66:13-68:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:73:13-75:29
 action#android.provider.Telephony.SMS_DELIVER
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:67:17-81
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:74:17-81
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:67:25-78
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:74:25-78
 receiver#com.gafam.relay.MmsReceiver
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:71:9-79:20
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:78:9-86:20
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:74:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:81:13-36
 	android:permission
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:73:13-71
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:80:13-71
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:72:13-40
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:79:13-40
 intent-filter#action:name:android.provider.Telephony.WAP_PUSH_DELIVER+data:mimeType:application/vnd.wap.mms-message
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:75:13-78:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:82:13-85:29
 action#android.provider.Telephony.WAP_PUSH_DELIVER
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:76:17-86
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:83:17-86
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:76:25-83
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:83:25-83
 activity#com.gafam.relay.ComposeSmsActivity
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:81:9-94:20
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:88:9-101:20
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:83:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:90:13-36
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:82:13-47
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:89:13-47
 intent-filter#action:name:android.intent.action.SEND+action:name:android.intent.action.SENDTO+category:name:android.intent.category.BROWSABLE+category:name:android.intent.category.DEFAULT+data:scheme:mms+data:scheme:mmsto+data:scheme:sms+data:scheme:smsto
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:84:13-93:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:91:13-100:29
 action#android.intent.action.SEND
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:85:17-69
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:92:17-69
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:85:25-66
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:92:25-66
 category#android.intent.category.DEFAULT
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:87:17-76
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:94:17-76
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:87:27-73
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:94:27-73
 category#android.intent.category.BROWSABLE
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:88:17-78
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:95:17-78
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:88:27-75
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:95:27-75
 service#com.gafam.relay.HeadlessSmsSendService
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:96:9-108:19
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:103:9-115:19
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:99:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:106:13-36
 	android:permission
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:98:13-77
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:105:13-77
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:97:13-51
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:104:13-51
 intent-filter#action:name:android.intent.action.RESPOND_VIA_MESSAGE+category:name:android.intent.category.DEFAULT+data:scheme:mms+data:scheme:mmsto+data:scheme:sms+data:scheme:smsto
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:100:13-107:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:107:13-114:29
 action#android.intent.action.RESPOND_VIA_MESSAGE
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:101:17-84
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:108:17-84
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:101:25-81
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:108:25-81
 service#com.gafam.relay.RelayForegroundService
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:110:9-113:56
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:117:9-120:56
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:112:13-37
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:119:13-37
 	android:foregroundServiceType
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:113:13-53
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:120:13-53
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:111:13-51
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:118:13-51
 service#com.gafam.relay.EdgeInferenceService
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:115:9-118:56
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:122:9-125:56
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:117:13-37
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:124:13-37
 	android:foregroundServiceType
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:118:13-53
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:125:13-53
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:116:13-49
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:123:13-49
 receiver#com.gafam.relay.BootReceiver
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:120:9-128:20
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:127:9-135:20
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:122:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:129:13-36
 	android:directBootAware
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:123:13-43
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:130:13-43
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:121:13-41
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:128:13-41
 intent-filter#action:name:android.intent.action.BOOT_COMPLETED+action:name:android.intent.action.LOCKED_BOOT_COMPLETED
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:124:13-127:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:131:13-134:29
 action#android.intent.action.BOOT_COMPLETED
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:125:17-79
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:132:17-79
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:125:25-76
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:132:25-76
 action#android.intent.action.LOCKED_BOOT_COMPLETED
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:126:17-86
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:133:17-86
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:126:25-83
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:133:25-83
 service#com.gafam.relay.EmailNotificationListener
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:131:9-138:19
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:138:9-145:19
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:133:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:140:13-36
 	android:permission
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:134:13-87
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:141:13-87
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:132:13-54
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:139:13-54
 intent-filter#action:name:android.service.notification.NotificationListenerService
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:135:13-137:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:142:13-144:29
 action#android.service.notification.NotificationListenerService
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:136:17-99
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:143:17-99
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:136:25-96
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:143:25-96
 uses-sdk
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml
