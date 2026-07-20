@@ -121,11 +121,8 @@ type OutboxParams struct {
 }
 
 func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
-	var payload EncryptedPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
-		return
-	}
+	bodyBytes, _ := io.ReadAll(r.Body)
+	r.Body.Close()
 
 	token := r.URL.Query().Get("token")
 	if token == "" {
@@ -139,15 +136,24 @@ func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := deriveKey(token)
-	plaintext, err := decryptAESGCM(key, payload.EncryptedData, payload.IV)
-	if err != nil {
-		http.Error(w, "Decryption failed", http.StatusForbidden)
-		return
+	var params OutboxParams
+
+	// Try encrypted envelope first (legacy/inner app-layer)
+	var encrypted EncryptedPayload
+	if json.Unmarshal(bodyBytes, &encrypted) == nil && encrypted.EncryptedData != "" {
+		plaintext, decErr := decryptAESGCM(key, encrypted.EncryptedData, encrypted.IV)
+		if decErr == nil {
+			json.Unmarshal(plaintext, &params)
+		}
 	}
 
-	var params OutboxParams
-	if err := json.Unmarshal(plaintext, &params); err != nil {
-		http.Error(w, "Invalid decrypted JSON payload", http.StatusBadRequest)
+	// Fallback: plain JSON (used when E2E transport layer already decrypted)
+	if params.Body == "" {
+		json.Unmarshal(bodyBytes, &params)
+	}
+
+	if params.Body == "" {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
 		return
 	}
 

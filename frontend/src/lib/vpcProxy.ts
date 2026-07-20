@@ -13,7 +13,7 @@ export async function vpcRequest(
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 	pathAndQuery: string,
 	body?: string,
-	e2e?: boolean
+	e2e: boolean = false // opt-in: enable for sensitive routes (SMS, settings, contacts)
 ): Promise<VpcResult> {
 	const parsed = new URL(vpcUrl);
 	const host = parsed.hostname;

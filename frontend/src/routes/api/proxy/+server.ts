@@ -31,6 +31,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			const httpRequest = [
 				`GET /api/web/sms?token=${encodeURIComponent(token)} HTTP/1.1`,
 				`Host: ${host}`,
+				`X-GAFAM-E2E: 1`,
 				`Connection: close`,
 				``,
 				``
@@ -119,6 +120,7 @@ export const POST: RequestHandler = async ({ url, request }) => {
 			const httpRequest = [
 				`POST /api/web/sms/outbox?token=${encodeURIComponent(token)} HTTP/1.1`,
 				`Host: ${host}`,
+				`X-GAFAM-E2E: 1`,
 				`Content-Type: application/json`,
 				`Content-Length: ${payload.length}`,
 				`Connection: close`,
