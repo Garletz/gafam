@@ -396,12 +396,24 @@
           <span class="am-instr">{m.instruction}</span>
           <span class="am-tools">
             {#each m.quests.slice(0, 3) as q}
-              <span class="am-tool-chip">{q.tool}</span>
+              <span class="am-tool-chip" class:am-tool-running={q.status === 'running' || q.status === 'claimed'}>{q.tool}</span>
             {/each}
             {#if m.quests.length > 3}<span class="am-more">+{m.quests.length - 3}</span>{/if}
           </span>
           <span class="am-pill">{m.status}</span>
         </button>
+        {#if m.status !== 'done' && m.status !== 'cancelled'}
+          <div class="qb-activity-detail">
+            {#each m.quests as q}
+              <div class="qb-activity-quest">
+                <span class="aq-dot" class:aq-running={q.status === 'running'} class:aq-done={q.status === 'done'} class:aq-failed={q.status === 'failed'} class:aq-pending={q.status === 'pending'}></span>
+                <span class="aq-id mono">{q.id}</span>
+                <span class="aq-tool mono">{q.tool}</span>
+                <span class="aq-status">{q.status}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
       {/each}
     </div>
     {/if}
@@ -677,6 +689,28 @@
   .am-active .am-pill { background: #1a73e8; color: #fff; }
   .am-done .am-pill { background: #e6f4ea; color: #137333; }
   .am-cancelled .am-pill { background: #fce8e6; color: #c5221f; }
+  .am-tool-running { background: #d2e3fc; color: #174ea6; animation: toolPulse 1.5s ease-in-out infinite; }
+  @keyframes toolPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  /* Quest detail (per mission) */
+  .qb-activity-detail {
+    padding: 0 10px 6px; display: flex; flex-direction: column; gap: 1px;
+    border-bottom: 1px solid #f1f3f4;
+  }
+  .qb-activity-quest {
+    display: flex; align-items: center; gap: 6px; font-size: 11px;
+    color: #5f6368;
+  }
+  .aq-dot { width: 6px; height: 6px; border-radius: 50%; background: #dadce0; flex-shrink: 0; }
+  .aq-running { background: #1a73e8; animation: toolPulse 1.5s ease-in-out infinite; }
+  .aq-done { background: #137333; }
+  .aq-failed { background: #c5221f; }
+  .aq-pending { background: #dadce0; }
+  .aq-id { font-size: 10px; color: #80868b; }
+  .aq-tool { font-size: 10px; }
+  .aq-status { font-size: 10px; margin-left: auto; }
+  .aq-status.pending { color: #80868b; }
+
   .qb-activity-empty { padding: 16px; text-align: center; font-size: 12px; color: #80868b; }
   .qb-activity-err { color: #c5221f; font-weight: 600; }
 
