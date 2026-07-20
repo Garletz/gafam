@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +81,9 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("  q2: sandbox.file_write → create /tmp/parse.py that extracts headlines\n")
 	b.WriteString("  q3: sandbox.exec → python3 /tmp/parse.py\n")
 	b.WriteString("  q4: sandbox.file_read → read the result\n\n")
+	b.WriteString("   *** YOU CAN PASS q1's RESULT TO q2! Use {{q1.result.text}} ***\n")
+	b.WriteString("   Example: sandbox.file_write params: {\"path\":\"/tmp/page.txt\", \"content\":\"{{q1.result.text}}\"}\n")
+	b.WriteString("   Available fields: {{qN.result.text}}, {{qN.result.stdout}}, {{qN.result}} (full JSON)\n\n")
 	b.WriteString("Or shorter: q1: browser.sense → single call for simple extraction.\n\n")
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "Plan %d quests max. STRICT JSON:\n", maxQuests)
@@ -256,6 +260,69 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 // executeQuestLevels runs pending quests level by level: all quests whose
 // dependencies are satisfied run in parallel (bounded). A quest whose
 // dependency failed is cancelled; a dependency cycle cancels the rest.
+
+// interpolateParams resolves {{qN.field}} references in quest params
+// using results from previously completed quests.
+func interpolateParams(params map[string]interface{}, mission *moksa.Mission) map[string]interface{} {
+	if params == nil {
+		return params
+	}
+	out := make(map[string]interface{}, len(params))
+	re := regexp.MustCompile(`\{\{(q\d+)\.(result\.\w+(?:\.\w+)*|result)\}\}`)
+
+	// Build lookup: qID → result map
+	results := map[string]interface{}{}
+	for _, q := range mission.Quests {
+		if q.Status == "done" && q.Result != nil {
+			results[q.ID] = q.Result
+		}
+	}
+
+	for k, v := range params {
+		s, isStr := v.(string)
+		if !isStr {
+			out[k] = v
+			continue
+		}
+		out[k] = re.ReplaceAllStringFunc(s, func(match string) string {
+			parts := re.FindStringSubmatch(match)
+			if len(parts) < 3 {
+				return match
+			}
+			qid := parts[1]
+			fieldPath := parts[2] // e.g. "result.text" or "result"
+			result, ok := results[qid]
+			if !ok {
+				return match
+			}
+			if resultMap, ok := result.(map[string]interface{}); ok {
+				if fieldPath == "result" {
+					// Return whole result as JSON string
+					b, _ := json.Marshal(resultMap)
+					return string(b)
+				}
+				// Walk fieldPath like "result.text" → resultMap["text"]
+				fields := strings.Split(fieldPath, ".")
+				cur := interface{}(resultMap)
+				for _, f := range fields[1:] { // skip "result"
+					if m, ok := cur.(map[string]interface{}); ok {
+						cur = m[f]
+					} else {
+						return match
+					}
+				}
+				if s, ok := cur.(string); ok {
+					return s
+				}
+				b, _ := json.Marshal(cur)
+				return string(b)
+			}
+			return match
+		})
+	}
+	return out
+}
+
 func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[string]bool {
 	const maxParallel = 4
 
@@ -293,6 +360,11 @@ func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[str
 	}
 
 	runOne := func(q moksa.Quest) {
+		// Interpolate {{qN.field}} references from previous quest results
+		m, _ := moksa.GetMission(missionID)
+		if m != nil {
+			q.Params = interpolateParams(q.Params, m)
+		}
 		if _, err := moksa.ClaimQuest(missionID, q.ID, karakaID); err != nil {
 			log.Printf("orchestrator: claim %s failed: %v", q.ID, err)
 			stateMu.Lock()
