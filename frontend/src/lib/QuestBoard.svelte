@@ -49,18 +49,25 @@
   let addOrgan = $state('suparna_vpc');
   let rewardReason = $state<Record<string, string>>({});
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let missionList: Mission[] = $state([]);
+  let listPoll: ReturnType<typeof setInterval> | null = null;
 
-  onDestroy(() => stopPoll());
+  onDestroy(() => { stopPoll(); if (listPoll) clearInterval(listPoll); });
 
   function q(params: Record<string, string>) {
     return new URLSearchParams({ vpcUrl, token: sessionToken, ...params }).toString();
   }
 
   function stopPoll() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  async function loadMissionList() {
+    if (!vpcUrl || !sessionToken) return;
+    try {
+      const res = await fetch(`/api/proxy/mission?${q({})}`);
+      if (res.ok) { const data: any = await res.json(); missionList = data.missions || []; }
+    } catch {}
   }
 
   function startPoll(id: string) {
@@ -300,6 +307,8 @@
     if (vpcUrl && sessionToken) {
       loadKarakas();
       loadWorldCard();
+      loadMissionList();
+      if (!listPoll) listPoll = setInterval(loadMissionList, 4000);
     }
   });
 </script>
@@ -356,6 +365,39 @@
 
   {#if errorMsg}
     <div class="qb-error">{errorMsg}</div>
+  {/if}
+
+  {#if missionList.length > 0}
+    <div class="qb-activity">
+      <div class="qb-activity-head">
+        <span class="qb-activity-title">Activity Monitor</span>
+        <span class="qb-activity-count">{missionList.length} missions</span>
+      </div>
+      <div class="qb-activity-list">
+        {#each missionList as m}
+          <button
+            class="qb-activity-row"
+            class:am-active={m.status === 'planning' || m.status === 'active' || m.status === 'synthesizing'}
+            class:am-done={m.status === 'done'}
+            class:am-cancelled={m.status === 'cancelled'}
+            onclick={() => { mission = m; if (m.status !== 'done' && m.status !== 'cancelled') startPoll(m.id); }}
+          >
+            <span class="am-status">
+              {#if m.status === 'done'}✅{:else if m.status === 'cancelled'}❌{:else if m.status === 'planning'}🧠{:else if m.status === 'synthesizing'}📝{:else}⚡{/if}
+            </span>
+            <span class="am-id mono">{m.id}</span>
+            <span class="am-instr">{m.instruction}</span>
+            <span class="am-tools">
+              {#each m.quests.slice(0, 3) as q}
+                <span class="am-tool-chip">{q.tool}</span>
+              {/each}
+              {#if m.quests.length > 3}<span class="am-more">+{m.quests.length - 3}</span>{/if}
+            </span>
+            <span class="am-pill">{m.status}</span>
+          </button>
+        {/each}
+      </div>
+    </div>
   {/if}
 
   <div class="qb-board-wrap">
@@ -581,6 +623,54 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
   }
+
+  /* Activity Monitor */
+  .qb-activity {
+    margin: 0 0 12px;
+    border: 1px solid #e8eaed;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .qb-activity-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; background: #f8f9fa;
+    border-bottom: 1px solid #e8eaed;
+  }
+  .qb-activity-title { font-size: 12px; font-weight: 600; color: #202124; }
+  .qb-activity-count { font-size: 11px; color: #80868b; }
+  .qb-activity-list { display: flex; flex-direction: column; }
+  .qb-activity-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+    border: none; background: none; cursor: pointer; text-align: left;
+    font-size: 12px; border-bottom: 1px solid #f1f3f4; width: 100%;
+  }
+  .qb-activity-row:last-child { border-bottom: none; }
+  .qb-activity-row:hover { background: #f8f9fa; }
+  .am-active { background: #e8f0fe; }
+  .am-active:hover { background: #d2e3fc; }
+  .am-done { opacity: 0.7; }
+  .am-cancelled { opacity: 0.5; }
+  .am-status { font-size: 14px; flex-shrink: 0; }
+  .am-id { font-size: 10px; color: #80868b; flex-shrink: 0; min-width: 70px; }
+  .am-instr {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #202124; font-size: 12px;
+  }
+  .am-tools { display: flex; gap: 3px; flex-shrink: 0; }
+  .am-tool-chip {
+    padding: 1px 5px; font-size: 9px; border-radius: 3px;
+    background: #e8eaed; color: #5f6368; font-family: monospace;
+  }
+  .am-active .am-tool-chip { background: #c6dafc; color: #174ea6; }
+  .am-more { font-size: 9px; color: #80868b; }
+  .am-pill {
+    padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600;
+    background: #e8eaed; color: #5f6368; flex-shrink: 0;
+  }
+  .am-active .am-pill { background: #1a73e8; color: #fff; }
+  .am-done .am-pill { background: #e6f4ea; color: #137333; }
+  .am-cancelled .am-pill { background: #fce8e6; color: #c5221f; }
+
   .qb-world,
   .qb-summary {
     background: #f8f9fa;
