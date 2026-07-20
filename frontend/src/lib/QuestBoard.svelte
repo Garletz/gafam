@@ -51,6 +51,7 @@
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let missionList: Mission[] = $state([]);
   let listPoll: ReturnType<typeof setInterval> | null = null;
+  let listError = $state('');
 
   onDestroy(() => { stopPoll(); if (listPoll) clearInterval(listPoll); });
 
@@ -66,8 +67,9 @@
     if (!vpcUrl || !sessionToken) return;
     try {
       const res = await fetch(`/api/proxy/mission?${q({})}`);
-      if (res.ok) { const data: any = await res.json(); missionList = data.missions || []; }
-    } catch {}
+      if (res.ok) { const data: any = await res.json(); missionList = data.missions || []; listError = ''; }
+      else { listError = 'Session expired — re-authenticate'; }
+    } catch (e: any) { listError = e.message || 'Network error'; }
   }
 
   function startPoll(id: string) {
@@ -372,7 +374,9 @@
       <span class="qb-activity-title">Activity Monitor</span>
       <span class="qb-activity-count">{missionList.length} missions</span>
     </div>
-    {#if missionList.length === 0}
+    {#if listError}
+      <div class="qb-activity-empty qb-activity-err">{listError}</div>
+    {:else if missionList.length === 0}
       <div class="qb-activity-empty">No missions yet. Pose a demand or send /q by SMS.</div>
     {:else}
     <div class="qb-activity-list">
@@ -672,6 +676,8 @@
   .am-active .am-pill { background: #1a73e8; color: #fff; }
   .am-done .am-pill { background: #e6f4ea; color: #137333; }
   .am-cancelled .am-pill { background: #fce8e6; color: #c5221f; }
+  .qb-activity-empty { padding: 16px; text-align: center; font-size: 12px; color: #80868b; }
+  .qb-activity-err { color: #c5221f; font-weight: 600; }
 
   .qb-world,
   .qb-summary {
