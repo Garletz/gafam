@@ -537,16 +537,32 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 
 	ok := launchOrchestration(m.ID, "suparna_vpc", 6, mode, func(done *moksa.Mission) {
 		if done.Status == "cancelled" {
-			queueSmsReply(selfPhone, "GAFAM ❌ "+done.ID+": failed — see dashboard for details")
+			queueSmsReply(selfPhone, "GAFAM ❌ "+done.ID+": "+truncateStr(done.Summary, 200))
 			return
 		}
 		total := len(done.Quests)
 		failedN := 0
+		var summarySentences []string
 		for _, q := range done.Quests {
 			if q.Status == "failed" || q.Status == "cancelled" {
 				failedN++
-			}
+			} else if q.Result != nil {
+				// Extract useful info from quest results for the SMS summary
+				if resultMap, ok := q.Result.(map[string]interface{}); ok {
+					switch q.Tool {
+					case "browser.fetch":
+						if text, ok := resultMap["text"].(string); ok && len(text) > 0 {
+							firstLines := takeFirstNLines(text, 3)
+							summarySentences = append(summarySentences, firstLines)
+						}
+					case "sandbox.exec", "sandbox.shell":
+						if stdout, ok := resultMap["stdout"].(string); ok && len(stdout) > 0 {
+							summarySentences = append(summarySentences, truncateStr(stdout, 120))
+						}
+					}
+				}
 		}
+	}
 		status := "✅"
 		if failedN > 0 {
 			status = "⚠️"
@@ -558,10 +574,15 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 			))
 			return
 		}
-		queueSmsReply(selfPhone, fmt.Sprintf(
-			"GAFAM %s %s: %d/%d quests OK. Report: /files/missions/%s/report.md (sandbox)",
-			status, done.ID, total-failedN, total, done.ID,
-		))
+		// Build SMS with summary + link
+		msg := fmt.Sprintf("GAFAM %s %s: %d/%d quests OK.", status, done.ID, total-failedN, total)
+		if len(summarySentences) > 0 {
+			msg += "\n" + strings.Join(summarySentences, "\n")
+		}
+		if done.Summary != "" {
+			msg += "\n" + truncateStr(done.Summary, 300)
+		}
+		queueSmsReply(selfPhone, msg)
 	}, false, "")
 	if !ok {
 		// Busy — drop the placeholder mission so the board stays clean.
@@ -631,4 +652,16 @@ func countDoneQuests(m *moksa.Mission) int {
 		}
 	}
 	return n
+}
+
+func takeFirstNLines(text string, n int) string {
+	lines := strings.Split(text, "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	out := strings.Join(lines, " ")
+	if len(out) > 200 {
+		out = out[:197] + "..."
+	}
+	return out
 }
