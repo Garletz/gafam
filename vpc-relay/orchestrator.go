@@ -174,67 +174,111 @@ func planQuests(ctx context.Context, instruction string, maxQuests int) (*planRe
 func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests int) {
 	log.Printf("orchestrator: run started for mission %s (karaka=%s)", missionID, karakaID)
 
-	m, ok := moksa.GetMission(missionID)
-	if !ok {
-		log.Printf("orchestrator: mission %s vanished", missionID)
-		return
-	}
-
-	// ── PLAN ──
-	if len(m.Quests) == 0 {
-		planCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
-		plan, raw, err := planQuests(planCtx, m.Instruction, maxQuests)
-		cancel()
-		if err != nil {
-			log.Printf("orchestrator: planning failed for %s: %v", missionID, err)
-			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
-				miss.Status = "cancelled"
-				miss.Summary = fmt.Sprintf("Planning failed: %v\n\n--- raw planner output ---\n%s", err, truncateStr(raw, 2000))
-				return nil
-			})
+	const maxIterations = 3
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		m, ok := moksa.GetMission(missionID)
+		if !ok {
+			log.Printf("orchestrator: mission %s vanished", missionID)
 			return
 		}
 
-		// Create quests (AddQuest assigns q1..qn in order).
-		questIDs := make([]string, 0, len(plan.Quests))
-		for _, pq := range plan.Quests {
-			updated, err := moksa.AddQuest(missionID, pq.Title, karakaID, pq.Tool, pq.Params, nil, 30)
-			if err != nil {
-				log.Printf("orchestrator: AddQuest failed: %v", err)
-				continue
+		// ── PLAN (first iteration) or REPLAN (after observing results) ──
+		if len(m.Quests) == 0 || iteration > 0 {
+			var instruction string
+			if iteration == 0 {
+				instruction = m.Instruction
+			} else {
+				instruction = buildReplanInstruction(m)
+				if instruction == "" {
+					break // no replanning needed — all quests succeeded
+				}
 			}
-			questIDs = append(questIDs, updated.Quests[len(updated.Quests)-1].ID)
-		}
 
-		// Wire dependencies: planned index (1-based) → assigned quest ID.
-		for i, pq := range plan.Quests {
-			if i >= len(questIDs) || len(pq.DependsOn) == 0 {
-				continue
-			}
-			deps := make([]string, 0, len(pq.DependsOn))
-			for _, d := range pq.DependsOn {
-				if d-1 < len(questIDs) {
-					deps = append(deps, questIDs[d-1])
+			planCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+			plan, raw, err := planQuests(planCtx, instruction, maxQuests)
+			cancel()
+			if err != nil {
+				log.Printf("orchestrator: planning failed for %s (iter %d): %v", missionID, iteration, err)
+				if iteration == 0 {
+					_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+						miss.Status = "cancelled"
+						miss.Summary = fmt.Sprintf("Planning failed: %v\n\n--- raw planner output ---\n%s", err, truncateStr(raw, 2000))
+						return nil
+					})
+					return
 				}
+				// On later iterations, just break and synthesize with what we have
+				break
 			}
-			qid := questIDs[i]
+
+			questIDs := make([]string, 0, len(plan.Quests))
+			for _, pq := range plan.Quests {
+				updated, err := moksa.AddQuest(missionID, pq.Title, karakaID, pq.Tool, pq.Params, nil, 30)
+				if err != nil {
+					log.Printf("orchestrator: AddQuest failed: %v", err)
+					continue
+				}
+				questIDs = append(questIDs, updated.Quests[len(updated.Quests)-1].ID)
+			}
+
+			for i, pq := range plan.Quests {
+				if i >= len(questIDs) || len(pq.DependsOn) == 0 {
+					continue
+				}
+				deps := make([]string, 0, len(pq.DependsOn))
+				for _, d := range pq.DependsOn {
+					if d-1 < len(questIDs) {
+						deps = append(deps, questIDs[d-1])
+					}
+				}
+				qid := questIDs[i]
+				_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+					if q := miss.FindQuest(qid); q != nil {
+						q.DependsOn = deps
+					}
+					return nil
+				})
+			}
+
 			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
-				if q := miss.FindQuest(qid); q != nil {
-					q.DependsOn = deps
-				}
+				miss.Status = "active"
 				return nil
 			})
+			log.Printf("orchestrator: iteration %d — planned %d quests for %s", iteration+1, len(questIDs), missionID)
 		}
 
-		_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
-			miss.Status = "active"
-			return nil
-		})
-		log.Printf("orchestrator: planned %d quests for %s", len(questIDs), missionID)
-	}
+		// ── EXECUTE ──
+		_ = executeQuestLevels(ctx, missionID, karakaID)
 
-	// ── EXECUTE (topological levels — independent quests run in parallel) ──
-	failed := executeQuestLevels(ctx, missionID, karakaID)
+		// ── OBSERVE: check if all done or need replanning ──
+		m, _ = moksa.GetMission(missionID)
+		if m == nil {
+			return
+		}
+		pending := 0
+		doneAll := true
+		hasNewDone := false
+		for _, q := range m.Quests {
+			if q.Status == "done" {
+				hasNewDone = true
+			} else if q.Status != "failed" && q.Status != "cancelled" && q.Status != "skipped" {
+				doneAll = false
+				if q.Status == "pending" {
+					pending++
+				}
+			}
+		}
+		if doneAll && (hasNewDone || iteration == 0) {
+			log.Printf("orchestrator: all quests resolved, synthesizing")
+			break
+		}
+		if pending == 0 && !hasNewDone {
+			// Nothing to do and nothing succeeded — abort
+			log.Printf("orchestrator: no progress in iteration %d, aborting", iteration+1)
+			break
+		}
+		log.Printf("orchestrator: iteration %d complete — replanning for remaining work", iteration+1)
+	}
 
 	// ── SYNTHESIZE ──
 	_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
@@ -244,16 +288,73 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 	if _, err := moksa.Synthesize(missionID); err != nil {
 		log.Printf("orchestrator: synthesize %s failed: %v", missionID, err)
 	}
-	// Save report to vault for future reference
 	if m, ok := moksa.GetMission(missionID); ok && m.Summary != "" {
 		saveMissionToVault(m)
 	}
-	m, _ = moksa.GetMission(missionID)
-	questCount := 0
-	if m != nil {
-		questCount = len(m.Quests)
+	finalM, _ := moksa.GetMission(missionID)
+	failedN := 0
+	totalN := 0
+	if finalM != nil {
+		totalN = len(finalM.Quests)
+		for _, q := range finalM.Quests {
+			if q.Status == "failed" || q.Status == "cancelled" {
+				failedN++
+			}
+		}
 	}
-	log.Printf("orchestrator: run finished for mission %s (%d/%d quests failed)", missionID, len(failed), questCount)
+	log.Printf("orchestrator: run finished for mission %s (%d/%d quests failed)", missionID, failedN, totalN)
+}
+
+// buildReplanInstruction creates a prompt describing what's been done and what's still needed.
+func buildReplanInstruction(m *moksa.Mission) string {
+	var b strings.Builder
+	b.WriteString("Original instruction: " + m.Instruction + "\n\n")
+	b.WriteString("What has been done so far:\n")
+	hasWork := 0
+	for _, q := range m.Quests {
+		switch q.Status {
+		case "done":
+			fmt.Fprintf(&b, "  ✅ %s (%s) → result: %v\n", q.Title, q.Tool, summarizeResult(q.Result))
+			hasWork++
+		case "failed":
+			fmt.Fprintf(&b, "  ❌ %s (%s) — %s\n", q.Title, q.Tool, q.Error)
+		case "pending":
+			fmt.Fprintf(&b, "  ⏳ %s (%s) — not yet attempted\n", q.Title, q.Tool)
+		}
+	}
+	if hasWork == 0 {
+		return "" // nothing useful was done, no point replanning
+	}
+	b.WriteString("\nBased on what succeeded and what failed, plan additional quests to complete the original instruction. If the instruction is already satisfied, output:\n")
+	b.WriteString(`{"quests": []}` + "\n")
+	b.WriteString("Otherwise, output new quests following the standard format. Focus on what's MISSING — don't repeat completed work.\n")
+	return b.String()
+}
+
+func summarizeResult(r interface{}) string {
+	if r == nil {
+		return "(none)"
+	}
+	if m, ok := r.(map[string]interface{}); ok {
+		// For browser.sense/llm.chat: show answer
+		if a, ok := m["answer"].(string); ok && len(a) > 0 {
+			return truncateStr(a, 120)
+		}
+		if c, ok := m["content"].(string); ok && len(c) > 0 {
+			return truncateStr(c, 120)
+		}
+		// For sandbox.exec: show stdout
+		if o, ok := m["stdout"].(string); ok && len(o) > 0 {
+			return truncateStr(o, 120)
+		}
+		// For browser.fetch: show text snippet
+		if t, ok := m["text"].(string); ok && len(t) > 0 {
+			return truncateStr(t, 120)
+		}
+		return fmt.Sprintf("(%d fields)", len(m))
+	}
+	s := fmt.Sprintf("%v", r)
+	return truncateStr(s, 120)
 }
 
 // executeQuestLevels runs pending quests level by level: all quests whose
