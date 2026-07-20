@@ -121,6 +121,17 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(gmailSetupBtn)
 
+        // Gmail scrape toggle
+        val sp = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val scrapeToggle = makeBtn(if (sp.getBoolean("gmail_scrape_enabled", true)) "⏸ Stop Gmail Scan" else "▶ Start Gmail Scan")
+        scrapeToggle.setOnClickListener {
+            val cur = sp.getBoolean("gmail_scrape_enabled", true)
+            sp.edit().putBoolean("gmail_scrape_enabled", !cur).apply()
+            scrapeToggle.text = if (!cur) "⏸ Stop Gmail Scan" else "▶ Start Gmail Scan"
+            Toast.makeText(this, "Gmail scan ${if (!cur) "ON" else "OFF"}", Toast.LENGTH_SHORT).show()
+        }
+        layout.addView(scrapeToggle)
+
         val emailBtn = makeBtn("📧 Email Relay")
         setNotifListenerBtn(emailBtn)
         emailBtn.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }

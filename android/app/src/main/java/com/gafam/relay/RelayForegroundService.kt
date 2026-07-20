@@ -121,6 +121,7 @@ class RelayForegroundService : Service() {
     }
 
     private fun startGmailScrapeLoop() {
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         thread(name = "gafam-scrape", isDaemon = true) {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             val ch = NotificationChannel("gafam_scrape", "Scrape", NotificationManager.IMPORTANCE_HIGH)
@@ -128,6 +129,7 @@ class RelayForegroundService : Service() {
             while (running.get()) {
                 try {
                     Thread.sleep(60000)
+                    if (!prefs.getBoolean("gmail_scrape_enabled", true)) continue
                     val pi = PendingIntent.getActivity(this@RelayForegroundService, 999,
                         Intent(this@RelayForegroundService, GmailScrapeActivity::class.java),
                         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
