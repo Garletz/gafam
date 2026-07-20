@@ -310,7 +310,8 @@
       loadKarakas();
       loadWorldCard();
       loadMissionList();
-      if (!listPoll) listPoll = setInterval(loadMissionList, 4000);
+      if (listPoll) clearInterval(listPoll);
+      listPoll = setInterval(loadMissionList, 2000);
     }
   });
 </script>
