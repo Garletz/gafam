@@ -248,6 +248,52 @@ func main() {
 			return chatWithEngine(ctx, scope, system, prompt, maxTokens)
 		},
 	})
+	karaka.RegisterTool(karaka.Tool{
+		ID:          "browser.sense",
+		Description: "Fetch a URL AND ask the LLM to extract/answer a question about its content. Single call — fetch + understand.",
+		Category:    "browser",
+		Params: map[string]karaka.ParamSpec{
+			"url":      {Type: "string", Required: true, Description: "Page URL"},
+			"question": {Type: "string", Required: true, Description: "What to extract (e.g. 'main headlines', 'summarize in 2 sentences')"},
+		},
+		Returns: "{ answer: string, engine: string }",
+		Handler: func(params map[string]interface{}) (interface{}, error) {
+			url, _ := params["url"].(string)
+			question, _ := params["question"].(string)
+			if url == "" || question == "" {
+				return nil, fmt.Errorf("url and question required")
+			}
+			// Fetch the page via browser sidecar
+			browserBase := "http://gafam-browser:6080"
+			if u := os.Getenv("BROWSER_URL"); u != "" {
+				browserBase = strings.TrimRight(u, "/")
+			}
+			fetchURL := browserBase + "/fetch?url=" + url
+			resp, err := http.Get(fetchURL)
+			if err != nil {
+				return nil, fmt.Errorf("fetch failed: %w", err)
+			}
+			defer resp.Body.Close()
+			var fetchResult map[string]interface{}
+			json.NewDecoder(resp.Body).Decode(&fetchResult)
+			text, _ := fetchResult["text"].(string)
+			if len(text) > 8000 {
+				text = text[:8000]
+			}
+			// Ask LLM to answer the question about the page
+			prompt := fmt.Sprintf("Page content from %s:\n\n%s\n\nQuestion: %s\nAnswer concisely in French.", url, text, question)
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
+			result, err := chatWithEngine(ctx, "light_task", "", prompt, 1024)
+			if err != nil {
+				return nil, fmt.Errorf("llm: %w", err)
+			}
+			return map[string]interface{}{
+				"answer": strings.TrimSpace(result.Content),
+				"engine": result.Engine,
+			}, nil
+		},
+	})
 	log.Println("Kāraka tool registry initialized.")
 
 	mux := http.NewServeMux()
