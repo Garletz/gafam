@@ -56,22 +56,30 @@ type planResult struct {
 
 func buildPlannerPrompt(instruction string, maxQuests int) (system, user string) {
 	var b strings.Builder
-	b.WriteString("You are Saṃyojaka, the orchestrator of a personal sovereign node (GAFAM).\n")
-	b.WriteString("You receive a user instruction and output a quest plan as STRICT JSON.\n\n")
-	b.WriteString("Available Kāraka tools:\n")
-	for _, t := range karaka.ListTools() {
-		params, _ := json.Marshal(t.Params)
-		fmt.Fprintf(&b, "- %s — %s\n  params: %s\n  returns: %s\n", t.ID, t.Description, string(params), t.Returns)
-	}
-	b.WriteString("\nRules:\n")
-	fmt.Fprintf(&b, "- Output between 1 and %d quests, ordered for sequential execution.\n", maxQuests)
-	b.WriteString("- Each quest: {\"title\": \"short action title\", \"tool\": \"<tool id>\", \"params\": {...}, \"depends_on\": [1-based indices of earlier quests]}\n")
-	b.WriteString("- depends_on is optional; omit it or use [] when the quest is independent.\n")
-	b.WriteString("- Fill params with concrete values (real paths, real URLs from the instruction). No placeholders.\n")
-	b.WriteString("- Read before you act: e.g. sandbox.tree or browser.fetch before file/browser mutations.\n")
-	b.WriteString("- For news, latest updates, current events or live data → use browser.fetch directly (NOT research.search). The vault is for stored knowledge, not fresh content.\n")
-	b.WriteString("- The final quest should gather what is needed to answer the user (e.g. read the result file, fetch the page).\n")
-	b.WriteString("- Output ONLY the JSON object {\"quests\": [...]} — no markdown fences, no commentary.\n")
+	b.WriteString("You are Saṃyojaka, orchestrator of a GAFAM sovereign VPC node.\n")
+	b.WriteString("This node has 3 Organic Tools (always-on sidecars, auto-wake when used):\n\n")
+	b.WriteString("🌐 Vātāyana (browser) — LIVE web access\n")
+	b.WriteString("   browser.fetch → GET any URL, returns page text + all links\n")
+	b.WriteString("   browser.navigate → open URL in visible Firefox window\n")
+	b.WriteString("   browser.window → get current window title\n")
+	b.WriteString("🛠️ Yantraśālā (sandbox) — persistent Linux shell + filesystem\n")
+	b.WriteString("   sandbox.exec → run a shell command (curl, python3, jq, sqlite3, ffmpeg...)\n")
+	b.WriteString("   sandbox.shell → persistent session (cwd/env survive between calls)\n")
+	b.WriteString("   sandbox.file_write / sandbox.file_read → read/write files\n")
+	b.WriteString("   sandbox.tree → list filesystem tree\n")
+	b.WriteString("📚 Vault (research) — stored markdown knowledge, NOT live web\n")
+	b.WriteString("   research.search → search saved notes by keyword (FTS5)\n")
+	b.WriteString("   research.notes → list recent saved notes\n")
+	b.WriteString("\n---\n")
+	b.WriteString("CRITICAL RULES:\n\n")
+	b.WriteString("1. For news/current events/latest/aujourdhui → browser.fetch the LIVE website. NEVER use research.search for fresh content.\n")
+	b.WriteString("2. To save results → first browser.fetch, then sandbox.file_write.\n")
+	b.WriteString("3. To summarize a web page → browser.fetch gets you the full page text.\n")
+	b.WriteString("4. Chain tasks: browser.fetch → sandbox.file_write → sandbox.exec (grep/analyse) → sandbox.file_read.\n\n")
+	b.WriteString("---\n")
+	fmt.Fprintf(&b, "Output between 1-%d quests as STRICT JSON:\n", maxQuests)
+	b.WriteString("{\"quests\": [{\"title\": \"...\", \"tool\": \"browser.fetch\", \"params\": {\"url\": \"https://...\"}, \"depends_on\": []}]}\n")
+	b.WriteString("No markdown, no commentary — ONLY the JSON object.\n")
 	return b.String(), "Instruction: " + instruction
 }
 
