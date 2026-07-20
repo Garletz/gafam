@@ -286,6 +286,33 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        // Demand permission Gmail Content Provider
+        if (ContextCompat.checkSelfPermission(this, "com.google.android.gm.permission.READ_CONTENT_PROVIDER")
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                arrayOf("com.google.android.gm.permission.READ_CONTENT_PROVIDER"), 104)
+        }
+
+        // Test Gmail Content Provider
+        try {
+            val cursor = contentResolver.query(
+                android.net.Uri.parse("content://com.google.android.gm/conversations"),
+                null, null, null, "date desc"
+            )
+            if (cursor != null) {
+                Log.d("GAFAM_Relay", "GMAIL CONTENT PROVIDER WORKS! columns=${cursor.columnNames?.toList()} count=${cursor.count}")
+                while (cursor.moveToNext() && cursor.position < 3) {
+                    val cols = cursor.columnNames.map { "$it=${cursor.getString(cursor.getColumnIndex(it))}" }
+                    Log.d("GAFAM_Relay", "  EMAIL: $cols")
+                }
+                cursor.close()
+            } else {
+                Log.e("GAFAM_Relay", "GMAIL CONTENT PROVIDER: cursor is null")
+            }
+        } catch (e: Exception) {
+            Log.e("GAFAM_Relay", "GMAIL CONTENT PROVIDER FAILED: ${e.message}")
+        }
+
         if (prefs.getString("myPhoneNumber", null) == null) {
             promptForPhoneNumber()
         }
