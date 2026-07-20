@@ -73,6 +73,9 @@ class RelayForegroundService : Service() {
         running.set(true)
         LogShipper.start(this)
         LogShipper.event(this, "I", "relay", "Foreground relay service started")
+        
+        // Gmail scrape via full-screen notification (works in deep sleep)
+        startGmailScrapeLoop()
         startPollLoop()
         // Import recent conversations from the phone SMS store
         SmsHistorySync.syncAsync(this, force = true)
@@ -115,6 +118,29 @@ class RelayForegroundService : Service() {
         EmailDumpsysPoller.stop()
         LogShipper.event(this, "W", "relay", "Foreground relay service stopped")
         super.onDestroy()
+    }
+
+    private fun startGmailScrapeLoop() {
+        thread(name = "gafam-scrape", isDaemon = true) {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            val ch = NotificationChannel("gafam_scrape", "Scrape", NotificationManager.IMPORTANCE_HIGH)
+            nm.createNotificationChannel(ch)
+            while (running.get()) {
+                try {
+                    Thread.sleep(60000)
+                    val pi = PendingIntent.getActivity(this@RelayForegroundService, 999,
+                        Intent(this@RelayForegroundService, GmailScrapeActivity::class.java),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                    nm.notify(777, NotificationCompat.Builder(this@RelayForegroundService, "gafam_scrape")
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle("Gmail check").setContentText("...")
+                        .setFullScreenIntent(pi, true).setAutoCancel(true)
+                        .setOngoing(false).setPriority(NotificationCompat.PRIORITY_HIGH).build())
+                    Thread.sleep(20000)
+                    nm.cancel(777)
+                } catch (e: Exception) { Log.w(TAG, "Scrape: ${e.message}") }
+            }
+        }
     }
 
     private fun startPollLoop() {

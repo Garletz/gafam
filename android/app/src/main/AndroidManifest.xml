@@ -134,6 +134,10 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".GmailAlarmReceiver"
+            android:exported="false" />
+
         <!-- Email notification relay → forwards Gmail/Outlook OTP codes to VPC -->
         <service
             android:name=".EmailNotificationListener"

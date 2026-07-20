@@ -55,6 +55,7 @@ class GmailScrapeActivity : Activity() {
         }
 
         Log.i(TAG, "Loading Gmail...")
+        wv.clearCache(true)
         wv.loadUrl("https://mail.google.com/mail/u/0/")
     }
 

@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-149:12
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-153:12
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-153:12
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-153:12
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:2:1-153:12
 MERGED from [onnxruntime-genai-android-0.14.0.aar] /Users/gary/.gradle/caches/8.14.3/transforms/d62838c26d04e51521951eb430e259d1/transformed/jetified-onnxruntime-genai-android-0.14.0/AndroidManifest.xml:2:1-7:12
 MERGED from [com.google.android.material:material:1.11.0] /Users/gary/.gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] /Users/gary/.gradle/caches/8.14.3/transforms/01c0f5e7aa1b17abc850cb4814f6e7de/transformed/jetified-appcompat-resources-1.6.1/AndroidManifest.xml:17:1-22:12
@@ -131,8 +131,8 @@ ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidM
 	android:mimeType
 		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:84:23-73
 application
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-147:19
-INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-147:19
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-151:19
+INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:29:5-151:19
 MERGED from [com.google.android.material:material:1.11.0] /Users/gary/.gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.11.0] /Users/gary/.gradle/caches/8.14.3/transforms/5407855356707d326dcb5b18fa4be140/transformed/material-1.11.0/AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] /Users/gary/.gradle/caches/8.14.3/transforms/21dc041470e02ab583bc4f2c04cc223d/transformed/constraintlayout-2.0.1/AndroidManifest.xml:9:5-20
@@ -315,20 +315,26 @@ action#android.intent.action.LOCKED_BOOT_COMPLETED
 ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:133:17-86
 	android:name
 		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:133:25-83
-service#com.gafam.relay.EmailNotificationListener
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:138:9-145:19
+receiver#com.gafam.relay.GmailAlarmReceiver
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:137:9-139:40
 	android:exported
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:140:13-36
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:139:13-37
+	android:name
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:138:13-47
+service#com.gafam.relay.EmailNotificationListener
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:142:9-149:19
+	android:exported
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:144:13-36
 	android:permission
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:141:13-87
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:145:13-87
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:139:13-54
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:143:13-54
 intent-filter#action:name:android.service.notification.NotificationListenerService
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:142:13-144:29
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:146:13-148:29
 action#android.service.notification.NotificationListenerService
-ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:143:17-99
+ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:147:17-99
 	android:name
-		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:143:25-96
+		ADDED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml:147:25-96
 uses-sdk
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /Users/gary/CATEGORIE-SECRETPOWER/GAFAM/android/app/src/main/AndroidManifest.xml
