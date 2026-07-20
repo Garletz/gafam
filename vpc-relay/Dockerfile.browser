@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     python3 \
     procps \
+    ca-certificates \
     fonts-dejavu-core \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*

@@ -2,9 +2,11 @@ package karaka
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -67,6 +69,7 @@ func browserInputHandler(params map[string]interface{}) (interface{}, error) {
 
 // browserFetchHandler — Khadyota: read any page as markdown-ish text + links.
 func browserFetchHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-browser")
 	u, _ := params["url"].(string)
 	if u == "" {
 		return nil, fmt.Errorf("missing 'url'")
@@ -76,6 +79,7 @@ func browserFetchHandler(params map[string]interface{}) (interface{}, error) {
 
 // browserNavigateHandler — drive the visible Firefox to a URL.
 func browserNavigateHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-browser")
 	u, _ := params["url"].(string)
 	if u == "" {
 		return nil, fmt.Errorf("missing 'url'")
@@ -85,6 +89,7 @@ func browserNavigateHandler(params map[string]interface{}) (interface{}, error) 
 
 // browserWindowHandler — current window title: "what am I looking at".
 func browserWindowHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-browser")
 	return getJSON(browserURL() + "/window")
 }
 
@@ -98,12 +103,14 @@ func browserURL() string {
 // ─── Sandbox tools (Yantraśālā) ───
 
 func sandboxExecHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-sandbox")
 	return postJSON(sandboxURL()+"/exec", params)
 }
 
 // sandboxShellHandler — persistent shell: cwd/env survive between calls.
 // The same session_id can be shared with the human web terminal.
 func sandboxShellHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-sandbox")
 	return postJSON(sandboxURL()+"/shell/exec", params)
 }
 
@@ -327,6 +334,46 @@ func RegisterAllTools() {
 		Returns:     "{ files: int, tmp: int, downloads: int } (bytes)",
 		Handler:     sandboxStorageHandler,
 	})
+}
+
+// ensureContainer tries to start a Docker container and waits for it to be ready.
+func ensureContainer(name string) {
+	checkURL := "http://" + name + ":6080/status"
+	if name == "gafam-sandbox" {
+		checkURL = "http://" + name + ":6091/storage"
+	}
+
+	// Quick check: is it already alive?
+	resp, err := internalClient.Get(checkURL)
+	if err == nil && resp.StatusCode < 500 {
+		resp.Body.Close()
+		return
+	}
+
+	// Start via Docker socket
+	dockerClient := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", "/var/run/docker.sock")
+			},
+		},
+	}
+	startReq, _ := http.NewRequest(http.MethodPost, "http://localhost/containers/"+name+"/start", nil)
+	if r, err := dockerClient.Do(startReq); err == nil {
+		r.Body.Close()
+	}
+
+	// Wait up to 60s for the sidecar to be ready
+	for i := 0; i < 30; i++ {
+		time.Sleep(2 * time.Second)
+		resp, err := internalClient.Get(checkURL)
+		if err == nil && resp.StatusCode < 500 {
+			resp.Body.Close()
+			return
+		}
+	}
 }
 
 // RegisterDefaultKarakas enregistre les kāraka GAFAM connus.
