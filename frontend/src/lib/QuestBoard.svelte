@@ -367,38 +367,40 @@
     <div class="qb-error">{errorMsg}</div>
   {/if}
 
-  {#if missionList.length > 0}
-    <div class="qb-activity">
-      <div class="qb-activity-head">
-        <span class="qb-activity-title">Activity Monitor</span>
-        <span class="qb-activity-count">{missionList.length} missions</span>
-      </div>
-      <div class="qb-activity-list">
-        {#each missionList as m}
-          <button
-            class="qb-activity-row"
-            class:am-active={m.status === 'planning' || m.status === 'active' || m.status === 'synthesizing'}
-            class:am-done={m.status === 'done'}
-            class:am-cancelled={m.status === 'cancelled'}
-            onclick={() => { mission = m; if (m.status !== 'done' && m.status !== 'cancelled') startPoll(m.id); }}
-          >
-            <span class="am-status">
-              {#if m.status === 'done'}✅{:else if m.status === 'cancelled'}❌{:else if m.status === 'planning'}🧠{:else if m.status === 'synthesizing'}📝{:else}⚡{/if}
-            </span>
-            <span class="am-id mono">{m.id}</span>
-            <span class="am-instr">{m.instruction}</span>
-            <span class="am-tools">
-              {#each m.quests.slice(0, 3) as q}
-                <span class="am-tool-chip">{q.tool}</span>
-              {/each}
-              {#if m.quests.length > 3}<span class="am-more">+{m.quests.length - 3}</span>{/if}
-            </span>
-            <span class="am-pill">{m.status}</span>
-          </button>
-        {/each}
-      </div>
+  <div class="qb-activity">
+    <div class="qb-activity-head">
+      <span class="qb-activity-title">Activity Monitor</span>
+      <span class="qb-activity-count">{missionList.length} missions</span>
     </div>
-  {/if}
+    {#if missionList.length === 0}
+      <div class="qb-activity-empty">No missions yet. Pose a demand or send /q by SMS.</div>
+    {:else}
+    <div class="qb-activity-list">
+      {#each missionList as m}
+        <button
+          class="qb-activity-row"
+          class:am-active={m.status === 'planning' || m.status === 'active' || m.status === 'synthesizing'}
+          class:am-done={m.status === 'done'}
+          class:am-cancelled={m.status === 'cancelled'}
+          onclick={() => { mission = m; if (m.status !== 'done' && m.status !== 'cancelled') startPoll(m.id); }}
+        >
+          <span class="am-status">
+            {#if m.status === 'done'}✅{:else if m.status === 'cancelled'}❌{:else if m.status === 'planning'}🧠{:else if m.status === 'synthesizing'}📝{:else}⚡{/if}
+          </span>
+          <span class="am-id mono">{m.id}</span>
+          <span class="am-instr">{m.instruction}</span>
+          <span class="am-tools">
+            {#each m.quests.slice(0, 3) as q}
+              <span class="am-tool-chip">{q.tool}</span>
+            {/each}
+            {#if m.quests.length > 3}<span class="am-more">+{m.quests.length - 3}</span>{/if}
+          </span>
+          <span class="am-pill">{m.status}</span>
+        </button>
+      {/each}
+    </div>
+    {/if}
+  </div>
 
   <div class="qb-board-wrap">
     <div class="qb-board-title">

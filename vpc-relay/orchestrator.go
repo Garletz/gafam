@@ -69,6 +69,7 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("- depends_on is optional; omit it or use [] when the quest is independent.\n")
 	b.WriteString("- Fill params with concrete values (real paths, real URLs from the instruction). No placeholders.\n")
 	b.WriteString("- Read before you act: e.g. sandbox.tree or browser.fetch before file/browser mutations.\n")
+	b.WriteString("- For news, latest updates, current events or live data → use browser.fetch directly (NOT research.search). The vault is for stored knowledge, not fresh content.\n")
 	b.WriteString("- The final quest should gather what is needed to answer the user (e.g. read the result file, fetch the page).\n")
 	b.WriteString("- Output ONLY the JSON object {\"quests\": [...]} — no markdown fences, no commentary.\n")
 	return b.String(), "Instruction: " + instruction
