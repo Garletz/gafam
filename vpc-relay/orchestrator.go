@@ -28,6 +28,7 @@ var (
 	orchestratorMission   = ""
 	orchestratorSince     time.Time
 	orchestratorPublishTo string // recipient phone for feed publish ("*" = broadcast)
+	orchestratorApproval bool   // require human approval before quests run
 )
 
 func setOrchestratorState(running bool, missionID string) {
@@ -39,6 +40,7 @@ func setOrchestratorState(running bool, missionID string) {
 		orchestratorSince = time.Now()
 	} else {
 		orchestratorPublishTo = ""
+		orchestratorApproval = false
 	}
 }
 
@@ -248,11 +250,20 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 		}
 
 		// ── EXECUTE ──
-		_ = executeQuestLevels(ctx, missionID, karakaID)
+		if !orchestratorApproval {
+			_ = executeQuestLevels(ctx, missionID, karakaID)
+		} else {
+			// Approval mode: quests stay pending, wait for human to Claim/Run
+			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+				miss.Status = "waiting_approval"
+				return nil
+			})
+			log.Printf("orchestrator: approval mode — %d quests waiting for human approval", len(m.Quests))
+		}
 
 		// ── OBSERVE: check if all done or need replanning ──
 		m, _ = moksa.GetMission(missionID)
-		if m == nil {
+		if m == nil || orchestratorApproval {
 			return
 		}
 		pending := 0
@@ -599,7 +610,7 @@ func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !launchOrchestration(missionID, req.KarakaID, req.MaxQuests, req.Mode, nil, req.PublishFeed, req.RecipientPhone) {
+	if !launchOrchestration(missionID, req.KarakaID, req.MaxQuests, req.Mode, nil, req.PublishFeed, req.RecipientPhone, req.RequireApproval) {
 		sendJSON(w, http.StatusConflict, map[string]string{"error": "orchestrator_busy", "mission_id": orchestratorMission})
 		return
 	}
@@ -616,10 +627,11 @@ func orchestratorStatusHandler(w http.ResponseWriter, r *http.Request) {
 	orchestratorStateMu.RLock()
 	defer orchestratorStateMu.RUnlock()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
-		"running":     orchestratorRunning,
-		"mission_id":  orchestratorMission,
-		"since":       orchestratorSince,
-		"publish_to":  orchestratorPublishTo,
+		"running":      orchestratorRunning,
+		"mission_id":   orchestratorMission,
+		"since":        orchestratorSince,
+		"publish_to":   orchestratorPublishTo,
+		"approval":     orchestratorApproval,
 	})
 }
 
@@ -627,7 +639,7 @@ func orchestratorStatusHandler(w http.ResponseWriter, r *http.Request) {
 // mode: "" / "action" (free planner) | "research" (fixed pipeline).
 // onDone, if set, receives the final mission state — used by the self-phone
 // SMS trigger to text the result back.
-func launchOrchestration(missionID, karakaID string, maxQuests int, mode string, onDone func(*moksa.Mission), publishFeed bool, recipientPhone string) bool {
+func launchOrchestration(missionID, karakaID string, maxQuests int, mode string, onDone func(*moksa.Mission), publishFeed bool, recipientPhone string, requireApproval bool) bool {
 	if !orchestratorMu.TryLock() {
 		return false
 	}
@@ -638,6 +650,7 @@ func launchOrchestration(missionID, karakaID string, maxQuests int, mode string,
 		if orchestratorPublishTo == "" {
 			orchestratorPublishTo = "*"
 		}
+		orchestratorApproval = requireApproval
 		orchestratorStateMu.Unlock()
 	}
 	go func() {
@@ -777,7 +790,7 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 			msg += "\n" + truncateStr(done.Summary, 300)
 		}
 		queueSmsReply(selfPhone, msg)
-	}, false, "")
+	}, false, "", false)
 	if !ok {
 		// Busy — drop the placeholder mission so the board stays clean.
 		moksa.DeleteMission(m.ID)
