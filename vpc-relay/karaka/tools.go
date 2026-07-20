@@ -116,6 +116,7 @@ func sandboxShellHandler(params map[string]interface{}) (interface{}, error) {
 
 // sandboxTreeHandler — filesystem tree (JSON or ASCII "vision" of the fs).
 func sandboxTreeHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-sandbox")
 	path, _ := params["path"].(string)
 	if path == "" {
 		path = "/"
@@ -136,6 +137,7 @@ func sandboxTreeHandler(params map[string]interface{}) (interface{}, error) {
 }
 
 func sandboxFileListHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-sandbox")
 	path, _ := params["path"].(string)
 	if path == "" {
 		path = "/files"
@@ -144,6 +146,7 @@ func sandboxFileListHandler(params map[string]interface{}) (interface{}, error) 
 }
 
 func sandboxFileReadHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-sandbox")
 	path, _ := params["path"].(string)
 	if path == "" {
 		return nil, fmt.Errorf("missing 'path'")
@@ -165,6 +168,7 @@ func sandboxFileReadHandler(params map[string]interface{}) (interface{}, error) 
 }
 
 func sandboxFileWriteHandler(params map[string]interface{}) (interface{}, error) {
+	ensureContainer("gafam-sandbox")
 	path, _ := params["path"].(string)
 	content, _ := params["content"].(string)
 	if path == "" {

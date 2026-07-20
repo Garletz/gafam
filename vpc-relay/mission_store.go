@@ -31,20 +31,25 @@ func initMissionStore() {
 			log.Printf("moksa: persist marshal failed for %s: %v", m.ID, err)
 			return
 		}
-		_, err = db.Exec(
-			`INSERT INTO moksa_missions (id, status, mode, instruction, data, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?)
-			 ON CONFLICT(id) DO UPDATE SET
-			   status = excluded.status,
-			   mode = excluded.mode,
-			   instruction = excluded.instruction,
-			   data = excluded.data,
-			   updated_at = excluded.updated_at`,
-			m.ID, m.Status, m.Mode, m.Instruction, string(raw), m.UpdatedAt.UTC().Format(time.RFC3339),
-		)
-		if err != nil {
-			log.Printf("moksa: persist failed for %s: %v", m.ID, err)
+		// Retry on SQLITE_BUSY — concurrent quests can lock the DB
+		for attempt := 0; attempt < 5; attempt++ {
+			_, err = db.Exec(
+				`INSERT INTO moksa_missions (id, status, mode, instruction, data, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(id) DO UPDATE SET
+				   status = excluded.status,
+				   mode = excluded.mode,
+				   instruction = excluded.instruction,
+				   data = excluded.data,
+				   updated_at = excluded.updated_at`,
+				m.ID, m.Status, m.Mode, m.Instruction, string(raw), m.UpdatedAt.UTC().Format(time.RFC3339),
+			)
+			if err == nil {
+				return
+			}
+			time.Sleep(time.Duration(50*(attempt+1)) * time.Millisecond)
 		}
+		log.Printf("moksa: persist failed for %s: %v", m.ID, err)
 	}
 	moksa.DeleteHook = func(id string) {
 		_, _ = db.Exec(`DELETE FROM moksa_missions WHERE id = ?`, id)
