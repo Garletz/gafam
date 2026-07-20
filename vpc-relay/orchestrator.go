@@ -244,6 +244,10 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 	if _, err := moksa.Synthesize(missionID); err != nil {
 		log.Printf("orchestrator: synthesize %s failed: %v", missionID, err)
 	}
+	// Save report to vault for future reference
+	if m, ok := moksa.GetMission(missionID); ok && m.Summary != "" {
+		saveMissionToVault(m)
+	}
 	m, _ = moksa.GetMission(missionID)
 	questCount := 0
 	if m != nil {
@@ -741,6 +745,40 @@ func countDoneQuests(m *moksa.Mission) int {
 		}
 	}
 	return n
+}
+
+// saveMissionToVault stores the synthesis report as a research note.
+func saveMissionToVault(m *moksa.Mission) {
+	body := m.Summary
+	if body == "" {
+		return
+	}
+	title := m.Instruction
+	if len(title) > 80 {
+		title = title[:77] + "..."
+	}
+	id := "mission-" + m.ID
+	tags := "mission saṃyojaka"
+
+	// Write markdown to sandbox
+	path := "/files/research/notes/" + id + ".md"
+	md := fmt.Sprintf("---\nid: %s\ntitle: %q\ntags: [%s]\n---\n# %s\n\n%s\n", id, title, tags, title, body)
+	_, writeErr := karaka.ExecuteTool("sandbox.file_write", map[string]interface{}{
+		"path":    path,
+		"content": md,
+	})
+	if writeErr != nil {
+		log.Printf("orchestrator: vault write failed for %s: %v", m.ID, writeErr)
+		return
+	}
+
+	// Index in FTS5 (best effort via research note insert)
+	_, _ = db.Exec(
+		`INSERT INTO research_notes (id, title, url, tags, body, fetched_at, path, suggested_by)
+		 VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
+		id, title, "", tags, body, path, "saṃyojaka",
+	)
+	log.Printf("orchestrator: report saved to vault for mission %s", m.ID)
 }
 
 func takeFirstNLines(text string, n int) string {
