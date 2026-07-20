@@ -839,7 +839,7 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// 2. E2E decryption layer (AES-256-GCM with session token)
+		// 2. E2E decryption layer (transport key ≠ app key)
 		useE2E := r.Header.Get("X-GAFAM-E2E") == "1"
 		if useE2E && r.Body != nil && r.ContentLength > 0 {
 			var payload EncryptedPayload
@@ -847,8 +847,8 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			r.Body.Close()
 			if readErr == nil {
 				if jsonErr := json.Unmarshal(bodyBytes, &payload); jsonErr == nil && payload.EncryptedData != "" {
-					key := deriveKey(token)
-					if plaintext, decErr := decryptAESGCM(key, payload.EncryptedData, payload.IV); decErr == nil {
+					transportKey := deriveKey("e2e:" + token)
+					if plaintext, decErr := decryptAESGCM(transportKey, payload.EncryptedData, payload.IV); decErr == nil {
 						r.Body = io.NopCloser(bytes.NewReader(plaintext))
 						r.ContentLength = int64(len(plaintext))
 					} else {
@@ -858,28 +858,6 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 					r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 				}
 			}
-		}
-
-		// 3. E2E encryption wrapper for response
-		if useE2E {
-			key := deriveKey(token)
-			buf := &bytes.Buffer{}
-			e2eW := &e2eResponseWriter{ResponseWriter: w, buf: buf, key: key, statusCode: http.StatusOK}
-			next.ServeHTTP(e2eW, r)
-			if buf.Len() > 0 && strings.HasPrefix(e2eW.header.Get("Content-Type"), "application/json") {
-				encrypted, ivB64, encErr := encryptAESGCM(key, buf.Bytes())
-				if encErr == nil {
-					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(EncryptedPayload{EncryptedData: encrypted, IV: ivB64})
-					return
-				}
-			}
-			// Fallback: write buffered response as-is
-			if e2eW.wroteHeader {
-				w.WriteHeader(e2eW.statusCode)
-			}
-			w.Write(buf.Bytes())
-			return
 		}
 
 		next.ServeHTTP(w, r)
