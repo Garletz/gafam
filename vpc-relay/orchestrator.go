@@ -60,8 +60,15 @@ type planResult struct {
 func buildPlannerPrompt(instruction string, maxQuests int) (system, user string) {
 	var b strings.Builder
 	b.WriteString("You are Saṃyojaka, orchestrator of a sovereign VPC node.\n")
-	b.WriteString("You have 3 Organic Tools + a mini-OpenCode in the sandbox.\n\n")
-	b.WriteString("🌐 Vātāyana — live web (Firefox)\n")
+	b.WriteString("You have 3 Organic Tools + CDP browser control.\n\n")
+
+	// Inject vault memory
+	vaultCtx := getVaultContext()
+	if vaultCtx != "" {
+		b.WriteString(vaultCtx)
+	}
+
+	b.WriteString("🌐 Vātāyana — live web (Firefox + Chromium CDP)\n")
 	b.WriteString("   browser.sense  → fetch + LLM extraction in ONE call. BEST for news/headlines/current info.\n")
 	b.WriteString("   browser.fetch  → raw page text + links (use with sandbox scripts for complex parsing)\n")
 	b.WriteString("   browser.navigate / window\n")
@@ -71,6 +78,12 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("   sandbox.file_read  → read results\n")
 	b.WriteString("   sandbox.shell      → persistent session\n")
 	b.WriteString("   sandbox.tree       → filesystem tree\n")
+	b.WriteString("🔮 CDP (Chrome DevTools) — REAL browser automation:\n")
+	b.WriteString("   browser.cdp_nav   → navigate to URL (faster than Firefox)\n")
+	b.WriteString("   browser.cdp_click  → click elements by CSS selector\n")
+	b.WriteString("   browser.cdp_type   → type into input fields by selector\n")
+	b.WriteString("   browser.cdp_text   → get text content of element\n")
+	b.WriteString("   browser.cdp_eval   → execute arbitrary JavaScript\n")
 	b.WriteString("📚 Vault — stored notes (research.search, notes)\n")
 	b.WriteString("💬 llm.chat  → ask the LLM directly\n\n")
 	b.WriteString("KEY STRATEGY: the sandbox IS your code editor.\n")
@@ -859,6 +872,33 @@ func countDoneQuests(m *moksa.Mission) int {
 		}
 	}
 	return n
+}
+
+// getVaultContext returns a summary of recent vault notes for the planner prompt.
+func getVaultContext() string {
+	notes, err := vaultList(5)
+	if err != nil || len(notes) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("📚 Recent vault memory:\n")
+	for _, n := range notes {
+		title, _ := n["title"].(string)
+		tags, _ := n["tags"].(string)
+		if title == "" {
+			continue
+		}
+		if len(title) > 80 {
+			title = title[:77] + "..."
+		}
+		fmt.Fprintf(&b, "  - %s", title)
+		if tags != "" {
+			fmt.Fprintf(&b, " [%s]", tags)
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	return b.String()
 }
 
 // saveMissionToVault stores the synthesis report as a research note.
