@@ -636,6 +636,14 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 							firstLines := takeFirstNLines(text, 3)
 							summarySentences = append(summarySentences, firstLines)
 						}
+					case "browser.sense":
+						if answer, ok := resultMap["answer"].(string); ok && len(answer) > 0 {
+							summarySentences = append(summarySentences, answer)
+						}
+					case "llm.chat":
+						if content, ok := resultMap["content"].(string); ok && len(content) > 0 {
+							summarySentences = append(summarySentences, content)
+						}
 					case "sandbox.exec", "sandbox.shell":
 						if stdout, ok := resultMap["stdout"].(string); ok && len(stdout) > 0 {
 							summarySentences = append(summarySentences, truncateStr(stdout, 120))
