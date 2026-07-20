@@ -19,7 +19,7 @@ async function vpcRequest(
 		const encoder = new TextEncoder();
 
 		const headers = [
-			`${method} ${pathAndQuery} HTTP/1.1`,
+			`${method} ${pathAndQuery} HTTP/1.0`,
 			`Host: ${host}`,
 			`Authorization: Bearer ${token}`,
 			`Connection: close`
