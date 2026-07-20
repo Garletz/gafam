@@ -43,6 +43,17 @@
   let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
   let selectedSender: string | null = $state(null);
+  let chatSearch = $state('');
+  let messagesEl: HTMLDivElement | undefined = $state();
+
+  $effect(() => {
+    // Auto-scroll to bottom when switching conversations or new messages
+    if (selectedSender && messagesEl) {
+      requestAnimationFrame(() => {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
+    }
+  });
   let copiedPhone: string | null = $state(null);
   let copiedCode: string | null = $state(null);
   let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -972,6 +983,8 @@
               {vpcUrl}
             />
           {:else if selectedSender}
+            {@const msgs = conversations()[selectedSender] || []}
+            {@const filteredMsgs = chatSearch ? msgs.filter(m => m.body.toLowerCase().includes(chatSearch.toLowerCase())) : msgs}
             <div class="chat-main__header">
               <div class="chat-main__identity">
                 <h3>{getContactName(selectedSender)}</h3>
@@ -988,9 +1001,20 @@
                   </button>
                 </div>
               </div>
+              <div class="chat-main__tools">
+                <input
+                  type="text"
+                  class="chat-search"
+                  placeholder="Search messages..."
+                  bind:value={chatSearch}
+                />
+                {#if chatSearch}
+                  <span class="chat-search-count">{filteredMsgs.length}/{msgs.length}</span>
+                {/if}
+              </div>
             </div>
-            <div class="chat-main__messages">
-              {#each (conversations()[selectedSender] || []) as sms}
+            <div class="chat-main__messages" bind:this={messagesEl}>
+              {#each filteredMsgs as sms}
                 {@const codes = sms.direction !== 'outbound' ? smsCodes(sms) : []}
                 <div class="msg {sms.direction === 'outbound' ? 'msg--out' : 'msg--in'} {sms.status === 'sending' ? 'msg--sending' : ''}">
                   <div class="msg__bubble">{sms.body}</div>
@@ -1666,9 +1690,45 @@
   }
   .chat-main__header {
     padding: 12px 16px;
-    border-bottom: 1px solid #dfe1e5;
-    background: #ffffff;
+    border-bottom: 1px solid #e8eaed;
     flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .chat-main__tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .chat-search {
+    padding: 4px 8px;
+    border: 1px solid #dadce0;
+    border-radius: 14px;
+    font-size: 12px;
+    width: 160px;
+    outline: none;
+    background: #f1f3f4;
+    color: #202124;
+  }
+
+  .chat-search:focus {
+    background: #fff;
+    border-color: #80868b;
+  }
+
+  .chat-search::placeholder {
+    color: #80868b;
+  }
+
+  .chat-search-count {
+    font-size: 11px;
+    color: #80868b;
+    white-space: nowrap;
   }
   .chat-main__identity {
     display: flex;
