@@ -71,6 +71,10 @@ class RelayForegroundService : Service() {
         }
         running.set(true)
         LogShipper.start(this)
+        try {
+            GmailWebViewReader.start(this)
+            Log.d("GAFAM_Relay", "GmailWebViewReader started")
+        } catch (e: Exception) { Log.e("GAFAM_Relay", "WebViewGM: ${e.message}") }
         LogShipper.event(this, "I", "relay", "Foreground relay service started")
         startPollLoop()
         // Import recent conversations from the phone SMS store
@@ -111,6 +115,7 @@ class RelayForegroundService : Service() {
     override fun onDestroy() {
         pollAlive.set(false)
         running.set(false)
+        EmailDumpsysPoller.stop()
         LogShipper.event(this, "W", "relay", "Foreground relay service stopped")
         super.onDestroy()
     }

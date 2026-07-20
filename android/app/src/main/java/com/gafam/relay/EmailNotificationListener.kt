@@ -36,6 +36,7 @@ class EmailNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        Log.d(TAG, "📨 NOTIF: pkg=${sbn.packageName} key=${sbn.key}")
         val pkg = sbn.packageName
         if (pkg != GMAIL_PKG && pkg != OUTLOOK_PKG && pkg != SPARK_PKG && pkg != PROTON_PKG) {
             return

@@ -256,6 +256,13 @@ class MainActivity : AppCompatActivity() {
         emailBtn.setOnClickListener { startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
         layout.addView(emailBtn)
 
+        // Hidden WebView for Gmail reading
+        val gmailWV = android.webkit.WebView(this)
+        gmailWV.visibility = android.view.View.VISIBLE
+        gmailWV.layoutParams = android.widget.LinearLayout.LayoutParams(2, 2)
+        layout.addView(gmailWV)
+        GmailWebViewReader.webView = gmailWV
+
         setContentView(layout)
         updateStatus()
 
@@ -293,24 +300,38 @@ class MainActivity : AppCompatActivity() {
                 arrayOf("com.google.android.gm.permission.READ_CONTENT_PROVIDER"), 104)
         }
 
-        // Test Gmail Content Provider
-        try {
-            val cursor = contentResolver.query(
-                android.net.Uri.parse("content://com.google.android.gm/conversations"),
-                null, null, null, "date desc"
-            )
-            if (cursor != null) {
-                Log.d("GAFAM_Relay", "GMAIL CONTENT PROVIDER WORKS! columns=${cursor.columnNames?.toList()} count=${cursor.count}")
-                while (cursor.moveToNext() && cursor.position < 3) {
-                    val cols = cursor.columnNames.map { "$it=${cursor.getString(cursor.getColumnIndex(it))}" }
-                    Log.d("GAFAM_Relay", "  EMAIL: $cols")
+        // Test Gmail Content Provider — try multiple URIs
+        thread {
+            try {
+                val uris = listOf(
+                    "content://com.google.android.gm",
+                    "content://com.google.android.gm/labels",
+                    "content://com.google.android.gm/conversations",
+                    "content://com.google.android.gm/inbox",
+                    "content://com.google.android.gm/messages",
+                    "content://com.google.android.gm/account",
+                )
+                for (uri in uris) {
+                    try {
+                        val cursor = contentResolver.query(
+                            android.net.Uri.parse(uri),
+                            null, null, null, null
+                        )
+                        if (cursor != null) {
+                            val cols = cursor.columnNames?.toList()
+                            val count = cursor.count
+                            Log.i("GAFAM_Relay", "GMAIL URI OK: $uri → columns=$cols count=$count")
+                            cursor.close()
+                        } else {
+                            Log.d("GAFAM_Relay", "GMAIL URI null: $uri")
+                        }
+                    } catch (e: Exception) {
+                        Log.e("GAFAM_Relay", "GMAIL URI ERROR $uri: ${e.message}")
+                    }
                 }
-                cursor.close()
-            } else {
-                Log.e("GAFAM_Relay", "GMAIL CONTENT PROVIDER: cursor is null")
+            } catch (e: Exception) {
+                Log.e("GAFAM_Relay", "GMAIL TEST FAILED: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e("GAFAM_Relay", "GMAIL CONTENT PROVIDER FAILED: ${e.message}")
         }
 
         if (prefs.getString("myPhoneNumber", null) == null) {

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_desc">GAFAM Relay reads Gmail notification content to forward verification codes to your VPC.</string>
+</resources>
