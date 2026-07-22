@@ -18,3 +18,5 @@ Chaque utilisateur déploie son propre Serveur Privé Virtuel (ex: un Droplet Di
 
 ### C. Le Client Web (L'Interface Utilisateur)
 Le "Front-End". C'est là que l'utilisateur lit et écrit ses messages. Il peut s'agir d'une web-app moderne, d'une application terminal, ou d'une application bureau, connectée de manière chiffrée au VPC de l'utilisateur.
+
+GAFAM n'est pas un téléphone, pas un serveur, pas une app. C'est un ange gardien numérique -_- une présence qui veille, qui agit pour toi, qui te représente quand tu n'es pas là. Si un jour on doit pitcher peut être cete approche mais la flemme.

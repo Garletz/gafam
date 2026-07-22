@@ -13,7 +13,7 @@ Il ne se dit pas *« j'accède à mon clone »* ou *« je consulte mon VPS »*.
 
 Il se dit :
 
-> **« J'accède à mon nœud. »**
+> **« J'accède à mon GAFAM (nœud). »**
 
 Son numéro de téléphone n'est plus lié à un objet en poche. C'est l'adresse d'une **présence persistante** — la sienne — toujours éveillée, souveraine, joignable par les humains et les agents qu'il autorise.
 
