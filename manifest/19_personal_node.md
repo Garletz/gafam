@@ -26,7 +26,7 @@ Un **Nœud Personnel** est la matérialisation cloud de l'identité mobile d'un 
 | Propriété | Définition |
 | :--- | :--- |
 | **Adresse** | Son numéro de téléphone → `+33606.gafam.cloud` |
-| **Hébergement** | Son propre VPC (auto-hébergé, souverain) |
+| **Hébergement** | Son propre VPC (auto-hébergé, souverain) — provider terrestre, maison derrière box, ou demain cloud orbital ; voir [manifeste 6](6_network_topology_routing.md) |
 | **État** | Toujours éveillé — mémoire, messagerie, présence, file d'intents |
 | **Périmètre** | Tout ce qui relevait du « téléphone » : SMS, apps, notifs, recovery, ghost |
 | **Accès** | Surfaces autorisées (web, montre, agent IA, client tiers) |

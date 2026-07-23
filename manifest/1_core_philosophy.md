@@ -12,7 +12,7 @@ Un boîtier minimaliste (format "galet") qui remplace totalement le smartphone A
 - **Sécurité** : Il empêche l'OS Android ou Google d'interférer avec le réseau cellulaire. Il intercepte les SMS en force brute matérielle et gère la cryptographie.
 
 ### B. Le VPC (Le Cerveau Cloud Personnel)
-Chaque utilisateur déploie son propre Serveur Privé Virtuel (ex: un Droplet DigitalOcean).
+Chaque utilisateur déploie son propre serveur — **provider terrestre**, **machine perso derrière une box**, ou demain un **VPS dans un satellite** (cloud orbital SpaceX / Starlink compute et successeurs). Pas « Internet via dish » : le cerveau *habite* l'orbite. Détail : [manifeste 6](6_network_topology_routing.md).
 - **Fonction** : Il fait le pont entre le boîtier matériel (Relay) et l'interface utilisateur (Client Web). Il stocke la base de données privée.
 - **Liberté** : L'utilisateur est libre de coder, de customiser ou d'utiliser l'interface web (Front-End) de son choix. Le VPC s'occupe uniquement du routage en arrière-plan.
 
