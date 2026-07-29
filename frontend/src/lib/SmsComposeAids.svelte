@@ -269,7 +269,7 @@
   }
 
   function tileUrlTemplate(): string {
-    // unused — basemap is local SVG in Wrangler static assets
+    // unused — basemap is local NASA equirectangular JPEG in Wrangler static
     return '';
   }
 
@@ -279,24 +279,26 @@
     const L = leaflet.default ?? leaflet;
     await import('leaflet/dist/leaflet.css');
 
-    const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
+    // EPSG:4326 matches the equirectangular NASA basemap (no mercator warp)
+    const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
 
     if (!mapInst) {
       mapInst = L.map(mapEl, {
+        crs: L.CRS.EPSG4326,
         zoomControl: true,
         minZoom: 1,
-        maxZoom: 6,
+        maxZoom: 9,
         worldCopyJump: false,
         maxBounds: worldBounds,
         maxBoundsViscosity: 1
       });
-      // 100% local basemap (Wrangler static) — no OSM tile CDN
-      L.imageOverlay('/geo/world.svg', worldBounds, {
+      // Local 8K NASA Blue Marble / topo-bathy (Wrangler static) — no OSM CDN
+      L.imageOverlay('/geo/world.jpg', worldBounds, {
         opacity: 1,
         interactive: false
       }).addTo(mapInst);
       mapInst.fitBounds(worldBounds);
-      mapInst.setView([mapLat || 46.5, mapLon || 2.5], 3);
+      mapInst.setView([mapLat || 46.5, mapLon || 2.5], 5);
 
       const icon = L.divIcon({
         className: 'sca-pin',
@@ -331,7 +333,7 @@
     mapLon = lon;
     if (markerInst && mapInst) {
       markerInst.setLatLng([lat, lon]);
-      const z = Math.min(6, Math.max(3, mapInst.getZoom() || 4));
+      const z = Math.min(9, Math.max(4, mapInst.getZoom() || 6));
       mapInst.setView([lat, lon], z, { animate: true });
     }
   }
@@ -644,7 +646,7 @@
       {/if}
       <div class="sca__map-wrap">
         <div class="sca__map" bind:this={mapEl}></div>
-        <span class="sca__map-attr">basemap locale · Leaflet · GeoNames VPC</span>
+        <span class="sca__map-attr">NASA Blue Marble locale · Leaflet · GeoNames VPC</span>
       </div>
       <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
       <div class="sca__form">
@@ -754,7 +756,7 @@
   }
   .sca__map {
     width: 100%;
-    height: 260px;
+    height: 320px;
     z-index: 0;
   }
   .sca__map-attr {
