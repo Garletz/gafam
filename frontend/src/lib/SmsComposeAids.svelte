@@ -606,7 +606,7 @@
   {#if showManage}
     <div class="sca__panel">
       <p class="sca__panel-title">
-        Carnet + GeoNames mondial (bundle VPC)
+        Carnet + GeoNames détail (FR·BE·CH…)
         {#if geoStatus}
           <span class="sca__geo-meta">
             {#if geoStatus.importing}
@@ -615,6 +615,9 @@
               {geoStatus.count?.toLocaleString('fr-FR')} lieux
               {#if geoStatus.countries}
                 · {geoStatus.countries} pays
+              {/if}
+              {#if geoStatus.source}
+                · offline
               {/if}
               {#if !geoStatus.bundle}
                 · ⚠ bundle manquant

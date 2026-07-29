@@ -1,6 +1,6 @@
 package main
 
-// Local geocoding: bundled worldwide GeoNames (cities500) + OSM tile cache.
+// Local geocoding: bundled GeoNames (FR+neighbors detail + cities500 world) + local basemap.
 // The SQLite dump lives in geo-data/geonames.sqlite.gz (vendored in git / Docker image).
 // No runtime download from geonames.org.
 
@@ -22,7 +22,7 @@ import (
 
 const (
 	osmTileUA        = "GAFAM-Relay/1.0 (personal VPC tile cache)"
-	geoBundleVersion = "cities500-v1"
+	geoBundleVersion = "geonames-detail-v2"
 )
 
 var (
@@ -75,7 +75,7 @@ func initGeo() {
 	}
 
 	if _, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS gafam_geonames_fts USING fts5(
-		name, asciiname, admin1,
+		name, asciiname, admin1, country,
 		content='gafam_geonames',
 		content_rowid='geoname_id'
 	)`); err != nil {
@@ -117,7 +117,7 @@ func geoStatusHandler(w http.ResponseWriter, r *http.Request) {
 		"countries":    countries,
 		"bundle":       bundle != "",
 		"bundle_path":  bundle,
-		"source":       "cities500 (worldwide, bundled)",
+		"source":       "FR/BE/CH/LU/MC/AD/LI detail + cities500 world (bundled)",
 		"tiles_cached": countCachedTiles(),
 		"importing":    geoImporting.Load(),
 	})

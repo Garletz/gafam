@@ -1,4 +1,4 @@
 # Regenerated offline: go run scripts/build_geonames.go
-# Source: GeoNames cities500 (worldwide, population ≥ 500) — ~235k places.
+# FR/BE/CH/LU/MC/AD/LI (P/S/L/T) + cities500 world fallback — admin1 names resolved.
 *.sqlite
 !*.sqlite.gz
