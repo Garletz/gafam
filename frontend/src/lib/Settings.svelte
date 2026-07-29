@@ -238,7 +238,10 @@
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken });
       const res = await fetch(`/api/proxy/guardians?${params.toString()}`);
-      if (res.ok) guardians = await res.json();
+      if (!res.ok) return;
+      const data = await res.json();
+      // Proxy / VPC must return an array — never assign a non-array (breaks {#each})
+      guardians = Array.isArray(data) ? data : [];
     } catch (err) {
       console.error('Failed to fetch guardians', err);
     }
@@ -263,7 +266,12 @@
         newKeyword = 'URGENCE_GAFAM';
         await fetchGuardians();
       } else {
-        errorMsg = 'Failed to add guardian';
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 409 || /unique|constraint|duplicate/i.test(String(body.error || body.message || ''))) {
+          errorMsg = 'Ce numéro est déjà enregistré comme gardien.';
+        } else {
+          errorMsg = body.error || body.message || `Échec ajout (${res.status})`;
+        }
       }
     } catch {
       errorMsg = 'Network error';
@@ -540,7 +548,8 @@
         </div>
 
         <div class="guardian-list">
-          {#each guardians as guardian}
+          <p class="guardian-list__count">{guardians.length} guardian{guardians.length === 1 ? '' : 's'}</p>
+          {#each guardians as guardian (guardian.id)}
             <article class="guardian-card">
               <div class="guardian-card__main">
                 <strong class="guardian-card__name">{guardian.name}</strong>
@@ -603,6 +612,7 @@
   .settings {
     display: flex;
     flex-direction: column;
+    flex: 1;
     height: 100%;
     min-height: 0;
     background: #ffffff;
@@ -970,6 +980,15 @@
     flex-direction: column;
     gap: 10px;
     margin-bottom: 20px;
+  }
+
+  .guardian-list__count {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #80868b;
   }
 
   .guardian-card {

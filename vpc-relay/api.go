@@ -1007,9 +1007,19 @@ func addGuardianHandler(w http.ResponseWriter, r *http.Request) {
 		req.Keyword = "URGENCE_GAFAM"
 	}
 
+	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Phone) == "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "name and phone required"})
+		return
+	}
+
 	_, err := db.Exec("INSERT INTO trusted_guardians (name, phone_number, keyword) VALUES (?, ?, ?)", req.Name, req.Phone, req.Keyword)
 	if err != nil {
-		http.Error(w, "Failed to add guardian", http.StatusInternalServerError)
+		// phone_number is UNIQUE — duplicate is the usual failure mode
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			sendJSON(w, http.StatusConflict, map[string]string{"error": "phone already registered as guardian"})
+			return
+		}
+		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to add guardian"})
 		return
 	}
 	sendJSON(w, http.StatusOK, map[string]string{"status": "added"})
