@@ -294,75 +294,104 @@
     }
   }
 
+  async function fetchGeoJSONLayer(name: string): Promise<any | null> {
+    // 1) VPC map-pack (when image pulled)
+    if (vpcUrl && sessionToken) {
+      try {
+        const res = await fetch(geoProxyUrl('layer', { name }));
+        if (res.ok) {
+          const gj = await res.json();
+          if (gj?.features?.length) return gj;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    // 2) Wrangler static fallback — always available
+    try {
+      const res = await fetch(`/geo/${name}.geojson.gz`);
+      if (!res.ok || !res.body) return null;
+      const ds = new DecompressionStream('gzip');
+      const text = await new Response(res.body.pipeThrough(ds)).text();
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+
   async function loadMapOverlays(L: any, map: LeafletMap) {
-    if (!vpcUrl || !sessionToken) return;
+    // High-contrast strokes over NASA satellite
     const styleRoad = (f: any) => {
       const sr = Number(f?.properties?.sr ?? 9);
       return {
-        color: sr <= 3 ? '#f5f0e6' : '#d4cfc4',
-        weight: sr <= 3 ? 1.4 : sr <= 5 ? 1.0 : 0.6,
-        opacity: sr <= 3 ? 0.85 : 0.55,
-        interactive: false
+        color: sr <= 3 ? '#ffd54a' : '#ffcc66',
+        weight: sr <= 3 ? 2.2 : sr <= 5 ? 1.5 : 1.0,
+        opacity: 0.95,
+        interactive: true
       };
     };
     const styleRiver = (f: any) => {
       const sr = Number(f?.properties?.sr ?? 9);
       return {
-        color: '#7ec8e3',
-        weight: sr <= 2 ? 2.0 : 1.1,
-        opacity: 0.75,
-        interactive: false
+        color: '#4fc3f7',
+        weight: sr <= 2 ? 2.8 : 1.8,
+        opacity: 0.95,
+        interactive: true
       };
     };
 
-    const addLayer = async (name: string, style: any, onEach?: (f: any, layer: any) => void) => {
-      try {
-        const res = await fetch(geoProxyUrl('layer', { name }));
-        if (!res.ok) return;
-        const gj = await res.json();
-        L.geoJSON(gj, { style, onEachFeature: onEach, interactive: false }).addTo(map);
-      } catch {
-        /* overlays optional */
-      }
-    };
+    const roads = await fetchGeoJSONLayer('roads');
+    if (roads) {
+      L.geoJSON(roads, {
+        style: styleRoad,
+        onEachFeature: (f: any, layer: any) => {
+          const n = f?.properties?.name;
+          if (n) layer.bindTooltip(n, { sticky: true, className: 'sca-city-label', opacity: 0.95 });
+        }
+      }).addTo(map);
+    }
 
-    await addLayer('roads', styleRoad);
-    await addLayer('rivers', styleRiver);
-    try {
-      const res = await fetch(geoProxyUrl('layer', { name: 'cities' }));
-      if (res.ok) {
-        const gj = await res.json();
-        L.geoJSON(gj, {
-          pointToLayer: (f: any, latlng: any) => {
-            const pop = Number(f?.properties?.pop ?? 0);
-            const sr = Number(f?.properties?.sr ?? 99);
-            const r = sr <= 2 || pop >= 1_000_000 ? 3.2 : sr <= 4 || pop >= 200_000 ? 2.2 : 1.4;
-            return L.circleMarker(latlng, {
-              radius: r,
-              color: '#fff8e7',
-              weight: 0.6,
-              fillColor: '#ffe08a',
-              fillOpacity: 0.9,
-              interactive: false
-            });
-          },
-          onEachFeature: (f: any, layer: any) => {
-            const name = f?.properties?.name;
-            const pop = Number(f?.properties?.pop ?? 0);
-            const sr = Number(f?.properties?.sr ?? 99);
-            if (!name) return;
-            if (sr > 4 && pop < 150_000) return;
-            layer.bindTooltip(name, {
-              permanent: sr <= 3 || pop >= 500_000,
-              direction: 'right',
-              className: 'sca-city-label',
-              opacity: 0.9
-            });
-          }
-        }).addTo(map);
-      }
-    } catch {
-      /* optional */
+    const rivers = await fetchGeoJSONLayer('rivers');
+    if (rivers) {
+      L.geoJSON(rivers, {
+        style: styleRiver,
+        onEachFeature: (f: any, layer: any) => {
+          const n = f?.properties?.name;
+          if (n) layer.bindTooltip(n, { sticky: true, className: 'sca-city-label', opacity: 0.95 });
+        }
+      }).addTo(map);
+    }
+
+    const cities = await fetchGeoJSONLayer('cities');
+    if (cities) {
+      L.geoJSON(cities, {
+        pointToLayer: (f: any, latlng: any) => {
+          const pop = Number(f?.properties?.pop ?? 0);
+          const sr = Number(f?.properties?.sr ?? 99);
+          const r = sr <= 2 || pop >= 1_000_000 ? 4 : sr <= 4 || pop >= 200_000 ? 3 : 2;
+          return L.circleMarker(latlng, {
+            radius: r,
+            color: '#1a1a1a',
+            weight: 1,
+            fillColor: '#ffeb3b',
+            fillOpacity: 0.95,
+            interactive: true
+          });
+        },
+        onEachFeature: (f: any, layer: any) => {
+          const name = f?.properties?.name;
+          const pop = Number(f?.properties?.pop ?? 0);
+          const sr = Number(f?.properties?.sr ?? 99);
+          if (!name) return;
+          if (sr > 5 && pop < 80_000) return;
+          layer.bindTooltip(name, {
+            permanent: sr <= 3 || pop >= 300_000,
+            direction: 'right',
+            className: 'sca-city-label',
+            opacity: 0.95
+          });
+        }
+      }).addTo(map);
     }
   }
 
@@ -744,7 +773,7 @@
       {/if}
       <div class="sca__map-wrap">
         <div class="sca__map" bind:this={mapEl}></div>
-        <span class="sca__map-attr">VPC map-pack · fleuves / routes / villes · NASA</span>
+        <span class="sca__map-attr">routes · fleuves · villes · NASA (pas de noms de rues)</span>
       </div>
       <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
       <div class="sca__form">
