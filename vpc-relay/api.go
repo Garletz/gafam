@@ -166,10 +166,7 @@ func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Persist in chat history so web UI still shows the message after reload
 	ts := time.Now().UnixMilli()
-	_, _ = db.Exec(
-		`INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
-		params.Recipient, params.Body, ts, "outbound",
-	)
+	_, _, _ = insertSmsDeduped(params.Recipient, params.Body, ts, "outbound")
 
 	id, _ := res.LastInsertId()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
@@ -384,10 +381,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 				)
 				db.Exec(`INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`, senderStr, replyBody)
 				ts := time.Now().UnixMilli()
-				db.Exec(
-					`INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
-					senderStr, replyBody, ts, "outbound",
-				)
+				_, _, _ = insertSmsDeduped(senderStr, replyBody, ts, "outbound")
 			} else {
 				log.Println("Error generating emergency challenge:", errChal)
 			}
@@ -405,17 +399,28 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		status = "inbox"
 	}
 
-	stmt := `INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`
-	res, err := db.Exec(stmt, params.Sender, params.Body, params.Timestamp, status)
+	ts := int64(0)
+	if params.Timestamp != nil {
+		ts = *params.Timestamp
+	}
+	id, inserted, err := insertSmsDeduped(senderStr, bodyStr, ts, status)
 	if err != nil {
 		http.Error(w, "Failed to save SMS", http.StatusInternalServerError)
+		return
+	}
+	if !inserted {
+		touchApkRelay()
+		sendJSON(w, http.StatusOK, map[string]interface{}{
+			"status":      "duplicate",
+			"id":          id,
+			"spam_status": status,
+		})
 		return
 	}
 
 	// Rolling Window: Keep max 50,000 SMS
 	db.Exec(`DELETE FROM gafam_sms WHERE id NOT IN (SELECT id FROM gafam_sms ORDER BY id DESC LIMIT 50000)`)
 
-	id, _ := res.LastInsertId()
 	touchApkRelay()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"status":      "saved",
@@ -467,15 +472,13 @@ func syncSmsHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		if m.Type == 2 {
 			status = "outbound"
 		}
-		res, err := db.Exec(
-			`INSERT OR IGNORE INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
-			m.Address, m.Body, m.Timestamp, status,
-		)
+		_, did, err := insertSmsDeduped(m.Address, m.Body, m.Timestamp, status)
 		if err != nil {
 			continue
 		}
-		n, _ := res.RowsAffected()
-		inserted += int(n)
+		if did {
+			inserted++
+		}
 	}
 
 	log.Printf("SMS history sync: %d new / %d received", inserted, len(wrap.Messages))

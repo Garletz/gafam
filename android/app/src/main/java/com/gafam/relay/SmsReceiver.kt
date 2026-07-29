@@ -50,13 +50,23 @@ class SmsReceiver : BroadcastReceiver() {
             uiIntent.putExtra("sender", sender)
             uiIntent.putExtra("body", body)
             context.sendBroadcast(uiIntent)
-            
+
+            // When we are the default SMS app, SMS_DELIVER also fires and
+            // SmsDeliverReceiver posts to the VPC — skip here to avoid duplicates.
+            val defaultPkg = Telephony.Sms.getDefaultSmsPackage(context)
+            if (defaultPkg != null && defaultPkg == context.packageName) {
+                Log.d("GAFAM_Relay", "Default SMS app — VPC post handled by SmsDeliverReceiver")
+                pendingResult.finish()
+                return
+            }
+
             // Envoi en arrière-plan vers le VPC
-            sendToVpc(context, sender, body, pendingResult)
+            val ts = messages[0].timestampMillis
+            sendToVpc(context, sender, body, ts, pendingResult)
         }
     }
 
-    private fun sendToVpc(context: Context, sender: String, body: String, pendingResult: PendingResult?) {
+    private fun sendToVpc(context: Context, sender: String, body: String, timestamp: Long, pendingResult: PendingResult?) {
         val prefs = context.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         val apiUrl = prefs.getString("apiUrl", null)
         val jwtSecret = prefs.getString("jwtSecret", null)
@@ -75,7 +85,7 @@ class SmsReceiver : BroadcastReceiver() {
                 val jsonBody = JSONObject().apply {
                     put("sender", sender)
                     put("body", body)
-                    put("timestamp", System.currentTimeMillis())
+                    put("timestamp", if (timestamp > 0) timestamp else System.currentTimeMillis())
                 }
 
                 val plaintext = jsonBody.toString().toByteArray(Charsets.UTF_8)

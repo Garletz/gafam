@@ -42,11 +42,11 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 return
             }
 
-            sendToVpc(context, sender, body, pendingResult)
+            sendToVpc(context, sender, body, messages[0].timestampMillis, pendingResult)
         }
     }
 
-    private fun sendToVpc(context: Context, sender: String, body: String, pendingResult: PendingResult?) {
+    private fun sendToVpc(context: Context, sender: String, body: String, timestamp: Long, pendingResult: PendingResult?) {
         val prefs = context.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         val apiUrl = prefs.getString("apiUrl", null)
         val jwtSecret = prefs.getString("jwtSecret", null)
@@ -65,7 +65,7 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 val jsonBody = JSONObject().apply {
                     put("sender", sender)
                     put("body", body)
-                    put("timestamp", System.currentTimeMillis())
+                    put("timestamp", if (timestamp > 0) timestamp else System.currentTimeMillis())
                 }
 
                 val plaintext = jsonBody.toString().toByteArray(Charsets.UTF_8)

@@ -76,6 +76,7 @@ func initDB() {
 	// Try to add status column if upgrading an existing DB
 	db.Exec("ALTER TABLE gafam_sms ADD COLUMN status TEXT DEFAULT 'inbox';")
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gafam_sms_dedup ON gafam_sms(sender, body, timestamp)`)
+	purgeNearDuplicateSms()
 
 	createSessionsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_sessions (

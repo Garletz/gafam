@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { decryptAESGCM } from '$lib/crypto';
 
   export type ComposePlace = {
     id: number;
@@ -10,40 +11,159 @@
     use_count?: number;
   };
 
-  export type ComposeTime = {
-    id: number;
-    label: string;
-    kind: string;
-    value: string;
-    sort?: number;
-    use_count?: number;
-  };
-
   let {
     vpcUrl,
     sessionToken,
+    nodePhone = '',
     body = $bindable(''),
     textareaEl = $bindable<HTMLTextAreaElement | null>(null)
   }: {
     vpcUrl: string;
     sessionToken: string;
+    /** Fallback from URL / directory when VPC self_phone is empty */
+    nodePhone?: string;
     body?: string;
     textareaEl?: HTMLTextAreaElement | null;
   } = $props();
 
   let places = $state<ComposePlace[]>([]);
-  let times = $state<ComposeTime[]>([]);
   let placeQ = $state('');
   let showManage = $state(false);
   let customHH = $state('');
   let customMM = $state('');
-  let inMinutes = $state('15');
   let msg = $state('');
+  /** Phone from current VPC settings (self_phone), preferred over URL */
+  let vpcPhone = $state('');
+  /** 0 = today, 1 = tomorrow, … */
+  let dayOffset = $state(0);
+  /** Tick so smart slots refresh with the clock */
+  let nowMs = $state(Date.now());
 
   // New place form
   let newLabel = $state('');
   let newAddress = $state('');
   let newCoords = $state(''); // "48.85,2.35"
+
+  const DAYS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+  type DayOpt = { offset: number; label: string };
+  type TimeSlot = { key: string; label: string; hh: number; mm: number };
+
+  const dayOptions = $derived.by((): DayOpt[] => {
+    const base = new Date(nowMs);
+    const opts: DayOpt[] = [
+      { offset: 0, label: "Aujourd'hui" },
+      { offset: 1, label: 'Demain' }
+    ];
+    for (let o = 2; o <= 6; o++) {
+      const d = new Date(base);
+      d.setDate(d.getDate() + o);
+      opts.push({ offset: o, label: DAYS_FR[d.getDay()] });
+    }
+    return opts;
+  });
+
+  /** Next half-hour clock slots from PC time for the selected day. */
+  const smartSlots = $derived.by((): TimeSlot[] => {
+    const now = new Date(nowMs);
+    const slots: TimeSlot[] = [];
+    const push = (hh: number, mm: number) => {
+      if (hh > 23) return;
+      const label = mm === 0 ? `${hh}h` : `${hh}h${String(mm).padStart(2, '0')}`;
+      slots.push({ key: `${hh}:${mm}`, label, hh, mm });
+    };
+
+    if (dayOffset === 0) {
+      // Round up to next :00 or :30
+      let h = now.getHours();
+      let m = now.getMinutes();
+      if (m === 0) {
+        /* exactly on the hour → start at +30min */
+        m = 30;
+      } else if (m < 30) {
+        m = 30;
+      } else {
+        h += 1;
+        m = 0;
+      }
+      // Offer ~8 upcoming slots (ex. 18:20 → 18:30, 19h, 19:30, 20h, 20:30…)
+      for (let i = 0; i < 8 && h <= 23; i++) {
+        push(h, m);
+        if (m === 0) m = 30;
+        else {
+          h += 1;
+          m = 0;
+        }
+      }
+    } else {
+      // Other days: classic RDV window, denser around evening
+      const candidates = [
+        [9, 0],
+        [10, 0],
+        [11, 0],
+        [12, 0],
+        [12, 30],
+        [14, 0],
+        [15, 0],
+        [16, 0],
+        [17, 0],
+        [18, 0],
+        [18, 30],
+        [19, 0],
+        [19, 30],
+        [20, 0],
+        [20, 30],
+        [21, 0]
+      ];
+      for (const [hh, mm] of candidates) push(hh, mm);
+    }
+    return slots;
+  });
+
+  function dayPrefix(): string {
+    if (dayOffset === 0) return '';
+    if (dayOffset === 1) return 'demain ';
+    const d = new Date(nowMs);
+    d.setDate(d.getDate() + dayOffset);
+    return `${DAYS_FR[d.getDay()]} `;
+  }
+
+  function insertSmartSlot(slot: TimeSlot) {
+    const time =
+      slot.mm === 0 ? `${slot.hh}h` : `${slot.hh}h${String(slot.mm).padStart(2, '0')}`;
+    const prefix = dayPrefix();
+    insertText(prefix ? `${prefix}à ${time}` : `à ${time}`);
+  }
+
+  function insertCustomClock() {
+    const h = parseInt(customHH, 10);
+    const m = parseInt(customMM || '0', 10);
+    if (Number.isNaN(h) || h < 0 || h > 23 || Number.isNaN(m) || m < 0 || m > 59) {
+      msg = 'Heure invalide (HH / MM)';
+      setTimeout(() => (msg = ''), 2500);
+      return;
+    }
+    const time = m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+    const prefix = dayPrefix();
+    insertText(prefix ? `${prefix}à ${time}` : `à ${time}`);
+  }
+
+  function toSubdomainPhone(raw: string): string {
+    let d = String(raw).trim().replace(/[\s.\-()]/g, '');
+    if (d.startsWith('+33')) d = '0' + d.slice(3);
+    else if (d.startsWith('33') && d.length >= 11) d = '0' + d.slice(2);
+    return d;
+  }
+
+  const nodeHost = $derived.by(() => {
+    const raw = vpcPhone || nodePhone || '';
+    const sub = toSubdomainPhone(raw);
+    return sub ? `${sub}.gafam.cloud` : '';
+  });
+
+  const signatureLine = $derived(
+    nodeHost ? `Envoyé depuis ${nodeHost}` : 'Envoyé depuis gafam.cloud'
+  );
 
   function qs(extra: Record<string, string> = {}) {
     return new URLSearchParams({ vpcUrl, token: sessionToken, ...extra });
@@ -62,21 +182,31 @@
     }
   }
 
-  async function loadTimes() {
-    try {
-      const res = await fetch(`/api/proxy/compose?${qs({ kind: 'times' })}`);
-      if (!res.ok) return;
-      const data: any = await res.json();
-      times = data.times || [];
-    } catch {
-      /* ignore */
-    }
-  }
-
   onMount(() => {
     loadPlaces();
-    loadTimes();
+    loadVpcPhone();
+    const tick = setInterval(() => {
+      nowMs = Date.now();
+    }, 30_000);
+    return () => clearInterval(tick);
   });
+
+  async function loadVpcPhone() {
+    if (!vpcUrl || !sessionToken) return;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const res = await fetch(`/api/proxy/settings?${params}`);
+      if (!res.ok) return;
+      const payload: any = await res.json();
+      if (payload.encrypted_data && payload.iv) {
+        const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+        const obj = JSON.parse(plaintext);
+        if (obj.self_phone) vpcPhone = String(obj.self_phone);
+      }
+    } catch {
+      /* keep URL fallback */
+    }
+  }
 
   $effect(() => {
     const q = placeQ;
@@ -118,30 +248,6 @@
     return `au ${s}`;
   }
 
-  function formatTimePreset(t: ComposeTime): string {
-    const v = t.value || '';
-    if (v.startsWith('+') && v.endsWith('m')) {
-      const n = parseInt(v.slice(1), 10);
-      if (!Number.isNaN(n)) {
-        if (n < 60) return `dans ${n} min`;
-        if (n % 60 === 0) return `dans ${n / 60} h`;
-        return `dans ${Math.floor(n / 60)} h ${n % 60}`;
-      }
-    }
-    if (v.startsWith('tomorrow_')) {
-      const hhmm = v.slice('tomorrow_'.length);
-      return `demain à ${hhmm.replace(':', 'h')}`;
-    }
-    if (v.startsWith('today_')) {
-      const hhmm = v.slice('today_'.length);
-      return `aujourd'hui à ${hhmm.replace(':', 'h')}`;
-    }
-    if (/^\d{1,2}:\d{2}$/.test(v)) {
-      return `à ${v.replace(':', 'h')}`;
-    }
-    return t.label || v;
-  }
-
   async function bumpUse(kind: 'places' | 'times', id: number) {
     try {
       await fetch(
@@ -157,30 +263,6 @@
     insertText(formatPlace(p));
     await bumpUse('places', p.id);
     loadPlaces(placeQ);
-  }
-
-  async function onTimeChip(t: ComposeTime) {
-    insertText(formatTimePreset(t));
-    await bumpUse('times', t.id);
-    loadTimes();
-  }
-
-  function insertCustomClock() {
-    const h = parseInt(customHH, 10);
-    const m = parseInt(customMM || '0', 10);
-    if (Number.isNaN(h) || h < 0 || h > 23 || Number.isNaN(m) || m < 0 || m > 59) {
-      msg = 'Heure invalide (HH / MM)';
-      setTimeout(() => (msg = ''), 2500);
-      return;
-    }
-    const mm = String(m).padStart(2, '0');
-    insertText(`à ${h}h${mm}`);
-  }
-
-  function insertInMinutes() {
-    const n = parseInt(inMinutes, 10);
-    if (Number.isNaN(n) || n <= 0) return;
-    insertText(n < 60 ? `dans ${n} min` : `dans ${Math.floor(n / 60)} h${n % 60 ? ` ${n % 60}` : ''}`);
   }
 
   function parseCoords(raw: string): { lat?: number; lon?: number } {
@@ -228,27 +310,61 @@
     });
     if (res.ok) loadPlaces(placeQ);
   }
+
+  /** Apple-style footer: append at end (not cursor), skip if already present. */
+  function insertSignature() {
+    const line = signatureLine;
+    if (body.includes(line)) {
+      msg = 'Signature déjà présente';
+      setTimeout(() => (msg = ''), 2000);
+      return;
+    }
+    const trimmed = body.replace(/\s+$/, '');
+    body = trimmed ? `${trimmed}\n\n${line}` : line;
+    requestAnimationFrame(() => {
+      const el = textareaEl;
+      if (el) {
+        el.focus();
+        const pos = body.length;
+        el.setSelectionRange(pos, pos);
+      }
+    });
+  }
 </script>
 
 <div class="sca">
   <div class="sca__row">
+    <span class="sca__label">Jour</span>
+    <div class="sca__chips">
+      {#each dayOptions as d (d.offset)}
+        <button
+          type="button"
+          class="sca__chip"
+          class:sca__chip--on={dayOffset === d.offset}
+          onclick={() => (dayOffset = d.offset)}
+        >
+          {d.label}
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <div class="sca__row">
     <span class="sca__label">Heure</span>
     <div class="sca__chips">
-      {#each times as t (t.id)}
-        <button type="button" class="sca__chip" onclick={() => onTimeChip(t)} title={t.value}>
-          {t.label}
+      {#each smartSlots as s (s.key)}
+        <button type="button" class="sca__chip sca__chip--time" onclick={() => insertSmartSlot(s)}>
+          {s.label}
         </button>
+      {:else}
+        <span class="sca__empty">plus de créneau ce soir</span>
       {/each}
     </div>
     <div class="sca__mini">
       <input class="sca__num" type="text" inputmode="numeric" maxlength="2" placeholder="HH" bind:value={customHH} />
       <span>:</span>
       <input class="sca__num" type="text" inputmode="numeric" maxlength="2" placeholder="MM" bind:value={customMM} />
-      <button type="button" class="sca__mini-btn" onclick={insertCustomClock}>+</button>
-      <span class="sca__sep">|</span>
-      <input class="sca__num sca__num--wide" type="text" inputmode="numeric" bind:value={inMinutes} />
-      <span class="sca__hint">min</span>
-      <button type="button" class="sca__mini-btn" onclick={insertInMinutes}>+</button>
+      <button type="button" class="sca__mini-btn" onclick={insertCustomClock} title="Heure libre + jour sélectionné">+</button>
     </div>
   </div>
 
@@ -269,6 +385,14 @@
         <span class="sca__empty">aucun lieu — ouvrir Gérer</span>
       {/each}
     </div>
+    <button
+      type="button"
+      class="sca__sig"
+      onclick={insertSignature}
+      title={signatureLine}
+    >
+      Signature
+    </button>
     <button type="button" class="sca__manage" onclick={() => (showManage = !showManage)}>
       {showManage ? 'Fermer' : 'Gérer'}
     </button>
@@ -344,6 +468,20 @@
     background: #f1f3f4;
     border-color: #bdc1c6;
   }
+  .sca__chip--on {
+    background: #202124;
+    border-color: #202124;
+    color: #fff;
+  }
+  .sca__chip--on:hover {
+    background: #3c4043;
+    border-color: #3c4043;
+    color: #fff;
+  }
+  .sca__chip--time {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
   .sca__chip--place {
     background: #e8f0fe;
     border-color: #aecbfa;
@@ -403,6 +541,20 @@
     border-radius: 6px;
     cursor: pointer;
     color: #5f6368;
+  }
+  .sca__sig {
+    border: 1px solid #dadce0;
+    background: #fff;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #8e8e93;
+    font-style: italic;
+  }
+  .sca__sig:hover {
+    color: #202124;
+    border-color: #bdc1c6;
   }
   .sca__panel {
     border: 1px solid #e8eaed;

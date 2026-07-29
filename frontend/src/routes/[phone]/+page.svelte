@@ -484,7 +484,15 @@
       const direction =
         sms.direction ||
         (sms.status === 'outbound' || sms.status === 'sent' ? 'outbound' : 'inbound');
-      groups[peer].push({ ...sms, direction });
+      const list = groups[peer];
+      // Drop near-duplicates already in DB (same body+direction within 3 min)
+      const isDup = list.some(
+        (m) =>
+          m.body === sms.body &&
+          m.direction === direction &&
+          Math.abs((m.timestamp || 0) - (sms.timestamp || 0)) < 180000
+      );
+      if (!isDup) list.push({ ...sms, direction });
     }
     
     if (selectedSender && !groups[selectedSender]) {
@@ -1045,6 +1053,7 @@
               <SmsComposeAids
                 {vpcUrl}
                 {sessionToken}
+                nodePhone={phone || ''}
                 bind:body={outboxBody}
                 bind:textareaEl={outboxTextarea}
               />

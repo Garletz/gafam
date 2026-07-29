@@ -825,10 +825,7 @@ func queueSmsReply(recipient, body string) {
 		return
 	}
 	ts := time.Now().UnixMilli()
-	_, _ = db.Exec(
-		`INSERT INTO gafam_sms (sender, body, timestamp, status) VALUES (?, ?, ?, ?)`,
-		recipient, body, ts, "outbound",
-	)
+	_, _, _ = insertSmsDeduped(recipient, body, ts, "outbound")
 }
 
 // publishMissionResult publishes a mission's summary to the VPC feed
