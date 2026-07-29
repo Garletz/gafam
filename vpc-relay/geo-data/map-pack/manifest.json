@@ -1,0 +1,35 @@
+{
+  "version": "map-pack-v1",
+  "created": "2026-07-29",
+  "quota_bytes": 1000000000,
+  "layers": [
+    {
+      "id": "basemap",
+      "file": "basemap.jpg",
+      "type": "raster",
+      "crs": "EPSG:4326",
+      "bounds": [
+        -180,
+        -90,
+        180,
+        90
+      ]
+    },
+    {
+      "id": "rivers",
+      "file": "rivers.geojson.gz",
+      "type": "geojson"
+    },
+    {
+      "id": "roads",
+      "file": "roads.geojson.gz",
+      "type": "geojson"
+    },
+    {
+      "id": "cities",
+      "file": "cities.geojson.gz",
+      "type": "geojson"
+    }
+  ],
+  "note": "NASA Blue Marble topo-bathy + Natural Earth 10m overlays. Tile cache uses remaining geo quota."
+}

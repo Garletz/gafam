@@ -116,48 +116,52 @@ async function vpcJson(
 	}
 }
 
-async function vpcTile(
+async function vpcBinary(
 	vpcUrl: string,
 	token: string,
-	z: string,
-	x: string,
-	y: string
+	path: string,
+	maxBytes: number,
+	fallbackType: string
 ): Promise<Response> {
-	const path = `/api/web/geo/tiles/${encodeURIComponent(z)}/${encodeURIComponent(x)}/${encodeURIComponent(y)}?token=${encodeURIComponent(token)}`;
+	const full = path.includes('?')
+		? `${path}&token=${encodeURIComponent(token)}`
+		: `${path}?token=${encodeURIComponent(token)}`;
 	try {
 		const { socket, host } = await connectVpc(vpcUrl);
 		const writer = socket.writable.getWriter();
 		const encoder = new TextEncoder();
 		const req =
-			`GET ${path} HTTP/1.1\r\n` +
+			`GET ${full} HTTP/1.1\r\n` +
 			`Host: ${host}\r\n` +
 			`Authorization: Bearer ${token}\r\n` +
 			`Connection: close\r\n\r\n`;
 		await writer.write(encoder.encode(req));
 		writer.releaseLock();
 
-		const raw = await readRaw(socket, 1 << 20);
+		const raw = await readRaw(socket, maxBytes);
 		const { status, headers, body } = splitHttp(raw);
-		const ct = headers.get('Content-Type') || 'image/png';
+		const ct = headers.get('Content-Type') || fallbackType;
 		const cache = headers.get('X-Geo-Cache') || '';
+		const layer = headers.get('X-Geo-Layer') || '';
 		return new Response(body, {
 			status,
 			headers: {
 				'Content-Type': ct,
 				'Cache-Control': 'public, max-age=86400',
-				...(cache ? { 'X-Geo-Cache': cache } : {})
+				...(cache ? { 'X-Geo-Cache': cache } : {}),
+				...(layer ? { 'X-Geo-Layer': layer } : {})
 			}
 		});
 	} catch (e: any) {
 		try {
-			const res = await fetch(`${vpcUrl}${path}`, {
+			const res = await fetch(`${vpcUrl}${full}`, {
 				headers: { Authorization: `Bearer ${token}` }
 			});
 			const buf = await res.arrayBuffer();
 			return new Response(buf, {
 				status: res.status,
 				headers: {
-					'Content-Type': res.headers.get('Content-Type') || 'image/png',
+					'Content-Type': res.headers.get('Content-Type') || fallbackType,
 					'Cache-Control': 'public, max-age=86400'
 				}
 			});
@@ -178,7 +182,39 @@ export const GET: RequestHandler = async ({ url }) => {
 		const x = url.searchParams.get('x') || '';
 		const y = url.searchParams.get('y') || '';
 		if (!z || !x || !y) return json({ error: 'z,x,y required' }, { status: 400 });
-		return vpcTile(vpcUrl, token, z, x, y);
+		return vpcBinary(
+			vpcUrl,
+			token,
+			`/api/web/geo/tiles/${encodeURIComponent(z)}/${encodeURIComponent(x)}/${encodeURIComponent(y)}`,
+			1 << 20,
+			'image/png'
+		);
+	}
+
+	if (action === 'basemap') {
+		return vpcBinary(vpcUrl, token, '/api/web/geo/basemap', 20 << 20, 'image/jpeg');
+	}
+
+	if (action === 'layer') {
+		const name = url.searchParams.get('name') || '';
+		if (!name) return json({ error: 'name required' }, { status: 400 });
+		return vpcBinary(
+			vpcUrl,
+			token,
+			`/api/web/geo/layers/${encodeURIComponent(name)}`,
+			12 << 20,
+			'application/geo+json'
+		);
+	}
+
+	if (action === 'layers') {
+		const result = await vpcJson(
+			vpcUrl,
+			token,
+			'GET',
+			`/api/web/geo/layers?token=${encodeURIComponent(token)}`
+		);
+		return json(result.data, { status: result.status });
 	}
 
 	if (action === 'status') {

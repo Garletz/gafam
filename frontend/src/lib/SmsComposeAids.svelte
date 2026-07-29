@@ -68,6 +68,7 @@
   let mapEl = $state<HTMLDivElement | null>(null);
   let mapInst: LeafletMap | null = null;
   let markerInst: LeafletMarker | null = null;
+  let basemapObjectUrl: string | null = null;
 
   const DAYS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
@@ -269,8 +270,100 @@
   }
 
   function tileUrlTemplate(): string {
-    // unused — basemap is local NASA equirectangular JPEG in Wrangler static
+    // unused — basemap from VPC map-pack (fallback: Wrangler /geo/world.jpg)
     return '';
+  }
+
+  function geoProxyUrl(action: string, extra: Record<string, string> = {}) {
+    const params = new URLSearchParams({ vpcUrl, token: sessionToken, action, ...extra });
+    return `/api/proxy/geo?${params}`;
+  }
+
+  async function resolveBasemapUrl(): Promise<string> {
+    if (!vpcUrl || !sessionToken) return '/geo/world.jpg';
+    try {
+      const res = await fetch(geoProxyUrl('basemap'));
+      if (!res.ok) return '/geo/world.jpg';
+      const blob = await res.blob();
+      if (!blob || blob.size < 10_000) return '/geo/world.jpg';
+      if (basemapObjectUrl) URL.revokeObjectURL(basemapObjectUrl);
+      basemapObjectUrl = URL.createObjectURL(blob);
+      return basemapObjectUrl;
+    } catch {
+      return '/geo/world.jpg';
+    }
+  }
+
+  async function loadMapOverlays(L: any, map: LeafletMap) {
+    if (!vpcUrl || !sessionToken) return;
+    const styleRoad = (f: any) => {
+      const sr = Number(f?.properties?.sr ?? 9);
+      return {
+        color: sr <= 3 ? '#f5f0e6' : '#d4cfc4',
+        weight: sr <= 3 ? 1.4 : sr <= 5 ? 1.0 : 0.6,
+        opacity: sr <= 3 ? 0.85 : 0.55,
+        interactive: false
+      };
+    };
+    const styleRiver = (f: any) => {
+      const sr = Number(f?.properties?.sr ?? 9);
+      return {
+        color: '#7ec8e3',
+        weight: sr <= 2 ? 2.0 : 1.1,
+        opacity: 0.75,
+        interactive: false
+      };
+    };
+
+    const addLayer = async (name: string, style: any, onEach?: (f: any, layer: any) => void) => {
+      try {
+        const res = await fetch(geoProxyUrl('layer', { name }));
+        if (!res.ok) return;
+        const gj = await res.json();
+        L.geoJSON(gj, { style, onEachFeature: onEach, interactive: false }).addTo(map);
+      } catch {
+        /* overlays optional */
+      }
+    };
+
+    await addLayer('roads', styleRoad);
+    await addLayer('rivers', styleRiver);
+    try {
+      const res = await fetch(geoProxyUrl('layer', { name: 'cities' }));
+      if (res.ok) {
+        const gj = await res.json();
+        L.geoJSON(gj, {
+          pointToLayer: (f: any, latlng: any) => {
+            const pop = Number(f?.properties?.pop ?? 0);
+            const sr = Number(f?.properties?.sr ?? 99);
+            const r = sr <= 2 || pop >= 1_000_000 ? 3.2 : sr <= 4 || pop >= 200_000 ? 2.2 : 1.4;
+            return L.circleMarker(latlng, {
+              radius: r,
+              color: '#fff8e7',
+              weight: 0.6,
+              fillColor: '#ffe08a',
+              fillOpacity: 0.9,
+              interactive: false
+            });
+          },
+          onEachFeature: (f: any, layer: any) => {
+            const name = f?.properties?.name;
+            const pop = Number(f?.properties?.pop ?? 0);
+            const sr = Number(f?.properties?.sr ?? 99);
+            if (!name) return;
+            if (sr > 4 && pop < 150_000) return;
+            layer.bindTooltip(name, {
+              permanent: sr <= 3 || pop >= 500_000,
+              direction: 'right',
+              className: 'sca-city-label',
+              opacity: 0.9
+            });
+          }
+        }).addTo(map);
+      }
+    } catch {
+      /* optional */
+    }
   }
 
   async function ensureMap() {
@@ -287,13 +380,13 @@
         crs: L.CRS.EPSG4326,
         zoomControl: true,
         minZoom: 1,
-        maxZoom: 9,
+        maxZoom: 11,
         worldCopyJump: false,
         maxBounds: worldBounds,
         maxBoundsViscosity: 1
       });
-      // Local 8K NASA Blue Marble / topo-bathy (Wrangler static) — no OSM CDN
-      L.imageOverlay('/geo/world.jpg', worldBounds, {
+      const basemapUrl = await resolveBasemapUrl();
+      L.imageOverlay(basemapUrl, worldBounds, {
         opacity: 1,
         interactive: false
       }).addTo(mapInst);
@@ -317,6 +410,7 @@
         syncMapMarker(e.latlng.lat, e.latlng.lng);
         newCoords = `${e.latlng.lat.toFixed(5)},${e.latlng.lng.toFixed(5)}`;
       });
+      void loadMapOverlays(L, mapInst);
       // Leaflet needs a second layout pass inside flex panels
       setTimeout(() => {
         mapInst?.invalidateSize();
@@ -333,7 +427,7 @@
     mapLon = lon;
     if (markerInst && mapInst) {
       markerInst.setLatLng([lat, lon]);
-      const z = Math.min(9, Math.max(4, mapInst.getZoom() || 6));
+      const z = Math.min(11, Math.max(4, mapInst.getZoom() || 6));
       mapInst.setView([lat, lon], z, { animate: true });
     }
   }
@@ -343,6 +437,10 @@
       mapInst.remove();
       mapInst = null;
       markerInst = null;
+    }
+    if (basemapObjectUrl) {
+      URL.revokeObjectURL(basemapObjectUrl);
+      basemapObjectUrl = null;
     }
   }
 
@@ -646,7 +744,7 @@
       {/if}
       <div class="sca__map-wrap">
         <div class="sca__map" bind:this={mapEl}></div>
-        <span class="sca__map-attr">NASA Blue Marble locale · Leaflet · GeoNames VPC</span>
+        <span class="sca__map-attr">VPC map-pack · fleuves / routes / villes · NASA</span>
       </div>
       <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
       <div class="sca__form">
@@ -756,7 +854,7 @@
   }
   .sca__map {
     width: 100%;
-    height: 320px;
+    height: 360px;
     z-index: 0;
   }
   .sca__map-attr {
@@ -770,6 +868,19 @@
     padding: 2px 6px;
     border-radius: 4px;
     pointer-events: none;
+  }
+  :global(.sca-city-label) {
+    background: rgba(20, 24, 28, 0.72);
+    border: none;
+    color: #f5f0e6;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    box-shadow: none;
+  }
+  :global(.sca-city-label::before) {
+    display: none;
   }
   .sca__geo-list {
     list-style: none;

@@ -347,11 +347,14 @@ func main() {
 	mux.HandleFunc("DELETE /api/web/compose/times", sessionMiddleware(composeTimesHandler))
 	mux.HandleFunc("POST /api/web/compose/times/{id}/use", sessionMiddleware(composeTimeUseHandler))
 
-	// Local geocoding (GeoNames FR) + OSM tile cache
+	// Local geocoding (GeoNames) + map pack (basemap/overlays) + OSM tile cache (1 GiB soft quota)
 	mux.HandleFunc("GET /api/web/geo/search", sessionMiddleware(geoSearchHandler))
 	mux.HandleFunc("GET /api/web/geo/status", sessionMiddleware(geoStatusHandler))
 	mux.HandleFunc("POST /api/web/geo/import", sessionMiddleware(geoImportHandler))
 	mux.HandleFunc("GET /api/web/geo/tiles/{z}/{x}/{y}", sessionMiddleware(geoTilesHandler))
+	mux.HandleFunc("GET /api/web/geo/basemap", sessionMiddleware(geoBasemapHandler))
+	mux.HandleFunc("GET /api/web/geo/layers", sessionMiddleware(geoLayersListHandler))
+	mux.HandleFunc("GET /api/web/geo/layers/{name}", sessionMiddleware(geoLayerHandler))
 
 	mux.HandleFunc("GET /api/web/logs", sessionMiddleware(getWebLogsHandler))
 	mux.HandleFunc("DELETE /api/web/logs", sessionMiddleware(deleteWebLogsHandler))

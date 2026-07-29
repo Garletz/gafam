@@ -58,6 +58,7 @@ func initGeo() {
 	if err := os.MkdirAll(geoTilesDir(), 0o755); err != nil {
 		log.Printf("geo: mkdir: %v", err)
 	}
+	initGeoMapPack()
 
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS gafam_geonames (
 		geoname_id INTEGER PRIMARY KEY,
@@ -111,6 +112,7 @@ func geoStatusHandler(w http.ResponseWriter, r *http.Request) {
 	var countries int
 	_ = db.QueryRow(`SELECT COUNT(DISTINCT country) FROM gafam_geonames`).Scan(&countries)
 	bundle := geoBundlePath()
+	bmStat, bmErr := os.Stat(geoMapFile("basemap.jpg"))
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"imported":     count > 0,
 		"count":        count,
@@ -120,6 +122,16 @@ func geoStatusHandler(w http.ResponseWriter, r *http.Request) {
 		"source":       "FR/BE/CH/LU/MC/AD/LI detail + cities500 world (bundled)",
 		"tiles_cached": countCachedTiles(),
 		"importing":    geoImporting.Load(),
+		"map_pack":     geoMapPackVersion,
+		"map_basemap":  bmErr == nil,
+		"map_basemap_bytes": func() int64 {
+			if bmErr == nil {
+				return bmStat.Size()
+			}
+			return 0
+		}(),
+		"geo_quota_bytes": geoQuotaBytes,
+		"geo_used_bytes":  geoDirBytes(),
 	})
 }
 
@@ -412,6 +424,7 @@ func geoTilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = os.MkdirAll(filepath.Dir(cachePath), 0o755)
 	_ = os.WriteFile(cachePath, data, 0o644)
+	go enforceGeoQuota()
 
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "public, max-age=86400")

@@ -1,0 +1,10 @@
+# Map pack v1 — seeded to /app/data/geo/map (1 GiB soft quota shared with OSM tile cache).
+# Rebuild: python3 scripts/build_map_pack.py
+*
+!.gitignore
+!manifest.json
+!basemap.jpg
+!rivers.geojson.gz
+!roads.geojson.gz
+!cities.geojson.gz
+!README.md
