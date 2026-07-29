@@ -152,64 +152,181 @@ func geoSearchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func searchGeonames(q string, limit int) []GeoResult {
-	out := []GeoResult{}
-	seen := map[int64]bool{}
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return []GeoResult{}
+	}
+	norm := foldASCII(q)
+	tokens := strings.Fields(norm)
+	if len(tokens) == 0 {
+		return []GeoResult{}
+	}
 
+	type cand struct {
+		GeoResult
+		id    int64
+		score int
+	}
+	byID := map[int64]*cand{}
+
+	add := func(id int64, name, ascii, admin1, country string, lat, lon float64, pop int) {
+		nName := foldASCII(name)
+		nAscii := foldASCII(ascii)
+		sc := scoreGeoHit(norm, tokens, nName, foldASCII(admin1), foldASCII(country), pop)
+		if sc2 := scoreGeoHit(norm, tokens, nAscii, foldASCII(admin1), foldASCII(country), pop); sc2 > sc {
+			sc = sc2
+		}
+		if sc <= 0 {
+			return
+		}
+		if prev, ok := byID[id]; ok {
+			if sc > prev.score {
+				prev.score = sc
+				prev.GeoResult = geoDisplay(name, admin1, country, lat, lon, pop)
+			}
+			return
+		}
+		byID[id] = &cand{
+			id:        id,
+			score:     sc,
+			GeoResult: geoDisplay(name, admin1, country, lat, lon, pop),
+		}
+	}
+
+	// 1) FTS prefix
 	ftsQ := ftsQuery(q)
 	if ftsQ != "" {
 		rows, err := db.Query(`
-			SELECT g.geoname_id, g.name, g.admin1, g.country, g.lat, g.lon, g.population
+			SELECT g.geoname_id, g.name, g.asciiname, g.admin1, g.country, g.lat, g.lon, g.population
 			FROM gafam_geonames_fts f
 			JOIN gafam_geonames g ON g.geoname_id = f.rowid
 			WHERE gafam_geonames_fts MATCH ?
 			ORDER BY g.population DESC
-			LIMIT ?`, ftsQ, limit)
+			LIMIT ?`, ftsQ, limit*4)
 		if err == nil {
-			defer rows.Close()
 			for rows.Next() {
 				var id int64
-				var name, admin1, country string
+				var name, ascii, admin1, country string
 				var lat, lon float64
 				var pop int
-				if rows.Scan(&id, &name, &admin1, &country, &lat, &lon, &pop) != nil {
+				if rows.Scan(&id, &name, &ascii, &admin1, &country, &lat, &lon, &pop) != nil {
 					continue
 				}
-				seen[id] = true
-				out = append(out, geoDisplay(name, admin1, country, lat, lon, pop))
+				add(id, name, ascii, admin1, country, lat, lon, pop)
 			}
+			rows.Close()
 		}
 	}
 
-	if len(out) < limit {
-		like := "%" + q + "%"
-		rows, err := db.Query(`
-			SELECT geoname_id, name, admin1, country, lat, lon, population
-			FROM gafam_geonames
-			WHERE name LIKE ? OR asciiname LIKE ? OR admin1 LIKE ? OR country LIKE ?
-			ORDER BY population DESC
-			LIMIT ?`, like, like, like, like, limit)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var id int64
-				var name, admin1, country string
-				var lat, lon float64
-				var pop int
-				if rows.Scan(&id, &name, &admin1, &country, &lat, &lon, &pop) != nil {
-					continue
-				}
-				if seen[id] {
-					continue
-				}
-				seen[id] = true
-				out = append(out, geoDisplay(name, admin1, country, lat, lon, pop))
-				if len(out) >= limit {
+	// 2) LIKE fallback per token (AND semantics in Go)
+	like := "%" + tokens[0] + "%"
+	rows, err := db.Query(`
+		SELECT geoname_id, name, asciiname, admin1, country, lat, lon, population
+		FROM gafam_geonames
+		WHERE name LIKE ? OR asciiname LIKE ? OR admin1 LIKE ? OR country LIKE ?
+		ORDER BY population DESC
+		LIMIT 200`, like, like, like, like)
+	if err == nil {
+		for rows.Next() {
+			var id int64
+			var name, ascii, admin1, country string
+			var lat, lon float64
+			var pop int
+			if rows.Scan(&id, &name, &ascii, &admin1, &country, &lat, &lon, &pop) != nil {
+				continue
+			}
+			hay := foldASCII(name + " " + ascii + " " + admin1 + " " + country)
+			ok := true
+			for _, t := range tokens {
+				if !strings.Contains(hay, t) {
+					ok = false
 					break
 				}
 			}
+			if !ok {
+				continue
+			}
+			add(id, name, ascii, admin1, country, lat, lon, pop)
+		}
+		rows.Close()
+	}
+
+	list := make([]*cand, 0, len(byID))
+	for _, c := range byID {
+		list = append(list, c)
+	}
+	// sort by score desc, then pop
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].score > list[i].score ||
+				(list[j].score == list[i].score && list[j].Pop > list[i].Pop) {
+				list[i], list[j] = list[j], list[i]
+			}
 		}
 	}
+	out := []GeoResult{}
+	for i := 0; i < len(list) && i < limit; i++ {
+		out = append(out, list[i].GeoResult)
+	}
 	return out
+}
+
+func foldASCII(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	repl := strings.NewReplacer(
+		"à", "a", "á", "a", "â", "a", "ä", "a", "ã", "a",
+		"è", "e", "é", "e", "ê", "e", "ë", "e",
+		"ì", "i", "í", "i", "î", "i", "ï", "i",
+		"ò", "o", "ó", "o", "ô", "o", "ö", "o", "õ", "o",
+		"ù", "u", "ú", "u", "û", "u", "ü", "u",
+		"ý", "y", "ÿ", "y", "ç", "c", "ñ", "n",
+		"-", " ", "'", " ", ".", " ", ",", " ",
+	)
+	s = repl.Replace(s)
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func scoreGeoHit(normQ string, tokens []string, name, admin1, country string, pop int) int {
+	hay := strings.TrimSpace(name + " " + admin1 + " " + country)
+	if hay == "" {
+		return 0
+	}
+	sc := 0
+	if name == normQ {
+		sc += 1000
+	} else if strings.HasPrefix(name, normQ) {
+		sc += 700
+	} else if strings.Contains(name, normQ) {
+		sc += 400
+	}
+	for _, t := range tokens {
+		if t == "" {
+			continue
+		}
+		if strings.HasPrefix(name, t) {
+			sc += 120
+		} else if strings.Contains(name, t) {
+			sc += 60
+		} else if strings.Contains(admin1, t) || strings.Contains(country, t) {
+			sc += 25
+		} else {
+			return 0
+		}
+	}
+	// population boost (log-ish)
+	if pop > 0 {
+		sc += 10
+	}
+	if pop > 10_000 {
+		sc += 20
+	}
+	if pop > 100_000 {
+		sc += 40
+	}
+	if pop > 1_000_000 {
+		sc += 80
+	}
+	return sc
 }
 
 func geoDisplay(name, admin1, country string, lat, lon float64, pop int) GeoResult {

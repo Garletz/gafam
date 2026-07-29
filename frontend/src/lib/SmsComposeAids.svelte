@@ -269,8 +269,8 @@
   }
 
   function tileUrlTemplate(): string {
-    const base = `/api/proxy/geo?action=tiles&vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`;
-    return `${base}&z={z}&x={x}&y={y}`;
+    // unused — basemap is local SVG in Wrangler static assets
+    return '';
   }
 
   async function ensureMap() {
@@ -279,19 +279,32 @@
     const L = leaflet.default ?? leaflet;
     await import('leaflet/dist/leaflet.css');
 
+    const worldBounds = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
+
     if (!mapInst) {
-      mapInst = L.map(mapEl, { zoomControl: true }).setView([mapLat, mapLon], 12);
-      L.tileLayer(tileUrlTemplate(), {
-        maxZoom: 18,
-        attribution: '© OpenStreetMap'
+      mapInst = L.map(mapEl, {
+        zoomControl: true,
+        minZoom: 1,
+        maxZoom: 6,
+        worldCopyJump: false,
+        maxBounds: worldBounds,
+        maxBoundsViscosity: 1
+      });
+      // 100% local basemap (Wrangler static) — no OSM tile CDN
+      L.imageOverlay('/geo/world.svg', worldBounds, {
+        opacity: 1,
+        interactive: false
       }).addTo(mapInst);
+      mapInst.fitBounds(worldBounds);
+      mapInst.setView([mapLat || 46.5, mapLon || 2.5], 3);
+
       const icon = L.divIcon({
         className: 'sca-pin',
         html: '<span class="sca-pin__dot"></span>',
-        iconSize: [16, 16],
-        iconAnchor: [8, 8]
+        iconSize: [18, 18],
+        iconAnchor: [9, 9]
       });
-      markerInst = L.marker([mapLat, mapLon], { draggable: true, icon }).addTo(mapInst);
+      markerInst = L.marker([mapLat || 46.5, mapLon || 2.5], { draggable: true, icon }).addTo(mapInst);
       markerInst.on('dragend', () => {
         const ll = markerInst!.getLatLng();
         mapLat = ll.lat;
@@ -302,6 +315,11 @@
         syncMapMarker(e.latlng.lat, e.latlng.lng);
         newCoords = `${e.latlng.lat.toFixed(5)},${e.latlng.lng.toFixed(5)}`;
       });
+      // Leaflet needs a second layout pass inside flex panels
+      setTimeout(() => {
+        mapInst?.invalidateSize();
+        syncMapMarker(mapLat || 46.5, mapLon || 2.5);
+      }, 80);
     } else {
       mapInst.invalidateSize();
       syncMapMarker(mapLat, mapLon);
@@ -313,7 +331,8 @@
     mapLon = lon;
     if (markerInst && mapInst) {
       markerInst.setLatLng([lat, lon]);
-      mapInst.setView([lat, lon], Math.max(mapInst.getZoom(), 12));
+      const z = Math.min(6, Math.max(3, mapInst.getZoom() || 4));
+      mapInst.setView([lat, lon], z, { animate: true });
     }
   }
 
@@ -360,14 +379,24 @@
     const t = setTimeout(() => {
       loadPlaces(q);
       loadGeoSearch(q);
-    }, 250);
+    }, 220);
+    return () => clearTimeout(t);
+  });
+
+  // Address field also drives GeoNames search (same pipeline)
+  $effect(() => {
+    if (!showManage) return;
+    const q = newAddress.trim() || newLabel.trim();
+    if (q.length < 2) return;
+    const t = setTimeout(() => loadGeoSearch(q), 220);
     return () => clearTimeout(t);
   });
 
   $effect(() => {
     if (showManage) {
-      // wait for DOM
       queueMicrotask(() => ensureMap());
+      const t = setTimeout(() => mapInst?.invalidateSize(), 120);
+      return () => clearTimeout(t);
     }
   });
 
@@ -610,11 +639,19 @@
           {/each}
         </ul>
       {/if}
-      <div class="sca__map" bind:this={mapEl}></div>
-      <p class="sca__hint">Clic carte / glisser le marqueur → lat/lon. Clic résultat GeoNames → remplir.</p>
+      <div class="sca__map-wrap">
+        <div class="sca__map" bind:this={mapEl}></div>
+        <span class="sca__map-attr">basemap locale · Leaflet · GeoNames VPC</span>
+      </div>
+      <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
       <div class="sca__form">
         <input type="text" placeholder="Nom (ex. Café de la Gare)" bind:value={newLabel} />
-        <input type="text" placeholder="Adresse libre (optionnel)" bind:value={newAddress} />
+        <input
+          type="text"
+          placeholder="Adresse / ville (recherche GeoNames)"
+          bind:value={newAddress}
+          autocomplete="off"
+        />
         <input type="text" placeholder="lat,lon" bind:value={newCoords} />
         <button type="button" class="sca__save" onclick={savePlace}>Enregistrer</button>
       </div>
@@ -703,20 +740,40 @@
     border-color: #a8dab5;
     color: #137333;
   }
-  .sca__map {
+  .sca__map-wrap {
+    position: relative;
     width: 100%;
-    height: 180px;
+    margin: 8px 0;
     border: 1px solid #dadce0;
     border-radius: 8px;
-    margin: 8px 0;
+    overflow: hidden;
+    background: #a8c4d8;
+  }
+  .sca__map {
+    width: 100%;
+    height: 260px;
     z-index: 0;
+  }
+  .sca__map-attr {
+    position: absolute;
+    right: 6px;
+    bottom: 4px;
+    z-index: 500;
+    font-size: 10px;
+    color: #3c4043;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 2px 6px;
+    border-radius: 4px;
+    pointer-events: none;
   }
   .sca__geo-list {
     list-style: none;
     margin: 0 0 8px;
     padding: 0;
-    max-height: 120px;
+    max-height: 140px;
     overflow-y: auto;
+    border: 1px solid #e8eaed;
+    border-radius: 8px;
   }
   .sca__geo-list li {
     margin: 0;
