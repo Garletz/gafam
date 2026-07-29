@@ -12,6 +12,7 @@
   import QuestBoard from '$lib/QuestBoard.svelte';
   import VaultView from '$lib/VaultView.svelte';
   import FederationView from '$lib/FederationView.svelte';
+  import SmsComposeAids from '$lib/SmsComposeAids.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
@@ -71,6 +72,7 @@
   let outboxRecipient = $state('');
   let outboxBody = $state('');
   let outboxStatus = $state('');
+  let outboxTextarea: HTMLTextAreaElement | null = $state(null);
   
   // Profile menu state
   let isProfileMenuOpen = $state(false);
@@ -1040,8 +1042,20 @@
               {/each}
             </div>
             <div class="chat-main__input">
+              <SmsComposeAids
+                {vpcUrl}
+                {sessionToken}
+                bind:body={outboxBody}
+                bind:textareaEl={outboxTextarea}
+              />
               <form class="outbox-form" onsubmit={sendSms}>
-                <input type="text" placeholder="Send a message..." bind:value={outboxBody} required />
+                <textarea
+                  bind:this={outboxTextarea}
+                  bind:value={outboxBody}
+                  placeholder="Écrire un SMS… (heure / lieu via les chips)"
+                  rows="2"
+                  required
+                ></textarea>
                 <button type="submit" class="btn-send" onclick={() => outboxRecipient = selectedSender!}>Send</button>
               </form>
               {#if outboxStatus}<div class="outbox-status">{outboxStatus}</div>{/if}
@@ -1856,6 +1870,23 @@
     color: #5f6368;
   }
   .outbox-form { display: flex; gap: 10px; align-items: stretch; }
+  .outbox-form textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    max-height: 120px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 1px solid #dfe1e5;
+    background: #f8f9fa;
+    color: #202124;
+    font-size: 15px;
+    outline: none;
+    resize: vertical;
+    font-family: inherit;
+    line-height: 1.35;
+  }
+  .outbox-form textarea:focus { border-color: #bdc1c6; }
   .outbox-form input { flex: 1; min-width: 0; padding: 12px 16px; border-radius: 24px; border: 1px solid #dfe1e5; background: #f8f9fa; color: #202124; font-size: 15px; outline: none; }
   .outbox-form input:focus { border-color: #bdc1c6; }
   .btn-send { padding: 0 20px; border-radius: 24px; background: #202124; color: white; font-weight: 600; font-size: 15px; border: none; cursor: pointer; white-space: nowrap; }
@@ -1901,6 +1932,7 @@
     .chat-main__input {
       padding: 10px 12px;
     }
+    .outbox-form textarea,
     .outbox-form input {
       padding: 10px 14px;
       font-size: 14px;

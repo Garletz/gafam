@@ -213,6 +213,7 @@ func main() {
 	initEmailTables()
 	initVault()
 	initMissionStore()
+	initComposeSnippets()
 	registerVaultTools()
 	sandbox.EnsureDirs()
 
@@ -331,6 +332,18 @@ func main() {
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
+
+	// SMS compose aids — place book + time presets (rendezvous chips)
+	mux.HandleFunc("GET /api/web/compose/places", sessionMiddleware(composePlacesHandler))
+	mux.HandleFunc("POST /api/web/compose/places", sessionMiddleware(composePlacesHandler))
+	mux.HandleFunc("PUT /api/web/compose/places", sessionMiddleware(composePlacesHandler))
+	mux.HandleFunc("DELETE /api/web/compose/places", sessionMiddleware(composePlacesHandler))
+	mux.HandleFunc("POST /api/web/compose/places/{id}/use", sessionMiddleware(composePlaceUseHandler))
+	mux.HandleFunc("GET /api/web/compose/times", sessionMiddleware(composeTimesHandler))
+	mux.HandleFunc("POST /api/web/compose/times", sessionMiddleware(composeTimesHandler))
+	mux.HandleFunc("PUT /api/web/compose/times", sessionMiddleware(composeTimesHandler))
+	mux.HandleFunc("DELETE /api/web/compose/times", sessionMiddleware(composeTimesHandler))
+	mux.HandleFunc("POST /api/web/compose/times/{id}/use", sessionMiddleware(composeTimeUseHandler))
 	mux.HandleFunc("GET /api/web/logs", sessionMiddleware(getWebLogsHandler))
 	mux.HandleFunc("DELETE /api/web/logs", sessionMiddleware(deleteWebLogsHandler))
 	mux.HandleFunc("GET /api/web/logs/suparna/reading", sessionMiddleware(suparnaReadingHandler))
