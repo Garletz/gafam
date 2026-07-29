@@ -206,6 +206,36 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(testSmsBtn)
 
+        // Re-run first-launch phone registration (clears myPhoneNumber → self-SMS verify)
+        val resetPhoneBtn = Button(this)
+        resetPhoneBtn.setBackgroundColor(0xFF5F6368.toInt())
+        resetPhoneBtn.setTextColor(android.graphics.Color.WHITE)
+        resetPhoneBtn.text = "⚙ Reset phone number (re-setup)"
+        resetPhoneBtn.setOnClickListener {
+            val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+            val current = prefs.getString("myPhoneNumber", null)
+            AlertDialog.Builder(this)
+                .setTitle("Reset phone number?")
+                .setMessage(
+                    "Current: ${current ?: "not set"}\n\n" +
+                        "Clears the stored number and restarts the first-launch setup " +
+                        "(enter number → self-SMS verification). VPC pairing is kept."
+                )
+                .setPositiveButton("Reset & setup") { _, _ ->
+                    prefs.edit().remove("myPhoneNumber").apply()
+                    vfyReceiver?.let {
+                        try { unregisterReceiver(it) } catch (_: Exception) {}
+                        vfyReceiver = null
+                    }
+                    updateStatus()
+                    Toast.makeText(this, "Phone cleared — enter your real number", Toast.LENGTH_LONG).show()
+                    promptForPhoneNumber()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+        layout.addView(resetPhoneBtn)
+
         val smsLogTitle = TextView(this)
         smsLogTitle.text = "\nRecent Intercepted SMS:"
         smsLogTitle.textSize = 16f
@@ -401,19 +431,34 @@ class MainActivity : AppCompatActivity() {
     private fun promptForPhoneNumber() {
         val input = EditText(this)
         input.inputType = InputType.TYPE_CLASS_PHONE
-        input.hint = "Ex: 0611223344"
+        input.hint = "Ex: 0612345678"
+        // Reject placeholder / dummy numbers that were sometimes entered at first setup.
+        fun looksLikeDummy(p: String): Boolean {
+            val d = p.filter { it.isDigit() }
+            return d.length < 9 || d.all { it == '0' } || d.matches(Regex("0*6?0{6,}"))
+        }
 
         AlertDialog.Builder(this)
             .setTitle("Enter Your Phone Number")
-            .setMessage("We need to verify your phone number via a self-SMS to link it securely.")
+            .setMessage(
+                "Type your real SIM number (e.g. 06… or +33…). " +
+                    "We send a self-SMS and only save the number if that SMS comes back."
+            )
             .setView(input)
             .setCancelable(false)
             .setPositiveButton("Verify") { _, _ ->
                 val phone = input.text.toString().trim()
-                if (phone.isNotEmpty()) {
-                    startSelfSmsVerification(phone)
-                } else {
-                    promptForPhoneNumber()
+                when {
+                    phone.isEmpty() -> promptForPhoneNumber()
+                    looksLikeDummy(phone) -> {
+                        Toast.makeText(
+                            this,
+                            "That looks like a dummy number (e.g. 0600000000). Enter your real number.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        promptForPhoneNumber()
+                    }
+                    else -> startSelfSmsVerification(phone)
                 }
             }
             .show()
@@ -430,6 +475,16 @@ class MainActivity : AppCompatActivity() {
                 val body = intent.getStringExtra("body") ?: ""
                 if (body.contains(secretCode)) {
                     Log.d("GAFAM_Relay", "Self-SMS Verification Success!")
+                    val digits = phone.filter { it.isDigit() }
+                    if (digits.length < 9 || digits.all { it == '0' } || digits.matches(Regex("0*6?0{6,}"))) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Rejected dummy number. Enter your real SIM number.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        promptForPhoneNumber()
+                        return
+                    }
                     getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
                         .edit().putString("myPhoneNumber", phone).apply()
                     Toast.makeText(this@MainActivity, "Phone Verified!", Toast.LENGTH_LONG).show()
