@@ -49,7 +49,12 @@
   let dayOffset = $state(0);
   /** Tick so smart slots refresh with the clock */
   let nowMs = $state(Date.now());
-  let geoStatus = $state<{ imported?: boolean; count?: number; importing?: boolean } | null>(null);
+  let geoStatus = $state<{
+    imported?: boolean;
+    count?: number;
+    importing?: boolean;
+    countries?: string[];
+  } | null>(null);
 
   // New place form
   let newLabel = $state('');
@@ -551,7 +556,7 @@
         </button>
       {/each}
       {#if places.length === 0 && geoHits.length === 0}
-        <span class="sca__empty">carnet ou GeoNames FR…</span>
+        <span class="sca__empty">carnet ou GeoNames…</span>
       {/if}
     </div>
     <button
@@ -570,13 +575,16 @@
   {#if showManage}
     <div class="sca__panel">
       <p class="sca__panel-title">
-        Carnet + GeoNames FR (VPC)
+        Carnet + GeoNames (FR·MC·LU·AD·LI)
         {#if geoStatus}
           <span class="sca__geo-meta">
             {#if geoStatus.importing}
               import…
             {:else if geoStatus.imported}
               {geoStatus.count?.toLocaleString('fr-FR')} lieux
+              {#if geoStatus.countries?.length}
+                · {geoStatus.countries.join(' · ')}
+              {/if}
             {:else}
               base vide
               <button type="button" class="sca__link" onclick={triggerGeoImport}>Importer</button>

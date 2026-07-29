@@ -20,11 +20,14 @@ import (
 	"time"
 )
 
-const (
-	geoNamesFRURL = "https://download.geonames.org/export/dump/FR.zip"
-	geoNamesMCURL = "https://download.geonames.org/export/dump/MC.zip"
-	osmTileUA     = "GAFAM-Relay/1.0 (personal VPC tile cache)"
-)
+const osmTileUA = "GAFAM-Relay/1.0 (personal VPC tile cache)"
+
+// Light GeoNames dumps: FR + MC, plus 3 tiny extras (LU, AD, LI).
+var geoCountryCodes = []string{"FR", "MC", "LU", "AD", "LI"}
+
+func geoNamesZipURL(cc string) string {
+	return "https://download.geonames.org/export/dump/" + cc + ".zip"
+}
 
 var (
 	geoImporting atomic.Bool
@@ -69,11 +72,12 @@ func initGeo() {
 
 	var n int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames`).Scan(&n)
-	if n == 0 {
-		log.Println("geo: empty — scheduling GeoNames FR import")
+	missing := geoMissingCountries()
+	if n == 0 || len(missing) > 0 {
+		log.Printf("geo: scheduling GeoNames import (rows=%d missing=%v)", n, missing)
 		go runGeoImport(false)
 	} else {
-		log.Printf("geo: ready (%d places)", n)
+		log.Printf("geo: ready (%d places, countries=%v)", n, geoCountryCodes)
 	}
 }
 
@@ -91,9 +95,22 @@ type GeoResult struct {
 func geoStatusHandler(w http.ResponseWriter, r *http.Request) {
 	var count int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames`).Scan(&count)
+	countries := []string{}
+	rows, err := db.Query(`SELECT DISTINCT country FROM gafam_geonames ORDER BY country`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var c string
+			if rows.Scan(&c) == nil && c != "" {
+				countries = append(countries, c)
+			}
+		}
+	}
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"imported":     count > 0,
 		"count":        count,
+		"countries":    countries,
+		"wanted":       geoCountryCodes,
 		"tiles_cached": countCachedTiles(),
 		"importing":    geoImporting.Load(),
 	})
@@ -290,6 +307,18 @@ func countCachedTiles() int {
 	return n
 }
 
+func geoMissingCountries() []string {
+	var missing []string
+	for _, cc := range geoCountryCodes {
+		var n int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames WHERE country = ?`, cc).Scan(&n)
+		if n == 0 {
+			missing = append(missing, cc)
+		}
+	}
+	return missing
+}
+
 func runGeoImport(force bool) {
 	if !geoImporting.CompareAndSwap(false, true) {
 		return
@@ -299,15 +328,18 @@ func runGeoImport(force bool) {
 	geoImportMu.Lock()
 	defer geoImportMu.Unlock()
 
+	toFetch := geoCountryCodes
 	if !force {
-		var n int
-		_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames`).Scan(&n)
-		if n > 0 {
+		missing := geoMissingCountries()
+		if len(missing) == 0 {
 			return
 		}
+		toFetch = missing
+		log.Printf("geo: importing missing countries %v…", missing)
+	} else {
+		log.Printf("geo: full reimport %v…", geoCountryCodes)
 	}
 
-	log.Println("geo: importing GeoNames FR (+ MC)…")
 	tmpDir := filepath.Join(geoDir(), "import")
 	_ = os.RemoveAll(tmpDir)
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
@@ -315,13 +347,6 @@ func runGeoImport(force bool) {
 		return
 	}
 	defer os.RemoveAll(tmpDir)
-
-	frTxt, err := downloadAndExtractGeo(geoNamesFRURL, tmpDir, "FR.txt")
-	if err != nil {
-		log.Printf("geo: FR download: %v", err)
-		return
-	}
-	mcTxt, _ := downloadAndExtractGeo(geoNamesMCURL, tmpDir, "MC.txt")
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -343,15 +368,18 @@ func runGeoImport(force bool) {
 	}
 
 	inserted := 0
-	for _, path := range []string{frTxt, mcTxt} {
-		if path == "" {
-			continue
-		}
-		n, err := loadGeonamesFile(path, stmt)
+	for _, cc := range toFetch {
+		txt, err := downloadAndExtractGeo(geoNamesZipURL(cc), tmpDir, cc+".txt")
 		if err != nil {
-			log.Printf("geo: parse %s: %v", path, err)
+			log.Printf("geo: %s download: %v", cc, err)
 			continue
 		}
+		n, err := loadGeonamesFile(txt, stmt)
+		if err != nil {
+			log.Printf("geo: parse %s: %v", cc, err)
+			continue
+		}
+		log.Printf("geo: %s → %d places", cc, n)
 		inserted += n
 	}
 	_ = stmt.Close()
@@ -361,7 +389,7 @@ func runGeoImport(force bool) {
 		log.Printf("geo: commit: %v", err)
 		return
 	}
-	log.Printf("geo: import done (%d places)", inserted)
+	log.Printf("geo: import done (+%d places)", inserted)
 }
 
 func downloadAndExtractGeo(url, destDir, wantFile string) (string, error) {
