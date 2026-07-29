@@ -1,11 +1,11 @@
 package main
 
-// Local geocoding (GeoNames FR) + OSM tile cache on the VPC.
-// Dump downloaded once into SQLite FTS5; tiles cached under /data/geo/tiles.
+// Local geocoding: bundled worldwide GeoNames (cities500) + OSM tile cache.
+// The SQLite dump lives in geo-data/geonames.sqlite.gz (vendored in git / Docker image).
+// No runtime download from geonames.org.
 
 import (
-	"archive/zip"
-	"bufio"
+	"compress/gzip"
 	"database/sql"
 	"fmt"
 	"io"
@@ -20,14 +20,10 @@ import (
 	"time"
 )
 
-const osmTileUA = "GAFAM-Relay/1.0 (personal VPC tile cache)"
-
-// Light GeoNames dumps: FR + MC, plus 3 tiny extras (LU, AD, LI).
-var geoCountryCodes = []string{"FR", "MC", "LU", "AD", "LI"}
-
-func geoNamesZipURL(cc string) string {
-	return "https://download.geonames.org/export/dump/" + cc + ".zip"
-}
+const (
+	osmTileUA        = "GAFAM-Relay/1.0 (personal VPC tile cache)"
+	geoBundleVersion = "cities500-v1"
+)
 
 var (
 	geoImporting atomic.Bool
@@ -42,6 +38,22 @@ func geoTilesDir() string {
 	return filepath.Join(geoDir(), "tiles")
 }
 
+// geoBundlePath looks for the vendored dump (Docker image or cwd for local dev).
+func geoBundlePath() string {
+	candidates := []string{
+		"/app/geo-data/geonames.sqlite.gz",
+		filepath.Join(dataDir(), "geo-data", "geonames.sqlite.gz"),
+		"geo-data/geonames.sqlite.gz",
+		filepath.Join("vpc-relay", "geo-data", "geonames.sqlite.gz"),
+	}
+	for _, p := range candidates {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Size() > 0 {
+			return p
+		}
+	}
+	return ""
+}
+
 func initGeo() {
 	if err := os.MkdirAll(geoTilesDir(), 0o755); err != nil {
 		log.Printf("geo: mkdir: %v", err)
@@ -52,7 +64,7 @@ func initGeo() {
 		name TEXT NOT NULL,
 		asciiname TEXT DEFAULT '',
 		admin1 TEXT DEFAULT '',
-		country TEXT DEFAULT 'FR',
+		country TEXT DEFAULT '',
 		lat REAL NOT NULL,
 		lon REAL NOT NULL,
 		feature TEXT DEFAULT '',
@@ -72,12 +84,13 @@ func initGeo() {
 
 	var n int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames`).Scan(&n)
-	missing := geoMissingCountries()
-	if n == 0 || len(missing) > 0 {
-		log.Printf("geo: scheduling GeoNames import (rows=%d missing=%v)", n, missing)
-		go runGeoImport(false)
+	var ver string
+	_ = db.QueryRow(`SELECT value FROM gafam_settings WHERE key = 'geo_bundle_version'`).Scan(&ver)
+	if n == 0 || ver != geoBundleVersion {
+		log.Printf("geo: seeding bundled GeoNames (rows=%d ver=%q → %s)", n, ver, geoBundleVersion)
+		go runGeoSeed(true)
 	} else {
-		log.Printf("geo: ready (%d places, countries=%v)", n, geoCountryCodes)
+		log.Printf("geo: ready (%d places, %s)", n, geoBundleVersion)
 	}
 }
 
@@ -95,22 +108,16 @@ type GeoResult struct {
 func geoStatusHandler(w http.ResponseWriter, r *http.Request) {
 	var count int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames`).Scan(&count)
-	countries := []string{}
-	rows, err := db.Query(`SELECT DISTINCT country FROM gafam_geonames ORDER BY country`)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var c string
-			if rows.Scan(&c) == nil && c != "" {
-				countries = append(countries, c)
-			}
-		}
-	}
+	var countries int
+	_ = db.QueryRow(`SELECT COUNT(DISTINCT country) FROM gafam_geonames`).Scan(&countries)
+	bundle := geoBundlePath()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
 		"imported":     count > 0,
 		"count":        count,
 		"countries":    countries,
-		"wanted":       geoCountryCodes,
+		"bundle":       bundle != "",
+		"bundle_path":  bundle,
+		"source":       "cities500 (worldwide, bundled)",
 		"tiles_cached": countCachedTiles(),
 		"importing":    geoImporting.Load(),
 	})
@@ -122,11 +129,11 @@ func geoImportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if geoImporting.Load() {
-		sendJSON(w, http.StatusConflict, map[string]string{"error": "import already running"})
+		sendJSON(w, http.StatusConflict, map[string]string{"error": "seed already running"})
 		return
 	}
-	go runGeoImport(true)
-	sendJSON(w, http.StatusAccepted, map[string]string{"status": "import_started"})
+	go runGeoSeed(true)
+	sendJSON(w, http.StatusAccepted, map[string]string{"status": "seed_started", "source": "local_bundle"})
 }
 
 func geoSearchHandler(w http.ResponseWriter, r *http.Request) {
@@ -178,9 +185,9 @@ func searchGeonames(q string, limit int) []GeoResult {
 		rows, err := db.Query(`
 			SELECT geoname_id, name, admin1, country, lat, lon, population
 			FROM gafam_geonames
-			WHERE name LIKE ? OR asciiname LIKE ? OR admin1 LIKE ?
+			WHERE name LIKE ? OR asciiname LIKE ? OR admin1 LIKE ? OR country LIKE ?
 			ORDER BY population DESC
-			LIMIT ?`, like, like, like, limit)
+			LIMIT ?`, like, like, like, like, limit)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -210,7 +217,7 @@ func geoDisplay(name, admin1, country string, lat, lon float64, pop int) GeoResu
 	if admin1 != "" {
 		disp = name + ", " + admin1
 	}
-	if country != "" && country != "FR" {
+	if country != "" {
 		disp += " (" + country + ")"
 	}
 	return GeoResult{
@@ -244,8 +251,7 @@ func ftsQuery(q string) string {
 func geoTilesHandler(w http.ResponseWriter, r *http.Request) {
 	z := r.PathValue("z")
 	x := r.PathValue("x")
-	yRaw := r.PathValue("y")
-	yRaw = strings.TrimSuffix(yRaw, ".png")
+	yRaw := strings.TrimSuffix(r.PathValue("y"), ".png")
 
 	zi, errZ := strconv.Atoi(z)
 	xi, errX := strconv.Atoi(x)
@@ -307,19 +313,8 @@ func countCachedTiles() int {
 	return n
 }
 
-func geoMissingCountries() []string {
-	var missing []string
-	for _, cc := range geoCountryCodes {
-		var n int
-		_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames WHERE country = ?`, cc).Scan(&n)
-		if n == 0 {
-			missing = append(missing, cc)
-		}
-	}
-	return missing
-}
-
-func runGeoImport(force bool) {
+// runGeoSeed loads the vendored gzip SQLite into gafam_geonames (offline).
+func runGeoSeed(force bool) {
 	if !geoImporting.CompareAndSwap(false, true) {
 		return
 	}
@@ -328,25 +323,36 @@ func runGeoImport(force bool) {
 	geoImportMu.Lock()
 	defer geoImportMu.Unlock()
 
-	toFetch := geoCountryCodes
 	if !force {
-		missing := geoMissingCountries()
-		if len(missing) == 0 {
+		var n int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM gafam_geonames`).Scan(&n)
+		if n > 0 {
 			return
 		}
-		toFetch = missing
-		log.Printf("geo: importing missing countries %v…", missing)
-	} else {
-		log.Printf("geo: full reimport %v…", geoCountryCodes)
 	}
 
-	tmpDir := filepath.Join(geoDir(), "import")
-	_ = os.RemoveAll(tmpDir)
-	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
-		log.Printf("geo: import mkdir: %v", err)
+	bundle := geoBundlePath()
+	if bundle == "" {
+		log.Println("geo: no bundled geonames.sqlite.gz found — search disabled until image includes geo-data/")
 		return
 	}
-	defer os.RemoveAll(tmpDir)
+
+	log.Printf("geo: seeding from %s …", bundle)
+	tmpDir := filepath.Join(geoDir(), "seed")
+	_ = os.MkdirAll(tmpDir, 0o755)
+	sqlitePath := filepath.Join(tmpDir, "geonames.sqlite")
+	if err := gunzipFile(bundle, sqlitePath); err != nil {
+		log.Printf("geo: gunzip: %v", err)
+		return
+	}
+	defer os.Remove(sqlitePath)
+
+	src, err := sql.Open("sqlite", sqlitePath+"?mode=ro")
+	if err != nil {
+		log.Printf("geo: open bundle: %v", err)
+		return
+	}
+	defer src.Close()
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -367,131 +373,59 @@ func runGeoImport(force bool) {
 		return
 	}
 
-	inserted := 0
-	for _, cc := range toFetch {
-		txt, err := downloadAndExtractGeo(geoNamesZipURL(cc), tmpDir, cc+".txt")
-		if err != nil {
-			log.Printf("geo: %s download: %v", cc, err)
-			continue
-		}
-		n, err := loadGeonamesFile(txt, stmt)
-		if err != nil {
-			log.Printf("geo: parse %s: %v", cc, err)
-			continue
-		}
-		log.Printf("geo: %s → %d places", cc, n)
-		inserted += n
+	rows, err := src.Query(`SELECT geoname_id, name, asciiname, admin1, country, lat, lon, feature, population FROM gafam_geonames`)
+	if err != nil {
+		stmt.Close()
+		_ = tx.Rollback()
+		log.Printf("geo: bundle query: %v", err)
+		return
 	}
-	_ = stmt.Close()
+	inserted := 0
+	for rows.Next() {
+		var id int64
+		var name, ascii, admin1, country, feature string
+		var lat, lon float64
+		var pop int
+		if rows.Scan(&id, &name, &ascii, &admin1, &country, &lat, &lon, &feature, &pop) != nil {
+			continue
+		}
+		if _, err := stmt.Exec(id, name, ascii, admin1, country, lat, lon, feature, pop); err != nil {
+			continue
+		}
+		inserted++
+	}
+	rows.Close()
+	stmt.Close()
 
 	_, _ = tx.Exec(`INSERT INTO gafam_geonames_fts(gafam_geonames_fts) VALUES('rebuild')`)
 	if err := tx.Commit(); err != nil {
 		log.Printf("geo: commit: %v", err)
 		return
 	}
-	log.Printf("geo: import done (+%d places)", inserted)
+	log.Printf("geo: seeded %d places from bundle (offline)", inserted)
+	_, _ = db.Exec(
+		`INSERT INTO gafam_settings (key, value) VALUES ('geo_bundle_version', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+		geoBundleVersion,
+	)
 }
 
-func downloadAndExtractGeo(url, destDir, wantFile string) (string, error) {
-	zipPath := filepath.Join(destDir, filepath.Base(url))
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func gunzipFile(src, dest string) error {
+	in, err := os.Open(src)
 	if err != nil {
-		return "", err
+		return err
 	}
-	req.Header.Set("User-Agent", osmTileUA)
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Do(req)
+	defer in.Close()
+	gr, err := gzip.NewReader(in)
 	if err != nil {
-		return "", err
+		return err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	f, err := os.Create(zipPath)
+	defer gr.Close()
+	out, err := os.Create(dest)
 	if err != nil {
-		return "", err
+		return err
 	}
-	if _, err := io.Copy(f, io.LimitReader(resp.Body, 80<<20)); err != nil {
-		f.Close()
-		return "", err
-	}
-	f.Close()
-
-	zr, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return "", err
-	}
-	defer zr.Close()
-	for _, zf := range zr.File {
-		if filepath.Base(zf.Name) != wantFile {
-			continue
-		}
-		outPath := filepath.Join(destDir, wantFile)
-		rc, err := zf.Open()
-		if err != nil {
-			return "", err
-		}
-		out, err := os.Create(outPath)
-		if err != nil {
-			rc.Close()
-			return "", err
-		}
-		_, err = io.Copy(out, io.LimitReader(rc, 120<<20))
-		rc.Close()
-		out.Close()
-		if err != nil {
-			return "", err
-		}
-		return outPath, nil
-	}
-	return "", fmt.Errorf("%s not in zip", wantFile)
-}
-
-// loadGeonamesFile keeps only populated places (feature class P) for a light DB.
-func loadGeonamesFile(path string, stmt *sql.Stmt) (int, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-
-	sc := bufio.NewScanner(f)
-	buf := make([]byte, 0, 256*1024)
-	sc.Buffer(buf, 1024*1024)
-	n := 0
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		cols := strings.Split(line, "\t")
-		if len(cols) < 15 {
-			continue
-		}
-		// 6 = feature class, 7 = feature code
-		if cols[6] != "P" {
-			continue
-		}
-		id, err := strconv.ParseInt(cols[0], 10, 64)
-		if err != nil {
-			continue
-		}
-		lat, err1 := strconv.ParseFloat(cols[4], 64)
-		lon, err2 := strconv.ParseFloat(cols[5], 64)
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		pop, _ := strconv.Atoi(cols[14])
-		name := cols[1]
-		ascii := cols[2]
-		country := cols[8]
-		admin1 := cols[10]
-		feature := cols[6] + "." + cols[7]
-		if _, err := stmt.Exec(id, name, ascii, admin1, country, lat, lon, feature, pop); err != nil {
-			continue
-		}
-		n++
-	}
-	return n, sc.Err()
+	defer out.Close()
+	_, err = io.Copy(out, io.LimitReader(gr, 200<<20))
+	return err
 }

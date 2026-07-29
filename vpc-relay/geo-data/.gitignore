@@ -1,0 +1,4 @@
+# Regenerated offline: go run scripts/build_geonames.go
+# Source: GeoNames cities500 (worldwide, population ≥ 500) — ~235k places.
+*.sqlite
+!*.sqlite.gz

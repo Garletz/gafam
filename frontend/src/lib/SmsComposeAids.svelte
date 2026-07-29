@@ -53,7 +53,9 @@
     imported?: boolean;
     count?: number;
     importing?: boolean;
-    countries?: string[];
+    countries?: number;
+    source?: string;
+    bundle?: boolean;
   } | null>(null);
 
   // New place form
@@ -235,13 +237,13 @@
   }
 
   async function triggerGeoImport() {
-    msg = 'Import GeoNames…';
+    msg = 'Rechargement bundle GeoNames…';
     try {
       await fetch(`/api/proxy/geo?${qs({ action: 'import' })}`, { method: 'POST' });
-      msg = 'Import lancé sur le VPC (quelques minutes)';
+      msg = 'Seed offline lancé sur le VPC';
       setTimeout(() => loadGeoStatus(), 3000);
     } catch {
-      msg = 'Import échoué';
+      msg = 'Seed échoué';
     }
     setTimeout(() => (msg = ''), 4000);
   }
@@ -575,19 +577,22 @@
   {#if showManage}
     <div class="sca__panel">
       <p class="sca__panel-title">
-        Carnet + GeoNames (FR·MC·LU·AD·LI)
+        Carnet + GeoNames mondial (bundle VPC)
         {#if geoStatus}
           <span class="sca__geo-meta">
             {#if geoStatus.importing}
-              import…
+              seed…
             {:else if geoStatus.imported}
               {geoStatus.count?.toLocaleString('fr-FR')} lieux
-              {#if geoStatus.countries?.length}
-                · {geoStatus.countries.join(' · ')}
+              {#if geoStatus.countries}
+                · {geoStatus.countries} pays
+              {/if}
+              {#if !geoStatus.bundle}
+                · ⚠ bundle manquant
               {/if}
             {:else}
               base vide
-              <button type="button" class="sca__link" onclick={triggerGeoImport}>Importer</button>
+              <button type="button" class="sca__link" onclick={triggerGeoImport}>Seed offline</button>
             {/if}
           </span>
         {/if}

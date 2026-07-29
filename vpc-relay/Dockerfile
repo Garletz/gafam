@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/vpc-relay /app/vpc-relay
+COPY geo-data /app/geo-data
 
 VOLUME ["/app/data"]
 
