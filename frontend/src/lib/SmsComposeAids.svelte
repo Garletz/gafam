@@ -69,6 +69,10 @@
   let mapInst: LeafletMap | null = null;
   let markerInst: LeafletMarker | null = null;
   let basemapObjectUrl: string | null = null;
+  let streetLayerGroup: any = null;
+  let streetsIndex: { id: string; bbox: number[]; features?: number }[] = [];
+  let loadedStreetCity: string | null = null;
+  let leafletRef: any = null;
 
   const DAYS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
@@ -294,6 +298,22 @@
     }
   }
 
+  async function fetchGzipJSON(url: string): Promise<any | null> {
+    try {
+      const res = await fetch(url);
+      if (!res.ok || !res.body) return null;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('json') && !url.endsWith('.gz')) {
+        return await res.json();
+      }
+      const ds = new DecompressionStream('gzip');
+      const text = await new Response(res.body.pipeThrough(ds)).text();
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+
   async function fetchGeoJSONLayer(name: string): Promise<any | null> {
     // 1) VPC map-pack (when image pulled)
     if (vpcUrl && sessionToken) {
@@ -308,15 +328,93 @@
       }
     }
     // 2) Wrangler static fallback — always available
-    try {
-      const res = await fetch(`/geo/${name}.geojson.gz`);
-      if (!res.ok || !res.body) return null;
-      const ds = new DecompressionStream('gzip');
-      const text = await new Response(res.body.pipeThrough(ds)).text();
-      return JSON.parse(text);
-    } catch {
-      return null;
+    return fetchGzipJSON(`/geo/${name}.geojson.gz`);
+  }
+
+  async function fetchStreetsIndex(): Promise<typeof streetsIndex> {
+    if (vpcUrl && sessionToken) {
+      try {
+        const res = await fetch(geoProxyUrl('streets', { city: 'index' }));
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data?.cities)) return data.cities;
+        }
+      } catch {
+        /* fall through */
+      }
     }
+    const data = await fetchGzipJSON('/geo/streets/index.json');
+    // index.json is plain JSON (not gzip)
+    if (data?.cities) return data.cities;
+    try {
+      const res = await fetch('/geo/streets/index.json');
+      if (res.ok) {
+        const j = await res.json();
+        return j.cities || [];
+      }
+    } catch {
+      /* empty */
+    }
+    return [];
+  }
+
+  async function fetchCityStreets(cityId: string): Promise<any | null> {
+    if (vpcUrl && sessionToken) {
+      try {
+        const res = await fetch(geoProxyUrl('streets', { city: cityId }));
+        if (res.ok) {
+          const gj = await res.json();
+          if (gj?.features?.length) return gj;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+    return fetchGzipJSON(`/geo/streets/${cityId}.geojson.gz`);
+  }
+
+  function cityAt(lat: number, lon: number, zoom: number) {
+    if (zoom < 8 || !streetsIndex.length) return null;
+    for (const c of streetsIndex) {
+      const [w, s, e, n] = c.bbox;
+      if (lon >= w && lon <= e && lat >= s && lat <= n) return c.id;
+    }
+    return null;
+  }
+
+  async function syncStreetLayer(map: any, L: any) {
+    if (!map || !L) return;
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const city = cityAt(center.lat, center.lng, zoom);
+    if (!city) {
+      if (streetLayerGroup) {
+        map.removeLayer(streetLayerGroup);
+        streetLayerGroup = null;
+        loadedStreetCity = null;
+      }
+      return;
+    }
+    if (city === loadedStreetCity && streetLayerGroup) return;
+    const gj = await fetchCityStreets(city);
+    if (!gj?.features?.length) return;
+    if (streetLayerGroup) map.removeLayer(streetLayerGroup);
+    streetLayerGroup = L.geoJSON(gj, {
+      style: (f: any) => {
+        const hw = f?.properties?.hw || '';
+        const major = hw === 'motorway' || hw === 'trunk' || hw === 'primary';
+        return {
+          color: major ? '#ffe082' : hw === 'secondary' || hw === 'tertiary' ? '#fff59d' : '#fffde7',
+          weight: major ? 2.4 : hw === 'residential' ? 0.9 : 1.4,
+          opacity: major ? 0.95 : 0.75
+        };
+      },
+      onEachFeature: (f: any, layer: any) => {
+        const n = f?.properties?.name;
+        if (n) layer.bindTooltip(n, { sticky: true, className: 'sca-city-label', opacity: 0.95 });
+      }
+    }).addTo(map);
+    loadedStreetCity = city;
   }
 
   async function loadMapOverlays(L: any, map: LeafletMap) {
@@ -393,6 +491,9 @@
         }
       }).addTo(map);
     }
+
+    streetsIndex = await fetchStreetsIndex();
+    await syncStreetLayer(map, L);
   }
 
   async function ensureMap() {
@@ -405,11 +506,12 @@
     const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
 
     if (!mapInst) {
+      leafletRef = L;
       mapInst = L.map(mapEl, {
         crs: L.CRS.EPSG4326,
         zoomControl: true,
         minZoom: 1,
-        maxZoom: 11,
+        maxZoom: 14,
         worldCopyJump: false,
         maxBounds: worldBounds,
         maxBoundsViscosity: 1
@@ -439,6 +541,12 @@
         syncMapMarker(e.latlng.lat, e.latlng.lng);
         newCoords = `${e.latlng.lat.toFixed(5)},${e.latlng.lng.toFixed(5)}`;
       });
+      mapInst.on('moveend', () => {
+        if (mapInst && leafletRef) void syncStreetLayer(mapInst, leafletRef);
+      });
+      mapInst.on('zoomend', () => {
+        if (mapInst && leafletRef) void syncStreetLayer(mapInst, leafletRef);
+      });
       void loadMapOverlays(L, mapInst);
       // Leaflet needs a second layout pass inside flex panels
       setTimeout(() => {
@@ -456,8 +564,9 @@
     mapLon = lon;
     if (markerInst && mapInst) {
       markerInst.setLatLng([lat, lon]);
-      const z = Math.min(11, Math.max(4, mapInst.getZoom() || 6));
+      const z = Math.min(14, Math.max(4, mapInst.getZoom() || 6));
       mapInst.setView([lat, lon], z, { animate: true });
+      if (leafletRef) void syncStreetLayer(mapInst, leafletRef);
     }
   }
 
@@ -467,6 +576,9 @@
       mapInst = null;
       markerInst = null;
     }
+    streetLayerGroup = null;
+    loadedStreetCity = null;
+    leafletRef = null;
     if (basemapObjectUrl) {
       URL.revokeObjectURL(basemapObjectUrl);
       basemapObjectUrl = null;
@@ -773,7 +885,7 @@
       {/if}
       <div class="sca__map-wrap">
         <div class="sca__map" bind:this={mapEl}></div>
-        <span class="sca__map-attr">routes · fleuves · villes · NASA (pas de noms de rues)</span>
+        <span class="sca__map-attr">NE artères + rues FR au zoom · NASA</span>
       </div>
       <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
       <div class="sca__form">

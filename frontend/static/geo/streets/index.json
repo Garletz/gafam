@@ -1,0 +1,114 @@
+{
+  "cities": [
+    {
+      "id": "paris",
+      "file": "streets/paris.geojson.gz",
+      "bbox": [
+        2.225,
+        48.815,
+        2.47,
+        48.902
+      ],
+      "features": 24088
+    },
+    {
+      "id": "lyon",
+      "file": "streets/lyon.geojson.gz",
+      "bbox": [
+        4.77,
+        45.7,
+        4.92,
+        45.81
+      ],
+      "features": 12661
+    },
+    {
+      "id": "marseille",
+      "file": "streets/marseille.geojson.gz",
+      "bbox": [
+        5.3,
+        43.23,
+        5.48,
+        43.38
+      ],
+      "features": 14024
+    },
+    {
+      "id": "toulouse",
+      "file": "streets/toulouse.geojson.gz",
+      "bbox": [
+        1.36,
+        43.54,
+        1.52,
+        43.67
+      ],
+      "features": 16551
+    },
+    {
+      "id": "bordeaux",
+      "file": "streets/bordeaux.geojson.gz",
+      "bbox": [
+        -0.68,
+        44.79,
+        -0.5,
+        44.9
+      ],
+      "features": 14360
+    },
+    {
+      "id": "lille",
+      "file": "streets/lille.geojson.gz",
+      "bbox": [
+        2.98,
+        50.59,
+        3.15,
+        50.69
+      ],
+      "features": 12491
+    },
+    {
+      "id": "nantes",
+      "file": "streets/nantes.geojson.gz",
+      "bbox": [
+        -1.63,
+        47.18,
+        -1.48,
+        47.28
+      ],
+      "features": 13987
+    },
+    {
+      "id": "nice",
+      "file": "streets/nice.geojson.gz",
+      "bbox": [
+        7.2,
+        43.65,
+        7.32,
+        43.75
+      ],
+      "features": 5232
+    },
+    {
+      "id": "strasbourg",
+      "file": "streets/strasbourg.geojson.gz",
+      "bbox": [
+        7.68,
+        48.54,
+        7.82,
+        48.63
+      ],
+      "features": 8045
+    },
+    {
+      "id": "montpellier",
+      "file": "streets/montpellier.geojson.gz",
+      "bbox": [
+        3.8,
+        43.57,
+        3.95,
+        43.66
+      ],
+      "features": 11302
+    }
+  ]
+}

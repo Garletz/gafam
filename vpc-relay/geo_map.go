@@ -1,11 +1,11 @@
 package main
 
-// Map pack: HD basemap + vector overlays under /app/data/geo (≈1 GiB soft quota).
+// Map pack: HD basemap + vector overlays under /app/data/geo (≈2 GiB soft quota).
 // Seeded from image /app/geo-data/map-pack/ on boot. Remaining quota = OSM tile cache.
 
 import (
 	"compress/gzip"
-	"fmt"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	geoQuotaBytes     = 1_000_000_000 // 1 GiB soft budget for /app/data/geo
-	geoMapPackVersion = "map-pack-v1"
+	geoQuotaBytes     = 2_000_000_000 // 2 GiB soft budget for /app/data/geo
+	geoMapPackVersion = "map-pack-v2"
 )
 
 func geoMapDir() string {
@@ -71,24 +71,31 @@ func initGeoMapPack() {
 }
 
 func copyDirFiles(src, dst string) error {
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
-		in := filepath.Join(src, e.Name())
-		out := filepath.Join(dst, e.Name())
-		if err := copyFile(in, out); err != nil {
-			return fmt.Errorf("%s: %w", e.Name(), err)
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
 		}
-	}
-	return nil
+		if rel == "." {
+			return os.MkdirAll(dst, 0o755)
+		}
+		// skip junk
+		base := filepath.Base(path)
+		if base == ".gitignore" || base == "README.md" {
+			return nil
+		}
+		out := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(out, 0o755)
+		}
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return err
+		}
+		return copyFile(path, out)
+	})
 }
 
 func copyFile(src, dst string) error {
@@ -164,10 +171,20 @@ func enforceGeoQuota() {
 }
 
 func geoMapFile(name string) string {
-	name = filepath.Base(name)
-	switch name {
-	case "basemap.jpg", "manifest.json", "rivers.geojson.gz", "roads.geojson.gz", "cities.geojson.gz":
-		return filepath.Join(geoMapDir(), name)
+	// allow streets/<city>.geojson.gz
+	clean := filepath.Clean("/" + strings.TrimPrefix(name, "/"))
+	clean = strings.TrimPrefix(clean, "/")
+	if strings.Contains(clean, "..") {
+		return ""
+	}
+	base := filepath.Base(clean)
+	dir := filepath.Dir(clean)
+	switch {
+	case dir == "." && (base == "basemap.jpg" || base == "manifest.json" ||
+		base == "rivers.geojson.gz" || base == "roads.geojson.gz" || base == "cities.geojson.gz"):
+		return filepath.Join(geoMapDir(), base)
+	case dir == "streets" && (base == "index.json" || strings.HasSuffix(base, ".geojson.gz")):
+		return filepath.Join(geoMapDir(), "streets", base)
 	default:
 		return ""
 	}
@@ -180,6 +197,19 @@ func geoBasemapHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serveGeoFile(w, r, path, "image/jpeg")
+}
+
+func geoStreetsIndex() map[string]interface{} {
+	p := geoMapFile("streets/index.json")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return map[string]interface{}{"cities": []interface{}{}}
+	}
+	var idx map[string]interface{}
+	if json.Unmarshal(b, &idx) != nil {
+		return map[string]interface{}{"cities": []interface{}{}}
+	}
+	return idx
 }
 
 func geoLayersListHandler(w http.ResponseWriter, r *http.Request) {
@@ -209,6 +239,7 @@ func geoLayersListHandler(w http.ResponseWriter, r *http.Request) {
 			return 0
 		}(),
 		"layers":        layers,
+		"streets":       geoStreetsIndex(),
 		"manifest_path": manifestPath,
 		"tiles_cached":  countCachedTiles(),
 	})
@@ -226,14 +257,36 @@ func geoLayerHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown layer", http.StatusNotFound)
 		return
 	}
-	if file == "" {
-		http.NotFound(w, r)
+	serveGzipGeoJSON(w, file, name)
+}
+
+func geoStreetsHandler(w http.ResponseWriter, r *http.Request) {
+	city := strings.TrimSpace(strings.ToLower(r.PathValue("city")))
+	city = strings.TrimSuffix(city, ".geojson")
+	city = strings.TrimSuffix(city, ".gz")
+	if city == "" || city == "index" {
+		sendJSON(w, http.StatusOK, geoStreetsIndex())
 		return
 	}
-	// Decompress for CF proxy / browsers (avoids Content-Encoding passthrough issues).
+	// sanitize city id
+	for _, c := range city {
+		if !((c >= 'a' && c <= 'z') || c == '-' || c == '_') {
+			http.Error(w, "bad city", http.StatusBadRequest)
+			return
+		}
+	}
+	file := geoMapFile("streets/" + city + ".geojson.gz")
+	serveGzipGeoJSON(w, file, "streets/"+city)
+}
+
+func serveGzipGeoJSON(w http.ResponseWriter, file, label string) {
+	if file == "" {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	f, err := os.Open(file)
 	if err != nil {
-		http.NotFound(w, r)
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	defer f.Close()
@@ -245,7 +298,7 @@ func geoLayerHandler(w http.ResponseWriter, r *http.Request) {
 	defer gz.Close()
 	w.Header().Set("Content-Type", "application/geo+json; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Set("X-Geo-Layer", name)
+	w.Header().Set("X-Geo-Layer", label)
 	_, _ = io.Copy(w, gz)
 }
 

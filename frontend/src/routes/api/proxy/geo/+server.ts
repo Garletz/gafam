@@ -207,6 +207,17 @@ export const GET: RequestHandler = async ({ url }) => {
 		);
 	}
 
+	if (action === 'streets') {
+		const city = url.searchParams.get('city') || 'index';
+		return vpcBinary(
+			vpcUrl,
+			token,
+			`/api/web/geo/streets/${encodeURIComponent(city)}`,
+			12 << 20,
+			city === 'index' ? 'application/json' : 'application/geo+json'
+		);
+	}
+
 	if (action === 'layers') {
 		const result = await vpcJson(
 			vpcUrl,
