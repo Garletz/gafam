@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { decryptAESGCM } from '$lib/crypto';
+  import type { Map as LeafletMap, Marker as LeafletMarker } from 'leaflet';
 
   export type ComposePlace = {
     id: number;
@@ -9,6 +10,15 @@
     lat?: number | null;
     lon?: number | null;
     use_count?: number;
+  };
+
+  type GeoHit = {
+    name: string;
+    display: string;
+    admin1?: string;
+    lat: number;
+    lon: number;
+    source: string;
   };
 
   let {
@@ -27,6 +37,7 @@
   } = $props();
 
   let places = $state<ComposePlace[]>([]);
+  let geoHits = $state<GeoHit[]>([]);
   let placeQ = $state('');
   let showManage = $state(false);
   let customHH = $state('');
@@ -38,11 +49,18 @@
   let dayOffset = $state(0);
   /** Tick so smart slots refresh with the clock */
   let nowMs = $state(Date.now());
+  let geoStatus = $state<{ imported?: boolean; count?: number; importing?: boolean } | null>(null);
 
   // New place form
   let newLabel = $state('');
   let newAddress = $state('');
   let newCoords = $state(''); // "48.85,2.35"
+  let mapLat = $state(48.8566);
+  let mapLon = $state(2.3522);
+
+  let mapEl = $state<HTMLDivElement | null>(null);
+  let mapInst: LeafletMap | null = null;
+  let markerInst: LeafletMarker | null = null;
 
   const DAYS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
@@ -182,13 +200,135 @@
     }
   }
 
+  async function loadGeoSearch(q: string) {
+    if (!q.trim() || q.trim().length < 2) {
+      geoHits = [];
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/proxy/geo?${qs({ action: 'search', q: q.trim(), limit: '12' })}`
+      );
+      if (!res.ok) {
+        geoHits = [];
+        return;
+      }
+      const data: any = await res.json();
+      geoHits = Array.isArray(data.results) ? data.results : [];
+    } catch {
+      geoHits = [];
+    }
+  }
+
+  async function loadGeoStatus() {
+    try {
+      const res = await fetch(`/api/proxy/geo?${qs({ action: 'status' })}`);
+      if (res.ok) geoStatus = await res.json();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function triggerGeoImport() {
+    msg = 'Import GeoNames…';
+    try {
+      await fetch(`/api/proxy/geo?${qs({ action: 'import' })}`, { method: 'POST' });
+      msg = 'Import lancé sur le VPC (quelques minutes)';
+      setTimeout(() => loadGeoStatus(), 3000);
+    } catch {
+      msg = 'Import échoué';
+    }
+    setTimeout(() => (msg = ''), 4000);
+  }
+
+  function applyGeoHit(h: GeoHit) {
+    newLabel = h.name;
+    newAddress = h.display;
+    newCoords = `${h.lat.toFixed(5)},${h.lon.toFixed(5)}`;
+    mapLat = h.lat;
+    mapLon = h.lon;
+    showManage = true;
+    syncMapMarker(h.lat, h.lon);
+    msg = 'Coords remplies — Enregistrer pour le carnet';
+    setTimeout(() => (msg = ''), 3000);
+  }
+
+  function insertGeoChip(h: GeoHit) {
+    const s =
+      h.admin1 && h.admin1 !== h.name
+        ? `au ${h.name} — ${h.admin1} (${h.lat.toFixed(5)},${h.lon.toFixed(5)})`
+        : `au ${h.name} (${h.lat.toFixed(5)},${h.lon.toFixed(5)})`;
+    insertText(s);
+  }
+
+  function tileUrlTemplate(): string {
+    const base = `/api/proxy/geo?action=tiles&vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`;
+    return `${base}&z={z}&x={x}&y={y}`;
+  }
+
+  async function ensureMap() {
+    if (typeof window === 'undefined' || !mapEl) return;
+    const leaflet = await import('leaflet');
+    const L = leaflet.default ?? leaflet;
+    await import('leaflet/dist/leaflet.css');
+
+    if (!mapInst) {
+      mapInst = L.map(mapEl, { zoomControl: true }).setView([mapLat, mapLon], 12);
+      L.tileLayer(tileUrlTemplate(), {
+        maxZoom: 18,
+        attribution: '© OpenStreetMap'
+      }).addTo(mapInst);
+      const icon = L.divIcon({
+        className: 'sca-pin',
+        html: '<span class="sca-pin__dot"></span>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      markerInst = L.marker([mapLat, mapLon], { draggable: true, icon }).addTo(mapInst);
+      markerInst.on('dragend', () => {
+        const ll = markerInst!.getLatLng();
+        mapLat = ll.lat;
+        mapLon = ll.lng;
+        newCoords = `${ll.lat.toFixed(5)},${ll.lng.toFixed(5)}`;
+      });
+      mapInst.on('click', (e: { latlng: { lat: number; lng: number } }) => {
+        syncMapMarker(e.latlng.lat, e.latlng.lng);
+        newCoords = `${e.latlng.lat.toFixed(5)},${e.latlng.lng.toFixed(5)}`;
+      });
+    } else {
+      mapInst.invalidateSize();
+      syncMapMarker(mapLat, mapLon);
+    }
+  }
+
+  function syncMapMarker(lat: number, lon: number) {
+    mapLat = lat;
+    mapLon = lon;
+    if (markerInst && mapInst) {
+      markerInst.setLatLng([lat, lon]);
+      mapInst.setView([lat, lon], Math.max(mapInst.getZoom(), 12));
+    }
+  }
+
+  function destroyMap() {
+    if (mapInst) {
+      mapInst.remove();
+      mapInst = null;
+      markerInst = null;
+    }
+  }
+
   onMount(() => {
     loadPlaces();
     loadVpcPhone();
+    loadGeoStatus();
     const tick = setInterval(() => {
       nowMs = Date.now();
     }, 30_000);
-    return () => clearInterval(tick);
+    return () => {
+      clearInterval(tick);
+      destroyMap();
+    };
   });
 
   async function loadVpcPhone() {
@@ -210,8 +350,18 @@
 
   $effect(() => {
     const q = placeQ;
-    const t = setTimeout(() => loadPlaces(q), 200);
+    const t = setTimeout(() => {
+      loadPlaces(q);
+      loadGeoSearch(q);
+    }, 250);
     return () => clearTimeout(t);
+  });
+
+  $effect(() => {
+    if (showManage) {
+      // wait for DOM
+      queueMicrotask(() => ensureMap());
+    }
   });
 
   function insertText(snippet: string) {
@@ -281,7 +431,11 @@
       setTimeout(() => (msg = ''), 2500);
       return;
     }
-    const { lat, lon } = parseCoords(newCoords);
+    let { lat, lon } = parseCoords(newCoords);
+    if (lat == null || lon == null) {
+      lat = mapLat;
+      lon = mapLon;
+    }
     const res = await fetch(`/api/proxy/compose?${qs({ kind: 'places' })}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -373,17 +527,32 @@
     <input
       class="sca__search"
       type="search"
-      placeholder="Chercher…"
+      placeholder="Chercher ville / lieu…"
       bind:value={placeQ}
     />
     <div class="sca__chips">
-      {#each places.slice(0, 12) as p (p.id)}
+      {#each places.slice(0, 8) as p (p.id)}
         <button type="button" class="sca__chip sca__chip--place" onclick={() => onPlaceChip(p)}>
           {p.label}
         </button>
-      {:else}
-        <span class="sca__empty">aucun lieu — ouvrir Gérer</span>
       {/each}
+      {#each geoHits.slice(0, 6) as h (`${h.lat},${h.lon},${h.name}`)}
+        <button
+          type="button"
+          class="sca__chip sca__chip--geo"
+          title={h.display}
+          onclick={() => insertGeoChip(h)}
+          oncontextmenu={(e) => {
+            e.preventDefault();
+            applyGeoHit(h);
+          }}
+        >
+          {h.name}
+        </button>
+      {/each}
+      {#if places.length === 0 && geoHits.length === 0}
+        <span class="sca__empty">carnet ou GeoNames FR…</span>
+      {/if}
     </div>
     <button
       type="button"
@@ -400,11 +569,40 @@
 
   {#if showManage}
     <div class="sca__panel">
-      <p class="sca__panel-title">Carnet de lieux (SQL VPC — pas d’API carto)</p>
+      <p class="sca__panel-title">
+        Carnet + GeoNames FR (VPC)
+        {#if geoStatus}
+          <span class="sca__geo-meta">
+            {#if geoStatus.importing}
+              import…
+            {:else if geoStatus.imported}
+              {geoStatus.count?.toLocaleString('fr-FR')} lieux
+            {:else}
+              base vide
+              <button type="button" class="sca__link" onclick={triggerGeoImport}>Importer</button>
+            {/if}
+          </span>
+        {/if}
+      </p>
+      {#if geoHits.length}
+        <ul class="sca__geo-list">
+          {#each geoHits as h (`g-${h.lat}-${h.lon}-${h.name}`)}
+            <li>
+              <button type="button" class="sca__geo-pick" onclick={() => applyGeoHit(h)}>
+                <strong>{h.name}</strong>
+                <span class="muted">{h.display}</span>
+                <span class="mono">{h.lat.toFixed(4)}, {h.lon.toFixed(4)}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <div class="sca__map" bind:this={mapEl}></div>
+      <p class="sca__hint">Clic carte / glisser le marqueur → lat/lon. Clic résultat GeoNames → remplir.</p>
       <div class="sca__form">
         <input type="text" placeholder="Nom (ex. Café de la Gare)" bind:value={newLabel} />
         <input type="text" placeholder="Adresse libre (optionnel)" bind:value={newAddress} />
-        <input type="text" placeholder="lat,lon (ex. 48.8566,2.3522)" bind:value={newCoords} />
+        <input type="text" placeholder="lat,lon" bind:value={newCoords} />
         <button type="button" class="sca__save" onclick={savePlace}>Enregistrer</button>
       </div>
       <ul class="sca__list">
@@ -486,6 +684,73 @@
     background: #e8f0fe;
     border-color: #aecbfa;
     color: #174ea6;
+  }
+  .sca__chip--geo {
+    background: #e6f4ea;
+    border-color: #a8dab5;
+    color: #137333;
+  }
+  .sca__map {
+    width: 100%;
+    height: 180px;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    margin: 8px 0;
+    z-index: 0;
+  }
+  .sca__geo-list {
+    list-style: none;
+    margin: 0 0 8px;
+    padding: 0;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .sca__geo-list li {
+    margin: 0;
+    border-bottom: 1px solid #eee;
+  }
+  .sca__geo-pick {
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: transparent;
+    padding: 6px 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+  }
+  .sca__geo-pick:hover {
+    background: #f1f3f4;
+  }
+  .sca__geo-meta {
+    font-weight: 400;
+    font-size: 11px;
+    color: #80868b;
+    margin-left: 8px;
+  }
+  .sca__link {
+    border: none;
+    background: none;
+    color: #174ea6;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+  }
+  :global(.sca-pin) {
+    background: transparent;
+    border: none;
+  }
+  :global(.sca-pin__dot) {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #202124;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   }
   .sca__empty {
     font-size: 12px;

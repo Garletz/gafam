@@ -155,13 +155,16 @@ class RelayForegroundService : Service() {
                     if (edgePollTick % 2 == 0) {
                         EdgeClient.syncOnce(applicationContext)
                     }
-                    // Launch Gmail scrape activity every 60s
+                    // Launch Gmail scrape activity every 60s (same toggle as scrape loop)
                     gmailScrapeTick++
                     if (gmailScrapeTick >= 60) {
                         gmailScrapeTick = 0
-                        val intent = android.content.Intent(applicationContext, GmailScrapeActivity::class.java)
-                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(intent)
+                        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+                        if (prefs.getBoolean("gmail_scrape_enabled", true)) {
+                            val intent = android.content.Intent(applicationContext, GmailScrapeActivity::class.java)
+                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "outbox poll error", e)

@@ -215,6 +215,7 @@ func main() {
 	initVault()
 	initMissionStore()
 	initComposeSnippets()
+	initGeo()
 	registerVaultTools()
 	sandbox.EnsureDirs()
 
@@ -345,6 +346,13 @@ func main() {
 	mux.HandleFunc("PUT /api/web/compose/times", sessionMiddleware(composeTimesHandler))
 	mux.HandleFunc("DELETE /api/web/compose/times", sessionMiddleware(composeTimesHandler))
 	mux.HandleFunc("POST /api/web/compose/times/{id}/use", sessionMiddleware(composeTimeUseHandler))
+
+	// Local geocoding (GeoNames FR) + OSM tile cache
+	mux.HandleFunc("GET /api/web/geo/search", sessionMiddleware(geoSearchHandler))
+	mux.HandleFunc("GET /api/web/geo/status", sessionMiddleware(geoStatusHandler))
+	mux.HandleFunc("POST /api/web/geo/import", sessionMiddleware(geoImportHandler))
+	mux.HandleFunc("GET /api/web/geo/tiles/{z}/{x}/{y}", sessionMiddleware(geoTilesHandler))
+
 	mux.HandleFunc("GET /api/web/logs", sessionMiddleware(getWebLogsHandler))
 	mux.HandleFunc("DELETE /api/web/logs", sessionMiddleware(deleteWebLogsHandler))
 	mux.HandleFunc("GET /api/web/logs/suparna/reading", sessionMiddleware(suparnaReadingHandler))
