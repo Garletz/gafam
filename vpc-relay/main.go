@@ -356,6 +356,8 @@ func main() {
 	mux.HandleFunc("GET /api/web/geo/layers", sessionMiddleware(geoLayersListHandler))
 	mux.HandleFunc("GET /api/web/geo/layers/{name}", sessionMiddleware(geoLayerHandler))
 	mux.HandleFunc("GET /api/web/geo/streets/{city}", sessionMiddleware(geoStreetsHandler))
+	mux.HandleFunc("GET /api/web/geo/pmtiles", sessionMiddleware(geoPmtilesHandler))
+	mux.HandleFunc("HEAD /api/web/geo/pmtiles", sessionMiddleware(geoPmtilesHandler))
 
 	mux.HandleFunc("GET /api/web/logs", sessionMiddleware(getWebLogsHandler))
 	mux.HandleFunc("DELETE /api/web/logs", sessionMiddleware(deleteWebLogsHandler))

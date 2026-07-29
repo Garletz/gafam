@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	geoQuotaBytes     = 2_000_000_000 // 2 GiB soft budget for /app/data/geo
-	geoMapPackVersion = "map-pack-v2"
+	geoQuotaBytes     = 5_000_000_000 // 5 GiB soft budget for /app/data/geo (PMTiles + cache)
+	geoMapPackVersion = "map-pack-v3"
 )
 
 func geoMapDir() string {

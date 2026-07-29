@@ -59,6 +59,7 @@ func initGeo() {
 		log.Printf("geo: mkdir: %v", err)
 	}
 	initGeoMapPack()
+	initGeoPmtiles()
 
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS gafam_geonames (
 		geoname_id INTEGER PRIMARY KEY,
@@ -132,6 +133,7 @@ func geoStatusHandler(w http.ResponseWriter, r *http.Request) {
 		}(),
 		"geo_quota_bytes": geoQuotaBytes,
 		"geo_used_bytes":  geoDirBytes(),
+		"pmtiles":         geoPmtilesStatus(),
 	})
 }
 

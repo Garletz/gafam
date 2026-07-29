@@ -121,7 +121,8 @@ async function vpcBinary(
 	token: string,
 	path: string,
 	maxBytes: number,
-	fallbackType: string
+	fallbackType: string,
+	extraHeaders: Record<string, string> = {}
 ): Promise<Response> {
 	const full = path.includes('?')
 		? `${path}&token=${encodeURIComponent(token)}`
@@ -130,52 +131,70 @@ async function vpcBinary(
 		const { socket, host } = await connectVpc(vpcUrl);
 		const writer = socket.writable.getWriter();
 		const encoder = new TextEncoder();
-		const req =
-			`GET ${full} HTTP/1.1\r\n` +
-			`Host: ${host}\r\n` +
-			`Authorization: Bearer ${token}\r\n` +
-			`Connection: close\r\n\r\n`;
-		await writer.write(encoder.encode(req));
+		const hdrLines = [
+			`GET ${full} HTTP/1.1`,
+			`Host: ${host}`,
+			`Authorization: Bearer ${token}`,
+			`Connection: close`
+		];
+		for (const [k, v] of Object.entries(extraHeaders)) {
+			if (v) hdrLines.push(`${k}: ${v}`);
+		}
+		hdrLines.push('', '');
+		await writer.write(encoder.encode(hdrLines.join('\r\n')));
 		writer.releaseLock();
 
 		const raw = await readRaw(socket, maxBytes);
 		const { status, headers, body } = splitHttp(raw);
 		const ct = headers.get('Content-Type') || fallbackType;
-		const cache = headers.get('X-Geo-Cache') || '';
-		const layer = headers.get('X-Geo-Layer') || '';
-		return new Response(body, {
-			status,
-			headers: {
-				'Content-Type': ct,
-				'Cache-Control': 'public, max-age=86400',
-				...(cache ? { 'X-Geo-Cache': cache } : {}),
-				...(layer ? { 'X-Geo-Layer': layer } : {})
-			}
+		const out = new Headers({
+			'Content-Type': ct,
+			'Cache-Control': 'public, max-age=86400'
 		});
+		const pass = ['Accept-Ranges', 'Content-Range', 'Content-Length', 'X-Geo-Cache', 'X-Geo-Layer', 'X-Geo-Pmtiles'];
+		for (const h of pass) {
+			const v = headers.get(h);
+			if (v) out.set(h, v);
+		}
+		return new Response(body, { status, headers: out });
 	} catch (e: any) {
 		try {
 			const res = await fetch(`${vpcUrl}${full}`, {
-				headers: { Authorization: `Bearer ${token}` }
+				headers: { Authorization: `Bearer ${token}`, ...extraHeaders }
 			});
 			const buf = await res.arrayBuffer();
-			return new Response(buf, {
-				status: res.status,
-				headers: {
-					'Content-Type': res.headers.get('Content-Type') || fallbackType,
-					'Cache-Control': 'public, max-age=86400'
-				}
+			const out = new Headers({
+				'Content-Type': res.headers.get('Content-Type') || fallbackType,
+				'Cache-Control': 'public, max-age=86400'
 			});
+			for (const h of ['Accept-Ranges', 'Content-Range', 'Content-Length']) {
+				const v = res.headers.get(h);
+				if (v) out.set(h, v);
+			}
+			return new Response(buf, { status: res.status, headers: out });
 		} catch {
 			return json({ error: e.message }, { status: 500 });
 		}
 	}
 }
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, request }) => {
 	const vpcUrl = url.searchParams.get('vpcUrl');
 	const token = url.searchParams.get('token');
 	const action = url.searchParams.get('action') || 'search';
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
+
+	if (action === 'pmtiles') {
+		const range = request.headers.get('Range') || '';
+		return vpcBinary(
+			vpcUrl,
+			token,
+			'/api/web/geo/pmtiles',
+			8 << 20,
+			'application/vnd.pmtiles',
+			range ? { Range: range } : {}
+		);
+	}
 
 	if (action === 'tiles') {
 		const z = url.searchParams.get('z') || '';
@@ -244,6 +263,11 @@ export const GET: RequestHandler = async ({ url }) => {
 	const qs = new URLSearchParams({ token, q, limit });
 	const result = await vpcJson(vpcUrl, token, 'GET', `/api/web/geo/search?${qs}`);
 	return json(result.data, { status: result.status });
+};
+
+export const HEAD: RequestHandler = async ({ url, request }) => {
+	// pmtiles.js probes with HEAD / Range
+	return GET({ url, request } as any);
 };
 
 export const POST: RequestHandler = async ({ url }) => {

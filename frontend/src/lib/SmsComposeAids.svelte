@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { decryptAESGCM } from '$lib/crypto';
-  import type { Map as LeafletMap, Marker as LeafletMarker } from 'leaflet';
+  import { createComposeMap, type ComposeMapHandle } from '$lib/geoMapLibre';
 
   export type ComposePlace = {
     id: number;
@@ -66,13 +66,7 @@
   let mapLon = $state(2.3522);
 
   let mapEl = $state<HTMLDivElement | null>(null);
-  let mapInst: LeafletMap | null = null;
-  let markerInst: LeafletMarker | null = null;
-  let basemapObjectUrl: string | null = null;
-  let streetLayerGroup: any = null;
-  let streetsIndex: { id: string; bbox: number[]; features?: number }[] = [];
-  let loadedStreetCity: string | null = null;
-  let leafletRef: any = null;
+  let mapHandle: ComposeMapHandle | null = null;
 
   const DAYS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
@@ -273,316 +267,42 @@
     insertText(s);
   }
 
-  function tileUrlTemplate(): string {
-    // unused — basemap from VPC map-pack (fallback: Wrangler /geo/world.jpg)
-    return '';
-  }
-
   function geoProxyUrl(action: string, extra: Record<string, string> = {}) {
     const params = new URLSearchParams({ vpcUrl, token: sessionToken, action, ...extra });
     return `/api/proxy/geo?${params}`;
   }
 
-  async function resolveBasemapUrl(): Promise<string> {
-    if (!vpcUrl || !sessionToken) return '/geo/world.jpg';
-    try {
-      const res = await fetch(geoProxyUrl('basemap'));
-      if (!res.ok) return '/geo/world.jpg';
-      const blob = await res.blob();
-      if (!blob || blob.size < 10_000) return '/geo/world.jpg';
-      if (basemapObjectUrl) URL.revokeObjectURL(basemapObjectUrl);
-      basemapObjectUrl = URL.createObjectURL(blob);
-      return basemapObjectUrl;
-    } catch {
-      return '/geo/world.jpg';
-    }
-  }
-
-  async function fetchGzipJSON(url: string): Promise<any | null> {
-    try {
-      const res = await fetch(url);
-      if (!res.ok || !res.body) return null;
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('json') && !url.endsWith('.gz')) {
-        return await res.json();
-      }
-      const ds = new DecompressionStream('gzip');
-      const text = await new Response(res.body.pipeThrough(ds)).text();
-      return JSON.parse(text);
-    } catch {
-      return null;
-    }
-  }
-
-  async function fetchGeoJSONLayer(name: string): Promise<any | null> {
-    // 1) VPC map-pack (when image pulled)
-    if (vpcUrl && sessionToken) {
-      try {
-        const res = await fetch(geoProxyUrl('layer', { name }));
-        if (res.ok) {
-          const gj = await res.json();
-          if (gj?.features?.length) return gj;
-        }
-      } catch {
-        /* fall through */
-      }
-    }
-    // 2) Wrangler static fallback — always available
-    return fetchGzipJSON(`/geo/${name}.geojson.gz`);
-  }
-
-  async function fetchStreetsIndex(): Promise<typeof streetsIndex> {
-    if (vpcUrl && sessionToken) {
-      try {
-        const res = await fetch(geoProxyUrl('streets', { city: 'index' }));
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data?.cities)) return data.cities;
-        }
-      } catch {
-        /* fall through */
-      }
-    }
-    const data = await fetchGzipJSON('/geo/streets/index.json');
-    // index.json is plain JSON (not gzip)
-    if (data?.cities) return data.cities;
-    try {
-      const res = await fetch('/geo/streets/index.json');
-      if (res.ok) {
-        const j = await res.json();
-        return j.cities || [];
-      }
-    } catch {
-      /* empty */
-    }
-    return [];
-  }
-
-  async function fetchCityStreets(cityId: string): Promise<any | null> {
-    if (vpcUrl && sessionToken) {
-      try {
-        const res = await fetch(geoProxyUrl('streets', { city: cityId }));
-        if (res.ok) {
-          const gj = await res.json();
-          if (gj?.features?.length) return gj;
-        }
-      } catch {
-        /* fall through */
-      }
-    }
-    return fetchGzipJSON(`/geo/streets/${cityId}.geojson.gz`);
-  }
-
-  function cityAt(lat: number, lon: number, zoom: number) {
-    if (zoom < 8 || !streetsIndex.length) return null;
-    for (const c of streetsIndex) {
-      const [w, s, e, n] = c.bbox;
-      if (lon >= w && lon <= e && lat >= s && lat <= n) return c.id;
-    }
-    return null;
-  }
-
-  async function syncStreetLayer(map: any, L: any) {
-    if (!map || !L) return;
-    const center = map.getCenter();
-    const zoom = map.getZoom();
-    const city = cityAt(center.lat, center.lng, zoom);
-    if (!city) {
-      if (streetLayerGroup) {
-        map.removeLayer(streetLayerGroup);
-        streetLayerGroup = null;
-        loadedStreetCity = null;
-      }
+  async function ensureMap() {
+    if (typeof window === 'undefined' || !mapEl || !vpcUrl || !sessionToken) return;
+    if (mapHandle) {
+      mapHandle.resize();
+      mapHandle.setView(mapLat, mapLon);
       return;
     }
-    if (city === loadedStreetCity && streetLayerGroup) return;
-    const gj = await fetchCityStreets(city);
-    if (!gj?.features?.length) return;
-    if (streetLayerGroup) map.removeLayer(streetLayerGroup);
-    streetLayerGroup = L.geoJSON(gj, {
-      style: (f: any) => {
-        const hw = f?.properties?.hw || '';
-        const major = hw === 'motorway' || hw === 'trunk' || hw === 'primary';
-        return {
-          color: major ? '#ffe082' : hw === 'secondary' || hw === 'tertiary' ? '#fff59d' : '#fffde7',
-          weight: major ? 2.4 : hw === 'residential' ? 0.9 : 1.4,
-          opacity: major ? 0.95 : 0.75
-        };
-      },
-      onEachFeature: (f: any, layer: any) => {
-        const n = f?.properties?.name;
-        if (n) layer.bindTooltip(n, { sticky: true, className: 'sca-city-label', opacity: 0.95 });
+    mapHandle = await createComposeMap({
+      container: mapEl,
+      vpcUrl,
+      token: sessionToken,
+      lat: mapLat || 46.5,
+      lon: mapLon || 2.5,
+      onPick: (lat, lon) => {
+        mapLat = lat;
+        mapLon = lon;
+        newCoords = `${lat.toFixed(5)},${lon.toFixed(5)}`;
       }
-    }).addTo(map);
-    loadedStreetCity = city;
-  }
-
-  async function loadMapOverlays(L: any, map: LeafletMap) {
-    // High-contrast strokes over NASA satellite
-    const styleRoad = (f: any) => {
-      const sr = Number(f?.properties?.sr ?? 9);
-      return {
-        color: sr <= 3 ? '#ffd54a' : '#ffcc66',
-        weight: sr <= 3 ? 2.2 : sr <= 5 ? 1.5 : 1.0,
-        opacity: 0.95,
-        interactive: true
-      };
-    };
-    const styleRiver = (f: any) => {
-      const sr = Number(f?.properties?.sr ?? 9);
-      return {
-        color: '#4fc3f7',
-        weight: sr <= 2 ? 2.8 : 1.8,
-        opacity: 0.95,
-        interactive: true
-      };
-    };
-
-    const roads = await fetchGeoJSONLayer('roads');
-    if (roads) {
-      L.geoJSON(roads, {
-        style: styleRoad,
-        onEachFeature: (f: any, layer: any) => {
-          const n = f?.properties?.name;
-          if (n) layer.bindTooltip(n, { sticky: true, className: 'sca-city-label', opacity: 0.95 });
-        }
-      }).addTo(map);
-    }
-
-    const rivers = await fetchGeoJSONLayer('rivers');
-    if (rivers) {
-      L.geoJSON(rivers, {
-        style: styleRiver,
-        onEachFeature: (f: any, layer: any) => {
-          const n = f?.properties?.name;
-          if (n) layer.bindTooltip(n, { sticky: true, className: 'sca-city-label', opacity: 0.95 });
-        }
-      }).addTo(map);
-    }
-
-    const cities = await fetchGeoJSONLayer('cities');
-    if (cities) {
-      L.geoJSON(cities, {
-        pointToLayer: (f: any, latlng: any) => {
-          const pop = Number(f?.properties?.pop ?? 0);
-          const sr = Number(f?.properties?.sr ?? 99);
-          const r = sr <= 2 || pop >= 1_000_000 ? 4 : sr <= 4 || pop >= 200_000 ? 3 : 2;
-          return L.circleMarker(latlng, {
-            radius: r,
-            color: '#1a1a1a',
-            weight: 1,
-            fillColor: '#ffeb3b',
-            fillOpacity: 0.95,
-            interactive: true
-          });
-        },
-        onEachFeature: (f: any, layer: any) => {
-          const name = f?.properties?.name;
-          const pop = Number(f?.properties?.pop ?? 0);
-          const sr = Number(f?.properties?.sr ?? 99);
-          if (!name) return;
-          if (sr > 5 && pop < 80_000) return;
-          layer.bindTooltip(name, {
-            permanent: sr <= 3 || pop >= 300_000,
-            direction: 'right',
-            className: 'sca-city-label',
-            opacity: 0.95
-          });
-        }
-      }).addTo(map);
-    }
-
-    streetsIndex = await fetchStreetsIndex();
-    await syncStreetLayer(map, L);
-  }
-
-  async function ensureMap() {
-    if (typeof window === 'undefined' || !mapEl) return;
-    const leaflet = await import('leaflet');
-    const L = leaflet.default ?? leaflet;
-    await import('leaflet/dist/leaflet.css');
-
-    // EPSG:4326 matches the equirectangular NASA basemap (no mercator warp)
-    const worldBounds = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
-
-    if (!mapInst) {
-      leafletRef = L;
-      mapInst = L.map(mapEl, {
-        crs: L.CRS.EPSG4326,
-        zoomControl: true,
-        minZoom: 1,
-        maxZoom: 14,
-        worldCopyJump: false,
-        maxBounds: worldBounds,
-        maxBoundsViscosity: 1
-      });
-      const basemapUrl = await resolveBasemapUrl();
-      L.imageOverlay(basemapUrl, worldBounds, {
-        opacity: 1,
-        interactive: false
-      }).addTo(mapInst);
-      mapInst.fitBounds(worldBounds);
-      mapInst.setView([mapLat || 46.5, mapLon || 2.5], 5);
-
-      const icon = L.divIcon({
-        className: 'sca-pin',
-        html: '<span class="sca-pin__dot"></span>',
-        iconSize: [18, 18],
-        iconAnchor: [9, 9]
-      });
-      markerInst = L.marker([mapLat || 46.5, mapLon || 2.5], { draggable: true, icon }).addTo(mapInst);
-      markerInst.on('dragend', () => {
-        const ll = markerInst!.getLatLng();
-        mapLat = ll.lat;
-        mapLon = ll.lng;
-        newCoords = `${ll.lat.toFixed(5)},${ll.lng.toFixed(5)}`;
-      });
-      mapInst.on('click', (e: { latlng: { lat: number; lng: number } }) => {
-        syncMapMarker(e.latlng.lat, e.latlng.lng);
-        newCoords = `${e.latlng.lat.toFixed(5)},${e.latlng.lng.toFixed(5)}`;
-      });
-      mapInst.on('moveend', () => {
-        if (mapInst && leafletRef) void syncStreetLayer(mapInst, leafletRef);
-      });
-      mapInst.on('zoomend', () => {
-        if (mapInst && leafletRef) void syncStreetLayer(mapInst, leafletRef);
-      });
-      void loadMapOverlays(L, mapInst);
-      // Leaflet needs a second layout pass inside flex panels
-      setTimeout(() => {
-        mapInst?.invalidateSize();
-        syncMapMarker(mapLat || 46.5, mapLon || 2.5);
-      }, 80);
-    } else {
-      mapInst.invalidateSize();
-      syncMapMarker(mapLat, mapLon);
-    }
+    });
+    setTimeout(() => mapHandle?.resize(), 80);
   }
 
   function syncMapMarker(lat: number, lon: number) {
     mapLat = lat;
     mapLon = lon;
-    if (markerInst && mapInst) {
-      markerInst.setLatLng([lat, lon]);
-      const z = Math.min(14, Math.max(4, mapInst.getZoom() || 6));
-      mapInst.setView([lat, lon], z, { animate: true });
-      if (leafletRef) void syncStreetLayer(mapInst, leafletRef);
-    }
+    mapHandle?.setView(lat, lon);
   }
 
   function destroyMap() {
-    if (mapInst) {
-      mapInst.remove();
-      mapInst = null;
-      markerInst = null;
-    }
-    streetLayerGroup = null;
-    loadedStreetCity = null;
-    leafletRef = null;
-    if (basemapObjectUrl) {
-      URL.revokeObjectURL(basemapObjectUrl);
-      basemapObjectUrl = null;
-    }
+    mapHandle?.destroy();
+    mapHandle = null;
   }
 
   onMount(() => {
@@ -636,7 +356,7 @@
   $effect(() => {
     if (showManage) {
       queueMicrotask(() => ensureMap());
-      const t = setTimeout(() => mapInst?.invalidateSize(), 120);
+      const t = setTimeout(() => mapHandle?.resize(), 120);
       return () => clearTimeout(t);
     }
   });
@@ -885,7 +605,7 @@
       {/if}
       <div class="sca__map-wrap">
         <div class="sca__map" bind:this={mapEl}></div>
-        <span class="sca__map-attr">NE artères + rues FR au zoom · NASA</span>
+        <span class="sca__map-attr">MapLibre · Protomaps PMTiles VPC · 0 CDN</span>
       </div>
       <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
       <div class="sca__form">
@@ -1066,11 +786,11 @@
     font-size: 11px;
     padding: 0;
   }
-  :global(.sca-pin) {
-    background: transparent;
-    border: none;
+  :global(.sca-ml-pin) {
+    width: 18px;
+    height: 18px;
   }
-  :global(.sca-pin__dot) {
+  :global(.sca-ml-pin__dot) {
     display: block;
     width: 14px;
     height: 14px;

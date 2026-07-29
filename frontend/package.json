@@ -24,6 +24,9 @@
 		"wrangler": "^4.81.0"
 	},
 	"dependencies": {
-		"leaflet": "^1.9.4"
+		"@protomaps/basemaps": "^5.7.2",
+		"leaflet": "^1.9.4",
+		"maplibre-gl": "^6.0.0",
+		"pmtiles": "^4.4.1"
 	}
 }
