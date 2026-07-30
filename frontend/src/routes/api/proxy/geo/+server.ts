@@ -184,24 +184,11 @@ async function vpcBinary(
 	}
 }
 
-export const GET: RequestHandler = async ({ url, request }) => {
+export const GET: RequestHandler = async ({ url }) => {
 	const vpcUrl = url.searchParams.get('vpcUrl');
 	const token = url.searchParams.get('token');
 	const action = url.searchParams.get('action') || 'search';
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
-
-	if (action === 'pmtiles') {
-		const range = request.headers.get('Range') || '';
-		return vpcBinary(
-			vpcUrl,
-			token,
-			'/api/web/geo/pmtiles',
-			8 << 20,
-			'application/vnd.pmtiles',
-			range ? { Range: range } : {},
-			'private, no-store'
-		);
-	}
 
 	if (action === 'tiles') {
 		const z = url.searchParams.get('z') || '';
@@ -264,16 +251,6 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		return json(result.data, { status: result.status });
 	}
 
-	if (action === 'pmtiles-status') {
-		const result = await vpcJson(
-			vpcUrl,
-			token,
-			'GET',
-			`/api/web/geo/pmtiles/status?token=${encodeURIComponent(token)}`
-		);
-		return json(result.data, { status: result.status });
-	}
-
 	// search
 	const q = url.searchParams.get('q') || '';
 	const limit = url.searchParams.get('limit') || '20';
@@ -282,26 +259,11 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	return json(result.data, { status: result.status });
 };
 
-export const HEAD: RequestHandler = async ({ url, request }) => {
-	// pmtiles.js probes with HEAD / Range
-	return GET({ url, request } as any);
-};
-
 export const POST: RequestHandler = async ({ url }) => {
 	const vpcUrl = url.searchParams.get('vpcUrl');
 	const token = url.searchParams.get('token');
 	const action = url.searchParams.get('action') || 'import';
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
-
-	if (action === 'pmtiles-sync') {
-		const result = await vpcJson(
-			vpcUrl,
-			token,
-			'POST',
-			`/api/web/geo/pmtiles/sync?token=${encodeURIComponent(token)}`
-		);
-		return json(result.data, { status: result.status });
-	}
 
 	if (action !== 'import') return json({ error: 'unknown action' }, { status: 400 });
 	const result = await vpcJson(

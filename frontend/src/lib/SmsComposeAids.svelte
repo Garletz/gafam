@@ -277,7 +277,7 @@
   }
 
   async function ensureMap() {
-    if (typeof window === 'undefined' || !mapEl || !vpcUrl || !sessionToken) return;
+    if (typeof window === 'undefined' || !mapEl) return;
     if (mapHandle) {
       mapHandle.resize();
       mapHandle.setView(mapLat, mapLon);
@@ -291,8 +291,6 @@
     try {
       mapHandle = await createComposeMap({
         container: mapEl,
-        vpcUrl,
-        token: sessionToken,
         lat: mapLat || 46.5,
         lon: mapLon || 2.5,
         onPick: (lat, lon) => {
@@ -666,7 +664,7 @@
             </button>
           </div>
         {/if}
-        <span class="sca__map-attr">MapLibre · Protomaps PMTiles VPC · 0 CDN</span>
+        <span class="sca__map-attr">MapLibre · OpenFreeMap · © OSM</span>
       </div>
       <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
       <div class="sca__form">
