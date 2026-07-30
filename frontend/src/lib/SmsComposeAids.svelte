@@ -67,6 +67,10 @@
 
   let mapEl = $state<HTMLDivElement | null>(null);
   let mapHandle: ComposeMapHandle | null = null;
+  let mapLoading = $state(false);
+  let mapProgress = $state(0);
+  let mapProgressDetail = $state('');
+  let mapError = $state('');
 
   const DAYS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
@@ -279,30 +283,55 @@
       mapHandle.setView(mapLat, mapLon);
       return;
     }
-    mapHandle = await createComposeMap({
-      container: mapEl,
-      vpcUrl,
-      token: sessionToken,
-      lat: mapLat || 46.5,
-      lon: mapLon || 2.5,
-      onPick: (lat, lon) => {
-        mapLat = lat;
-        mapLon = lon;
-        newCoords = `${lat.toFixed(5)},${lon.toFixed(5)}`;
-      }
-    });
-    setTimeout(() => mapHandle?.resize(), 80);
+    if (mapLoading) return;
+    mapLoading = true;
+    mapError = '';
+    mapProgress = 5;
+    mapProgressDetail = 'Démarrage…';
+    try {
+      mapHandle = await createComposeMap({
+        container: mapEl,
+        vpcUrl,
+        token: sessionToken,
+        lat: mapLat || 46.5,
+        lon: mapLon || 2.5,
+        onPick: (lat, lon) => {
+          mapLat = lat;
+          mapLon = lon;
+          newCoords = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+        },
+        onProgress: (p) => {
+          mapProgress = p.percent;
+          mapProgressDetail = p.detail;
+          if (p.phase === 'error') mapError = p.detail;
+        }
+      });
+      mapProgress = 100;
+      mapProgressDetail = 'Carte prête';
+      setTimeout(() => mapHandle?.resize(), 80);
+      setTimeout(() => mapHandle?.resize(), 300);
+    } catch (e: any) {
+      mapError = e?.message || 'Échec chargement carte';
+      mapProgressDetail = mapError;
+      mapHandle = null;
+    } finally {
+      mapLoading = false;
+    }
+  }
+
+  function destroyMap() {
+    mapHandle?.destroy();
+    mapHandle = null;
+    mapLoading = false;
+    mapProgress = 0;
+    mapProgressDetail = '';
+    mapError = '';
   }
 
   function syncMapMarker(lat: number, lon: number) {
     mapLat = lat;
     mapLon = lon;
     mapHandle?.setView(lat, lon);
-  }
-
-  function destroyMap() {
-    mapHandle?.destroy();
-    mapHandle = null;
   }
 
   onMount(() => {
@@ -355,9 +384,15 @@
 
   $effect(() => {
     if (showManage) {
-      queueMicrotask(() => ensureMap());
-      const t = setTimeout(() => mapHandle?.resize(), 120);
-      return () => clearTimeout(t);
+      // Wait for panel DOM + bind:this before MapLibre measures the container
+      const t = setTimeout(() => ensureMap(), 50);
+      const t2 = setTimeout(() => mapHandle?.resize(), 200);
+      const t3 = setTimeout(() => mapHandle?.resize(), 600);
+      return () => {
+        clearTimeout(t);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
     }
   });
 
@@ -605,6 +640,29 @@
       {/if}
       <div class="sca__map-wrap">
         <div class="sca__map" bind:this={mapEl}></div>
+        {#if mapLoading || (mapProgress > 0 && mapProgress < 100 && !mapError)}
+          <div class="sca__map-loading" aria-live="polite">
+            <div class="sca__map-loading__bar">
+              <div class="sca__map-loading__fill" style={`width:${Math.max(mapProgress, 6)}%`}></div>
+            </div>
+            <p class="sca__map-loading__txt">{mapProgressDetail || 'Chargement de la carte…'}</p>
+          </div>
+        {/if}
+        {#if mapError}
+          <div class="sca__map-error">
+            <p>{mapError}</p>
+            <button
+              type="button"
+              class="sca__link"
+              onclick={() => {
+                destroyMap();
+                queueMicrotask(() => ensureMap());
+              }}
+            >
+              Réessayer
+            </button>
+          </div>
+        {/if}
         <span class="sca__map-attr">MapLibre · Protomaps PMTiles VPC · 0 CDN</span>
       </div>
       <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
@@ -711,12 +769,59 @@
     border: 1px solid #dadce0;
     border-radius: 8px;
     overflow: hidden;
-    background: #a8c4d8;
+    background: #d4e3ef;
   }
   .sca__map {
     width: 100%;
     height: 360px;
     z-index: 0;
+  }
+  .sca__map-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 400;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(212, 227, 239, 0.82);
+    padding: 16px;
+  }
+  .sca__map-loading__bar {
+    width: min(280px, 70%);
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.85);
+    overflow: hidden;
+    border: 1px solid #c5d4e0;
+  }
+  .sca__map-loading__fill {
+    height: 100%;
+    border-radius: 999px;
+    background: #1a73e8;
+    transition: width 0.25s ease;
+  }
+  .sca__map-loading__txt {
+    margin: 0;
+    font-size: 12px;
+    color: #3c4043;
+    text-align: center;
+  }
+  .sca__map-error {
+    position: absolute;
+    inset: 0;
+    z-index: 450;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    padding: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: #b3261e;
   }
   .sca__map-attr {
     position: absolute;
