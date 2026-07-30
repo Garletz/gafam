@@ -38,7 +38,7 @@ export function pmtilesProxyUrl(vpcUrl: string, token: string): string {
 }
 
 export type ComposeMapProgress = {
-	phase: 'probe' | 'style' | 'tiles' | 'ready' | 'error';
+	phase: 'probe' | 'assets' | 'style' | 'tiles' | 'ready' | 'error';
 	percent: number;
 	detail: string;
 };
@@ -51,9 +51,8 @@ export type ComposeMapHandle = {
 	resize: () => void;
 };
 
-/** Warm the PMTiles header via Range so MapLibre doesn't start cold. */
 async function probePmtiles(httpUrl: string, onProgress?: (p: ComposeMapProgress) => void) {
-	onProgress?.({ phase: 'probe', percent: 8, detail: 'Connexion basemap VPC…' });
+	onProgress?.({ phase: 'probe', percent: 5, detail: '1/4 · Connexion basemap VPC (Range)…' });
 	const res = await fetch(httpUrl, {
 		headers: { Range: 'bytes=0-16383' },
 		cache: 'no-store'
@@ -71,7 +70,25 @@ async function probePmtiles(httpUrl: string, onProgress?: (p: ComposeMapProgress
 	if (magic !== 'PMTiles') {
 		throw new Error('Réponse invalide (pas un fichier PMTiles)');
 	}
-	onProgress?.({ phase: 'probe', percent: 22, detail: 'En-tête PMTiles OK' });
+	const cr = res.headers.get('Content-Range') || '';
+	onProgress?.({
+		phase: 'probe',
+		percent: 18,
+		detail: cr ? `1/4 · En-tête OK (${cr})` : '1/4 · En-tête PMTiles OK'
+	});
+}
+
+async function preloadAssets(origin: string, onProgress?: (p: ComposeMapProgress) => void) {
+	onProgress?.({ phase: 'assets', percent: 25, detail: '2/4 · Sprites locaux…' });
+	const spriteBase = `${origin}/geo/basemaps-assets/sprites/v4/light`;
+	const [jsonRes, pngRes] = await Promise.all([
+		fetch(`${spriteBase}.json`, { cache: 'force-cache' }),
+		fetch(`${spriteBase}.png`, { cache: 'force-cache' })
+	]);
+	if (!jsonRes.ok || !pngRes.ok) {
+		throw new Error(`Sprites manquants (${jsonRes.status}/${pngRes.status})`);
+	}
+	onProgress?.({ phase: 'assets', percent: 32, detail: '2/4 · Sprites OK' });
 }
 
 export async function createComposeMap(opts: {
@@ -85,11 +102,18 @@ export async function createComposeMap(opts: {
 }): Promise<ComposeMapHandle> {
 	ensureProtocol();
 	const httpUrl = pmtilesProxyHttpUrl(opts.vpcUrl, opts.token);
-	await probePmtiles(httpUrl, opts.onProgress);
-
-	opts.onProgress?.({ phase: 'style', percent: 35, detail: 'Chargement du style MapLibre…' });
-
 	const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+	await probePmtiles(httpUrl, opts.onProgress);
+	await preloadAssets(origin, opts.onProgress);
+
+	opts.onProgress?.({
+		phase: 'style',
+		percent: 40,
+		detail: '3/4 · Init MapLibre + source PMTiles…'
+	});
+
+	// lang omitted first paint is faster (fewer glyph fetches); labels still work via default stacks when present
 	const style: StyleSpecification = {
 		version: 8,
 		glyphs: `${origin}/geo/basemaps-assets/fonts/{fontstack}/{range}.pbf`,
@@ -115,9 +139,9 @@ export async function createComposeMap(opts: {
 		fadeDuration: 0
 	});
 	map.addControl(new NavigationControl({ showCompass: false }), 'top-left');
+	map.getCanvas().style.background = '#e8e8e8';
 
-	// Visible canvas while vector tiles stream in
-	map.getCanvas().style.background = '#d4e3ef';
+	let mapProgressHint = 40;
 
 	const el = document.createElement('div');
 	el.className = 'sca-ml-pin';
@@ -137,50 +161,81 @@ export async function createComposeMap(opts: {
 
 	map.on('error', (e) => {
 		const msg = e?.error?.message || 'Erreur carte';
-		opts.onProgress?.({ phase: 'error', percent: 0, detail: msg });
+		opts.onProgress?.({
+			phase: 'error',
+			percent: Math.max(mapProgressHint, 1),
+			detail: `Erreur · ${msg}`
+		});
 	});
 
-	let tileHits = 0;
-	map.on('sourcedata', (e) => {
-		if (e.sourceId !== 'protomaps' || !e.isSourceLoaded) return;
-		tileHits += 1;
-		const pct = Math.min(92, 45 + tileHits * 8);
+	let pending = 0;
+	map.on('dataloading', () => {
+		pending += 1;
+		mapProgressHint = Math.min(88, 48 + pending);
 		opts.onProgress?.({
 			phase: 'tiles',
-			percent: pct,
-			detail: 'Téléchargement des tuiles vectorielles…'
+			percent: mapProgressHint,
+			detail: `4/4 · Chargement données (${pending} req.)…`
+		});
+	});
+	map.on('data', () => {
+		opts.onProgress?.({
+			phase: 'tiles',
+			percent: Math.min(94, mapProgressHint + 2),
+			detail: '4/4 · Tuiles / glyphs reçus…'
+		});
+	});
+	map.on('sourcedata', (e) => {
+		if (e.sourceId !== 'protomaps') return;
+		opts.onProgress?.({
+			phase: 'tiles',
+			percent: Math.min(90, mapProgressHint + 5),
+			detail: e.isSourceLoaded
+				? '4/4 · Source PMTiles chargée'
+				: '4/4 · Lecture archive PMTiles…'
 		});
 	});
 
-	await new Promise<void>((resolve, reject) => {
+	// Don't block the UI forever on idle (Range tiles can stream for a long time).
+	await new Promise<void>((resolve) => {
 		let settled = false;
-		const done = () => {
+		const finish = (detail: string) => {
 			if (settled) return;
 			settled = true;
-			clearTimeout(t);
-			clearTimeout(fallback);
-			opts.onProgress?.({ phase: 'ready', percent: 100, detail: 'Carte prête' });
+			clearTimeout(hardCap);
+			clearTimeout(softCap);
+			opts.onProgress?.({ phase: 'ready', percent: 100, detail });
 			resolve();
 		};
-		const t = setTimeout(() => {
-			if (!settled) {
-				settled = true;
-				reject(new Error('Timeout chargement carte (45s)'));
+
+		const hardCap = setTimeout(() => {
+			finish('Carte affichée (chargement lent — tuiles encore en cours)');
+		}, 20_000);
+
+		const softCap = setTimeout(() => {
+			if (map.loaded()) finish('Carte prête');
+			else {
+				opts.onProgress?.({
+					phase: 'tiles',
+					percent: 70,
+					detail: '4/4 · Toujours en cours (sprites/tuiles)…'
+				});
+				map.resize();
 			}
-		}, 45_000);
-		// If idle is slow (many Range round-trips), still show the map after style load
-		const fallback = setTimeout(() => {
-			if (map.loaded()) done();
-		}, 8_000);
+		}, 4_000);
+
 		map.once('load', () => {
-			opts.onProgress?.({ phase: 'tiles', percent: 55, detail: 'Style prêt — tuiles…' });
+			opts.onProgress?.({ phase: 'tiles', percent: 60, detail: '3/4 · Style MapLibre OK — tuiles…' });
 			requestAnimationFrame(() => {
 				map.resize();
-				setTimeout(() => map.resize(), 100);
+				setTimeout(() => map.resize(), 120);
 				setTimeout(() => map.resize(), 400);
 			});
+			// Unblock overlay soon after style; tiles keep filling in
+			setTimeout(() => finish('Carte prête — tuiles en cours…'), 600);
 		});
-		map.once('idle', done);
+
+		map.once('idle', () => finish('Carte prête'));
 	});
 
 	return {

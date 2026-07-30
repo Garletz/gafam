@@ -642,10 +642,13 @@
         <div class="sca__map" bind:this={mapEl}></div>
         {#if mapLoading || (mapProgress > 0 && mapProgress < 100 && !mapError)}
           <div class="sca__map-loading" aria-live="polite">
-            <div class="sca__map-loading__bar">
-              <div class="sca__map-loading__fill" style={`width:${Math.max(mapProgress, 6)}%`}></div>
+            <div class="sca__map-loading__head">
+              <span class="sca__map-loading__pct">{Math.round(mapProgress)}%</span>
+              <span class="sca__map-loading__phase">{mapProgressDetail || 'Chargement…'}</span>
             </div>
-            <p class="sca__map-loading__txt">{mapProgressDetail || 'Chargement de la carte…'}</p>
+            <div class="sca__map-loading__bar">
+              <div class="sca__map-loading__fill" style={`width:${Math.max(mapProgress, 4)}%`}></div>
+            </div>
           </div>
         {/if}
         {#if mapError}
@@ -766,10 +769,10 @@
     position: relative;
     width: 100%;
     margin: 8px 0;
-    border: 1px solid #dadce0;
-    border-radius: 8px;
+    border: 1px solid #202124;
+    border-radius: 0;
     overflow: hidden;
-    background: #d4e3ef;
+    background: #f1f3f4;
   }
   .sca__map {
     width: 100%;
@@ -782,31 +785,43 @@
     z-index: 400;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
     gap: 10px;
-    background: rgba(212, 227, 239, 0.82);
-    padding: 16px;
+    background: #fff;
+    padding: 20px 24px;
+  }
+  .sca__map-loading__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .sca__map-loading__pct {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: #202124;
+    letter-spacing: -0.02em;
+    min-width: 3.2em;
+  }
+  .sca__map-loading__phase {
+    flex: 1;
+    text-align: right;
+    font-size: 12px;
+    line-height: 1.35;
+    color: #202124;
   }
   .sca__map-loading__bar {
-    width: min(280px, 70%);
-    height: 6px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.85);
+    width: 100%;
+    height: 3px;
+    background: #e8eaed;
     overflow: hidden;
-    border: 1px solid #c5d4e0;
   }
   .sca__map-loading__fill {
     height: 100%;
-    border-radius: 999px;
-    background: #1a73e8;
-    transition: width 0.25s ease;
-  }
-  .sca__map-loading__txt {
-    margin: 0;
-    font-size: 12px;
-    color: #3c4043;
-    text-align: center;
+    background: #202124;
+    transition: width 0.2s linear;
   }
   .sca__map-error {
     position: absolute;
@@ -816,12 +831,13 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    background: rgba(255, 255, 255, 0.92);
+    gap: 10px;
+    background: #fff;
+    border: 1px solid #202124;
     padding: 16px;
     text-align: center;
     font-size: 13px;
-    color: #b3261e;
+    color: #202124;
   }
   .sca__map-attr {
     position: absolute;
@@ -829,10 +845,10 @@
     bottom: 4px;
     z-index: 500;
     font-size: 10px;
-    color: #3c4043;
-    background: rgba(255, 255, 255, 0.85);
+    color: #202124;
+    background: #fff;
+    border: 1px solid #202124;
     padding: 2px 6px;
-    border-radius: 4px;
     pointer-events: none;
   }
   :global(.sca-city-label) {
