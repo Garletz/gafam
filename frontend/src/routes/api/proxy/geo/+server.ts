@@ -82,12 +82,13 @@ async function vpcJson(
 			`Authorization: Bearer ${token}`,
 			`Connection: close`
 		];
-		if (body) {
+		const payload = body || '';
+		if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
 			lines.push('Content-Type: application/json');
-			lines.push(`Content-Length: ${encoder.encode(body).length}`);
+			lines.push(`Content-Length: ${encoder.encode(payload).length}`);
 		}
 		lines.push('', '');
-		await writer.write(encoder.encode(lines.join('\r\n') + (body || '')));
+		await writer.write(encoder.encode(lines.join('\r\n') + payload));
 		writer.releaseLock();
 
 		const raw = await readRaw(socket);

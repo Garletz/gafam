@@ -257,17 +257,23 @@
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'pmtiles-status' });
       const res = await fetch(`/api/proxy/geo?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        pmtilesStatus = await res.json();
+        pmtilesStatus = data;
         if (pmtilesStatus?.ready || (!pmtilesStatus?.syncing && pmtilesStatus?.error)) {
           if (pmtilesPoll) {
             clearInterval(pmtilesPoll);
             pmtilesPoll = null;
           }
         }
+      } else if (res.status === 404) {
+        pmtilesMsg = 'VPC image outdated — click Update now, wait ~30s, then Sync basemap.';
+        pmtilesStatus = null;
+      } else {
+        pmtilesMsg = data.error || data.message || `Status failed (${res.status})`;
       }
     } catch {
-      /* ignore */
+      pmtilesMsg = 'Network error reading basemap status';
     } finally {
       pmtilesLoading = false;
     }
@@ -291,8 +297,10 @@
           pmtilesPoll = setInterval(fetchPmtilesStatus, 3000);
         }
         await fetchPmtilesStatus();
+      } else if (res.status === 404) {
+        pmtilesMsg = 'VPC image outdated — click Update now first, then Sync basemap.';
       } else {
-        pmtilesMsg = data.error || data.message || 'Sync failed';
+        pmtilesMsg = data.error || data.message || `Sync failed (${res.status})`;
       }
     } catch {
       pmtilesMsg = 'Network error';
@@ -642,8 +650,8 @@
                 disabled={pmtilesLoading || !!pmtilesStatus?.syncing || !!pmtilesStatus?.ready}
               >
                 {#if pmtilesStatus?.syncing}
-                  Syncing…
-                {:else if pmtilesStatus?.ready || pmtilesStatus?.pmtiles}
+                  Syncing {pmtilesStatus.progress ?? 0}%…
+                {:else if pmtilesStatus?.ready}
                   Basemap ready
                 {:else}
                   Sync basemap

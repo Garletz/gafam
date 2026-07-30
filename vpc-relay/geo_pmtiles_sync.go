@@ -158,12 +158,21 @@ func mergePmtilesStatus(base map[string]interface{}) map[string]interface{} {
 	for k, v := range geoPmtilesSyncStatus() {
 		base[k] = v
 	}
-	base["ready"] = base["pmtiles"] == true && !pmtilesSync.Syncing.Load()
+	ready := false
+	if m, err := loadPmtilesManifest(); err == nil {
+		ready = pmtilesAlreadyReady(m) && !pmtilesSync.Syncing.Load()
+		base["needs_sync"] = !ready && !pmtilesSync.Syncing.Load()
+	} else {
+		base["needs_sync"] = base["pmtiles"] != true
+		base["manifest_error"] = err.Error()
+	}
+	base["ready"] = ready
 	return base
 }
 
 func geoPmtilesStatusHandler(w http.ResponseWriter, r *http.Request) {
-	sendJSON(w, http.StatusOK, mergePmtilesStatus(geoPmtilesStatus()))
+	// geoPmtilesStatus already merges sync fields
+	sendJSON(w, http.StatusOK, geoPmtilesStatus())
 }
 
 func geoPmtilesSyncHandler(w http.ResponseWriter, r *http.Request) {
@@ -214,33 +223,13 @@ func syncPmtilesFromRelease(m *pmtilesManifest) {
 
 	log.Printf("geo-pmtiles: sync start version=%s parts=%d bytes=%d", m.Version, len(m.Parts), m.Bytes)
 	partsDir := geoPmtilesPartsDir()
+	_ = os.RemoveAll(partsDir) // fresh attempt; resume not needed with streaming append
 	if err := os.MkdirAll(partsDir, 0o755); err != nil {
 		pmtilesSync.Err.Store(err.Error())
 		log.Printf("geo-pmtiles: mkdir parts: %v", err)
 		return
 	}
 	_ = os.MkdirAll(geoDir(), 0o755)
-
-	client := &http.Client{Timeout: 30 * time.Minute}
-	for i, part := range m.Parts {
-		partPath := filepath.Join(partsDir, part.Name)
-		if st, err := os.Stat(partPath); err == nil && st.Size() == part.Bytes {
-			if sum, err := fileSHA256(partPath); err == nil && sum == part.SHA256 {
-				pmtilesSync.Done.Store(int32(i + 1))
-				pmtilesSync.Progress.Store(int32((i + 1) * 100 / len(m.Parts)))
-				continue
-			}
-		}
-		url := m.BaseURL + "/" + part.Name
-		if err := downloadPmtilesPart(client, url, partPath, part); err != nil {
-			pmtilesSync.Err.Store(fmt.Sprintf("part %s: %v", part.Name, err))
-			log.Printf("geo-pmtiles: download %s: %v", part.Name, err)
-			return
-		}
-		pmtilesSync.Done.Store(int32(i + 1))
-		pmtilesSync.Progress.Store(int32((i + 1) * 90 / len(m.Parts))) // leave 10% for assemble
-		log.Printf("geo-pmtiles: got %s (%d/%d)", part.Name, i+1, len(m.Parts))
-	}
 
 	tmp := geoPmtilesTarget() + ".tmp"
 	_ = os.Remove(tmp)
@@ -251,8 +240,18 @@ func syncPmtilesFromRelease(m *pmtilesManifest) {
 	}
 	h := sha256.New()
 	w := io.MultiWriter(out, h)
-	for _, part := range m.Parts {
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	for i, part := range m.Parts {
 		partPath := filepath.Join(partsDir, part.Name)
+		url := m.BaseURL + "/" + part.Name
+		if err := downloadPmtilesPart(client, url, partPath, part); err != nil {
+			out.Close()
+			_ = os.Remove(tmp)
+			pmtilesSync.Err.Store(fmt.Sprintf("part %s: %v", part.Name, err))
+			log.Printf("geo-pmtiles: download %s: %v", part.Name, err)
+			return
+		}
 		f, err := os.Open(partPath)
 		if err != nil {
 			out.Close()
@@ -262,13 +261,18 @@ func syncPmtilesFromRelease(m *pmtilesManifest) {
 		}
 		_, copyErr := io.Copy(w, f)
 		f.Close()
+		_ = os.Remove(partPath) // free disk ASAP (~95 MiB each)
 		if copyErr != nil {
 			out.Close()
 			_ = os.Remove(tmp)
 			pmtilesSync.Err.Store(copyErr.Error())
 			return
 		}
+		pmtilesSync.Done.Store(int32(i + 1))
+		pmtilesSync.Progress.Store(int32((i + 1) * 100 / len(m.Parts)))
+		log.Printf("geo-pmtiles: got %s (%d/%d)", part.Name, i+1, len(m.Parts))
 	}
+
 	if err := out.Close(); err != nil {
 		_ = os.Remove(tmp)
 		pmtilesSync.Err.Store(err.Error())
@@ -285,10 +289,9 @@ func syncPmtilesFromRelease(m *pmtilesManifest) {
 		pmtilesSync.Err.Store(err.Error())
 		return
 	}
+	_ = os.RemoveAll(partsDir)
 	_, _ = db.Exec(`INSERT INTO gafam_settings(key, value) VALUES('geo_pmtiles_version', ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, m.Version)
-	// Free shard copies — assembled file is enough (keep under soft geo quota).
-	_ = os.RemoveAll(partsDir)
 	pmtilesSync.Progress.Store(100)
 	log.Printf("geo-pmtiles: synced %s (%d bytes)", geoPmtilesTarget(), m.Bytes)
 	go enforceGeoQuota()
