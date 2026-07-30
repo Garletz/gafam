@@ -74,18 +74,20 @@ func geoPmtilesHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Content-Type", "application/vnd.pmtiles")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Geo-Pmtiles", "1")
 
 	rangeHdr := r.Header.Get("Range")
 	if rangeHdr == "" {
+		// Never stream the full ~3.7 GiB archive (Cloudflare / proxies truncate → poison cache).
+		// pmtiles.js always sends Range; HEAD may probe size only.
 		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.Copy(w, f)
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+		http.Error(w, "Range header required", http.StatusRequestedRangeNotSatisfiable)
 		return
 	}
 

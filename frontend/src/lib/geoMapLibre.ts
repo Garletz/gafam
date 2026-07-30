@@ -27,7 +27,9 @@ export function pmtilesProxyUrl(vpcUrl: string, token: string): string {
 	const params = new URLSearchParams({
 		action: 'pmtiles',
 		vpcUrl,
-		token
+		token,
+		// bust Cloudflare cache poisoned by an earlier truncated full-file response
+		v: '2'
 	});
 	const abs = `${window.location.origin}/api/proxy/geo?${params}`;
 	return `pmtiles://${abs}`;

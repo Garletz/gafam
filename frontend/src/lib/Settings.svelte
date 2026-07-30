@@ -63,6 +63,7 @@
     version?: string;
     manifest_version?: string;
     error?: string;
+    needs_sync?: boolean;
   };
   let pmtilesStatus: PmtilesStatus | null = $state(null);
   let pmtilesLoading = $state(false);
@@ -613,7 +614,8 @@
               {/if}
             </div>
             <p class="subpanel__hint">
-              Protomaps PMTiles (~3.4 GB) from GitHub Release shards. Auto-downloads after image update if missing.
+              Protomaps PMTiles (~3.4 GB) from GitHub Release shards. Auto-downloads after image update if
+              missing. When status is Ready, the map uses it automatically — no need to click again.
             </p>
             {#if pmtilesStatus}
               <div class="version-compare">

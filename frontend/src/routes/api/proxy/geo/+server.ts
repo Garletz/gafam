@@ -123,7 +123,8 @@ async function vpcBinary(
 	path: string,
 	maxBytes: number,
 	fallbackType: string,
-	extraHeaders: Record<string, string> = {}
+	extraHeaders: Record<string, string> = {},
+	cacheControl = 'public, max-age=86400'
 ): Promise<Response> {
 	const full = path.includes('?')
 		? `${path}&token=${encodeURIComponent(token)}`
@@ -150,13 +151,15 @@ async function vpcBinary(
 		const ct = headers.get('Content-Type') || fallbackType;
 		const out = new Headers({
 			'Content-Type': ct,
-			'Cache-Control': 'public, max-age=86400'
+			'Cache-Control': cacheControl,
+			Vary: 'Range'
 		});
-		const pass = ['Accept-Ranges', 'Content-Range', 'Content-Length', 'X-Geo-Cache', 'X-Geo-Layer', 'X-Geo-Pmtiles'];
+		const pass = ['Accept-Ranges', 'Content-Range', 'X-Geo-Cache', 'X-Geo-Layer', 'X-Geo-Pmtiles'];
 		for (const h of pass) {
 			const v = headers.get(h);
 			if (v) out.set(h, v);
 		}
+		out.set('Content-Length', String(body.byteLength));
 		return new Response(body, { status, headers: out });
 	} catch (e: any) {
 		try {
@@ -166,9 +169,11 @@ async function vpcBinary(
 			const buf = await res.arrayBuffer();
 			const out = new Headers({
 				'Content-Type': res.headers.get('Content-Type') || fallbackType,
-				'Cache-Control': 'public, max-age=86400'
+				'Cache-Control': cacheControl,
+				Vary: 'Range',
+				'Content-Length': String(buf.byteLength)
 			});
-			for (const h of ['Accept-Ranges', 'Content-Range', 'Content-Length']) {
+			for (const h of ['Accept-Ranges', 'Content-Range']) {
 				const v = res.headers.get(h);
 				if (v) out.set(h, v);
 			}
@@ -193,7 +198,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			'/api/web/geo/pmtiles',
 			8 << 20,
 			'application/vnd.pmtiles',
-			range ? { Range: range } : {}
+			range ? { Range: range } : {},
+			'private, no-store'
 		);
 	}
 
