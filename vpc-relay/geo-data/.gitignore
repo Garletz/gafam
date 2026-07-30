@@ -3,3 +3,4 @@
 *.sqlite
 !*.sqlite.gz
 basemap.pmtiles
+pmtiles-release/

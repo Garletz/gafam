@@ -52,6 +52,23 @@
   let updateLoading = $state(false);
   let updateTriggeredAt = $state(0);
 
+  type PmtilesStatus = {
+    pmtiles?: boolean;
+    ready?: boolean;
+    syncing?: boolean;
+    progress?: number;
+    done?: number;
+    total?: number;
+    bytes?: number;
+    version?: string;
+    manifest_version?: string;
+    error?: string;
+  };
+  let pmtilesStatus: PmtilesStatus | null = $state(null);
+  let pmtilesLoading = $state(false);
+  let pmtilesMsg = $state('');
+  let pmtilesPoll: ReturnType<typeof setInterval> | null = null;
+
   const UPDATE_POLL_MS = 30_000;
   const ROLLOUT_UPTIME_MAX = 180;
 
@@ -234,6 +251,61 @@
     }
   }
 
+  async function fetchPmtilesStatus() {
+    if (!vpcUrl || !sessionToken) return;
+    pmtilesLoading = true;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'pmtiles-status' });
+      const res = await fetch(`/api/proxy/geo?${params.toString()}`);
+      if (res.ok) {
+        pmtilesStatus = await res.json();
+        if (pmtilesStatus?.ready || (!pmtilesStatus?.syncing && pmtilesStatus?.error)) {
+          if (pmtilesPoll) {
+            clearInterval(pmtilesPoll);
+            pmtilesPoll = null;
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      pmtilesLoading = false;
+    }
+  }
+
+  async function syncPmtilesBasemap() {
+    if (!vpcUrl || !sessionToken) return;
+    pmtilesMsg = '';
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'pmtiles-sync' });
+      const res = await fetch(`/api/proxy/geo?${params.toString()}`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok || res.status === 202 || res.status === 409) {
+        pmtilesMsg =
+          data.status === 'already_ready'
+            ? 'Basemap already on this node.'
+            : data.status === 'already_syncing'
+              ? 'Sync already in progress…'
+              : 'Downloading basemap shards from GitHub Release…';
+        if (!pmtilesPoll) {
+          pmtilesPoll = setInterval(fetchPmtilesStatus, 3000);
+        }
+        await fetchPmtilesStatus();
+      } else {
+        pmtilesMsg = data.error || data.message || 'Sync failed';
+      }
+    } catch {
+      pmtilesMsg = 'Network error';
+    }
+  }
+
+  function formatBytes(n?: number) {
+    if (!n || n <= 0) return '—';
+    if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
+    if (n >= 1e6) return `${(n / 1e6).toFixed(0)} MB`;
+    return `${n} B`;
+  }
+
   async function fetchGuardians() {
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken });
@@ -344,7 +416,11 @@
   onMount(() => {
     fetchGuardians();
     fetchVpcStatus();
+    fetchPmtilesStatus();
     loadSelfPhone();
+    return () => {
+      if (pmtilesPoll) clearInterval(pmtilesPoll);
+    };
   });
 
   $effect(() => {
@@ -505,6 +581,85 @@
 
             {#if updateMsg}
               <p class="subpanel__msg">{updateMsg}</p>
+            {/if}
+          </div>
+
+          <div class="subpanel">
+            <div class="subpanel__head">
+              <h3>Map basemap</h3>
+              {#if pmtilesStatus}
+                <span
+                  class="subpanel__badge"
+                  class:subpanel__badge--ok={!!pmtilesStatus.ready || !!pmtilesStatus.pmtiles}
+                >
+                  {#if pmtilesStatus.syncing}
+                    Syncing {pmtilesStatus.progress ?? 0}%
+                  {:else if pmtilesStatus.ready || pmtilesStatus.pmtiles}
+                    Ready
+                  {:else if pmtilesStatus.error}
+                    Error
+                  {:else}
+                    Missing
+                  {/if}
+                </span>
+              {/if}
+            </div>
+            <p class="subpanel__hint">
+              Protomaps PMTiles (~3.4 GB) from GitHub Release shards. Auto-downloads after image update if missing.
+            </p>
+            {#if pmtilesStatus}
+              <div class="version-compare">
+                <div class="version-row">
+                  <span class="version-row__label">On node</span>
+                  <code
+                    >{pmtilesStatus.pmtiles
+                      ? formatBytes(pmtilesStatus.bytes)
+                      : 'not installed'}</code
+                  >
+                </div>
+                <div class="version-row">
+                  <span class="version-row__label">Release</span>
+                  <code>{pmtilesStatus.manifest_version ?? '—'}</code>
+                </div>
+                {#if pmtilesStatus.syncing}
+                  <div class="version-row">
+                    <span class="version-row__label">Progress</span>
+                    <code
+                      >{pmtilesStatus.done ?? 0}/{pmtilesStatus.total ?? '?'} parts · {pmtilesStatus.progress ?? 0}%</code
+                    >
+                  </div>
+                {/if}
+                {#if pmtilesStatus.error}
+                  <p class="panel__error">{pmtilesStatus.error}</p>
+                {/if}
+              </div>
+            {/if}
+            <div class="subpanel__actions">
+              <button
+                type="button"
+                class="btn-primary"
+                onclick={syncPmtilesBasemap}
+                disabled={pmtilesLoading || !!pmtilesStatus?.syncing || !!pmtilesStatus?.ready}
+              >
+                {#if pmtilesStatus?.syncing}
+                  Syncing…
+                {:else if pmtilesStatus?.ready || pmtilesStatus?.pmtiles}
+                  Basemap ready
+                {:else}
+                  Sync basemap
+                {/if}
+              </button>
+              <button
+                type="button"
+                class="btn-ghost"
+                onclick={fetchPmtilesStatus}
+                disabled={pmtilesLoading}
+              >
+                {pmtilesLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
+            {#if pmtilesMsg}
+              <p class="subpanel__msg">{pmtilesMsg}</p>
             {/if}
           </div>
 
@@ -893,6 +1048,13 @@
     color: #202124;
     border-color: #202124;
     background: #ffffff;
+  }
+
+  .subpanel__hint {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #5f6368;
   }
 
   .version-compare {

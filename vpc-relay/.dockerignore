@@ -1,3 +1,5 @@
 
 geo-data/basemap.pmtiles
+geo-data/pmtiles-release/
 *.pmtiles
+!geo-data/pmtiles-manifest.json

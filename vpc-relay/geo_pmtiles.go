@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,25 +32,22 @@ func geoPmtilesPath() string {
 func geoPmtilesStatus() map[string]interface{} {
 	p := geoPmtilesPath()
 	out := map[string]interface{}{
-		"pmtiles":      false,
-		"path":         p,
-		"quota_bytes":  geoQuotaBytes,
-		"used_bytes":   geoDirBytes(),
-		"format":       "pmtiles",
-		"stack":        "maplibre+protomaps",
-		"cdn":          false,
+		"pmtiles":     false,
+		"path":        p,
+		"quota_bytes": geoQuotaBytes,
+		"used_bytes":  geoDirBytes(),
+		"format":      "pmtiles",
+		"stack":       "maplibre+protomaps",
+		"cdn":         false,
 	}
-	if p == "" {
-		return out
+	if p != "" {
+		if st, err := os.Stat(p); err == nil {
+			out["pmtiles"] = true
+			out["bytes"] = st.Size()
+			out["mtime"] = st.ModTime().UTC().Format("2006-01-02T15:04:05Z")
+		}
 	}
-	st, err := os.Stat(p)
-	if err != nil {
-		return out
-	}
-	out["pmtiles"] = true
-	out["bytes"] = st.Size()
-	out["mtime"] = st.ModTime().UTC().Format("2006-01-02T15:04:05Z")
-	return out
+	return mergePmtilesStatus(out)
 }
 
 // GET /api/web/geo/pmtiles — full file or Range bytes (for pmtiles.js Protocol).
@@ -59,7 +55,7 @@ func geoPmtilesHandler(w http.ResponseWriter, r *http.Request) {
 	path := geoPmtilesPath()
 	if path == "" {
 		sendJSON(w, http.StatusNotFound, map[string]string{
-			"error": "basemap.pmtiles missing on VPC — place file in /app/data/geo/basemap.pmtiles",
+			"error": "basemap.pmtiles missing — Settings → Sync basemap (GitHub Release shards)",
 		})
 		return
 	}
@@ -159,14 +155,4 @@ func parseBytesRange(h string, size int64) (start, end int64, ok bool) {
 		e = size - 1
 	}
 	return s, e, true
-}
-
-func initGeoPmtiles() {
-	p := geoPmtilesPath()
-	if p == "" {
-		log.Printf("geo-pmtiles: no basemap.pmtiles yet (put under %s)", filepath.Join(geoDir(), "basemap.pmtiles"))
-		return
-	}
-	st, _ := os.Stat(p)
-	log.Printf("geo-pmtiles: ready %s (%d bytes) quota=%d", p, st.Size(), geoQuotaBytes)
 }

@@ -257,6 +257,16 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		return json(result.data, { status: result.status });
 	}
 
+	if (action === 'pmtiles-status') {
+		const result = await vpcJson(
+			vpcUrl,
+			token,
+			'GET',
+			`/api/web/geo/pmtiles/status?token=${encodeURIComponent(token)}`
+		);
+		return json(result.data, { status: result.status });
+	}
+
 	// search
 	const q = url.searchParams.get('q') || '';
 	const limit = url.searchParams.get('limit') || '20';
@@ -275,6 +285,17 @@ export const POST: RequestHandler = async ({ url }) => {
 	const token = url.searchParams.get('token');
 	const action = url.searchParams.get('action') || 'import';
 	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
+
+	if (action === 'pmtiles-sync') {
+		const result = await vpcJson(
+			vpcUrl,
+			token,
+			'POST',
+			`/api/web/geo/pmtiles/sync?token=${encodeURIComponent(token)}`
+		);
+		return json(result.data, { status: result.status });
+	}
+
 	if (action !== 'import') return json({ error: 'unknown action' }, { status: 400 });
 	const result = await vpcJson(
 		vpcUrl,
