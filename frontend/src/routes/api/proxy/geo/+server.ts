@@ -251,6 +251,69 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json(result.data, { status: result.status });
 	}
 
+	// Reverse geocode via Nominatim (OSM) — fills Nom/Adresse from map pin
+	if (action === 'reverse') {
+		const lat = url.searchParams.get('lat');
+		const lon = url.searchParams.get('lon');
+		if (!lat || !lon) return json({ error: 'lat,lon required' }, { status: 400 });
+		const la = Number(lat);
+		const lo = Number(lon);
+		if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+			return json({ error: 'invalid lat/lon' }, { status: 400 });
+		}
+		try {
+			const nomUrl = new URL('https://nominatim.openstreetmap.org/reverse');
+			nomUrl.searchParams.set('lat', String(la));
+			nomUrl.searchParams.set('lon', String(lo));
+			nomUrl.searchParams.set('format', 'json');
+			nomUrl.searchParams.set('addressdetails', '1');
+			nomUrl.searchParams.set('accept-language', 'fr');
+			nomUrl.searchParams.set('zoom', '18');
+			const res = await fetch(nomUrl.toString(), {
+				headers: {
+					Accept: 'application/json',
+					'User-Agent': 'GAFAM-Compose/1.0 (gafam.cloud; reverse-geocode)'
+				}
+			});
+			if (!res.ok) {
+				return json({ error: `Nominatim ${res.status}` }, { status: 502 });
+			}
+			const data: any = await res.json();
+			const a = data.address || {};
+			const road =
+				a.road || a.pedestrian || a.footway || a.path || a.neighbourhood || a.suburb || '';
+			const city =
+				a.city || a.town || a.village || a.municipality || a.city_district || a.county || '';
+			const label =
+				data.name ||
+				a.amenity ||
+				a.shop ||
+				a.tourism ||
+				a.building ||
+				a.leisure ||
+				road ||
+				city ||
+				'Lieu';
+			const parts = [
+				a.house_number && road ? `${a.house_number} ${road}` : road,
+				a.postcode,
+				city,
+				a.country
+			].filter(Boolean);
+			const address = parts.length ? parts.join(', ') : data.display_name || '';
+			return json({
+				label,
+				address,
+				display: data.display_name || address,
+				lat: la,
+				lon: lo,
+				source: 'nominatim'
+			});
+		} catch (e: any) {
+			return json({ error: e?.message || 'reverse failed' }, { status: 502 });
+		}
+	}
+
 	// search
 	const q = url.searchParams.get('q') || '';
 	const limit = url.searchParams.get('limit') || '20';

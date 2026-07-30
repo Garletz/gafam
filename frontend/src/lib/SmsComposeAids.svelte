@@ -71,6 +71,9 @@
   let mapProgress = $state(0);
   let mapProgressDetail = $state('');
   let mapError = $state('');
+  let reverseBusy = $state(false);
+  let reverseTimer: ReturnType<typeof setTimeout> | null = null;
+  let reverseSeq = 0;
 
   const DAYS_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 
@@ -263,6 +266,40 @@
     setTimeout(() => (msg = ''), 3000);
   }
 
+  /** Fill Nom + Adresse from map pin (Nominatim reverse via CF proxy). */
+  async function reverseFromPin(lat: number, lon: number) {
+    if (!vpcUrl || !sessionToken) return;
+    const seq = ++reverseSeq;
+    reverseBusy = true;
+    try {
+      const res = await fetch(
+        geoProxyUrl('reverse', { lat: String(lat), lon: String(lon) })
+      );
+      const data = await res.json().catch(() => ({}));
+      if (seq !== reverseSeq) return;
+      if (!res.ok) {
+        msg = data.error || 'Adresse introuvable';
+        setTimeout(() => (msg = ''), 2500);
+        return;
+      }
+      newLabel = data.label || newLabel;
+      newAddress = data.address || data.display || newAddress;
+      msg = 'Adresse remplie depuis la carte';
+      setTimeout(() => (msg = ''), 2500);
+    } catch {
+      if (seq !== reverseSeq) return;
+      msg = 'Reverse géocode échoué';
+      setTimeout(() => (msg = ''), 2500);
+    } finally {
+      if (seq === reverseSeq) reverseBusy = false;
+    }
+  }
+
+  function scheduleReverse(lat: number, lon: number) {
+    if (reverseTimer) clearTimeout(reverseTimer);
+    reverseTimer = setTimeout(() => reverseFromPin(lat, lon), 350);
+  }
+
   function insertGeoChip(h: GeoHit) {
     const s =
       h.admin1 && h.admin1 !== h.name
@@ -297,6 +334,7 @@
           mapLat = lat;
           mapLon = lon;
           newCoords = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+          scheduleReverse(lat, lon);
         },
         onProgress: (p) => {
           mapProgress = p.percent;
@@ -342,6 +380,7 @@
     }, 30_000);
     return () => {
       clearInterval(tick);
+      if (reverseTimer) clearTimeout(reverseTimer);
       destroyMap();
     };
   });
@@ -679,6 +718,9 @@
         <input type="text" placeholder="lat,lon" bind:value={newCoords} />
         <button type="button" class="sca__save" onclick={savePlace}>Enregistrer</button>
       </div>
+      {#if reverseBusy}
+        <p class="sca__hint">Résolution adresse (rue / ville)…</p>
+      {/if}
       <ul class="sca__list">
         {#each places as p (p.id)}
           <li>
