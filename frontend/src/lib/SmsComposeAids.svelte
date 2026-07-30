@@ -329,7 +329,8 @@
   function syncMapMarker(lat: number, lon: number) {
     mapLat = lat;
     mapLon = lon;
-    mapHandle?.setView(lat, lon);
+    // z16 = noms de rues visibles sur OSM Standard
+    mapHandle?.setView(lat, lon, 16);
   }
 
   onMount(() => {
@@ -664,9 +665,9 @@
             </button>
           </div>
         {/if}
-        <span class="sca__map-attr">MapLibre · OpenFreeMap · © OSM</span>
+        <span class="sca__map-attr">© OpenStreetMap — villes · routes · rues</span>
       </div>
-      <p class="sca__hint">Tape une ville (haut ou adresse) → choisir un résultat. Clic / drag sur la carte pour affiner.</p>
+      <p class="sca__hint">Tape une ville / adresse → choisir un résultat (zoom rues auto). Clic / drag pour affiner.</p>
       <div class="sca__form">
         <input type="text" placeholder="Nom (ex. Café de la Gare)" bind:value={newLabel} />
         <input
@@ -774,8 +775,11 @@
   }
   .sca__map {
     width: 100%;
-    height: 360px;
+    height: 420px;
     z-index: 0;
+  }
+  .sca__map :global(.maplibregl-canvas) {
+    image-rendering: auto;
   }
   .sca__map-loading {
     position: absolute;
