@@ -51,10 +51,11 @@ export async function createComposeMap(opts: {
 }): Promise<ComposeMapHandle> {
 	ensureProtocol();
 
+	const origin = typeof window !== 'undefined' ? window.location.origin : '';
 	const style: StyleSpecification = {
 		version: 8,
-		glyphs: '/geo/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-		sprite: '/geo/basemaps-assets/sprites/v4/light',
+		glyphs: `${origin}/geo/basemaps-assets/fonts/{fontstack}/{range}.pbf`,
+		sprite: `${origin}/geo/basemaps-assets/sprites/v4/light`,
 		sources: {
 			protomaps: {
 				type: 'vector',
