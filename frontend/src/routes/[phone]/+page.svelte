@@ -623,10 +623,8 @@
 
   async function deleteConversation(peer: string) {
     if (!vpcUrl || !sessionToken || chatDeleting) return;
-    const name = getContactName(peer);
-    if (!confirm(`Supprimer la conversation avec ${name} ?`)) return;
     chatDeleting = true;
-    // Hide immediately (iPhone feel)
+    // Armé sur la ligne = confirmation — pas de modale
     hiddenChatPeers = { ...hiddenChatPeers, [peer]: true };
     smsList = smsList.filter((s) => s.sender !== peer);
     optimisticSms = optimisticSms.filter((s) => s.sender !== peer);
@@ -641,14 +639,14 @@
       const res = await fetch(`/api/proxy/sms?${params}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok && res.status !== 404) {
-        statusMsg = data.error || `Suppression échouée (${res.status})`;
+        statusMsg = data.error || `Delete failed (${res.status})`;
       } else if (res.status === 404) {
-        statusMsg = 'Conversation masquée — Update VPC (Settings) pour supprimer définitivement.';
+        statusMsg = 'Hidden locally — Update VPC for permanent delete.';
       } else {
         statusMsg = '';
       }
     } catch (e: any) {
-      statusMsg = e?.message || 'Suppression échouée';
+      statusMsg = e?.message || 'Delete failed';
     } finally {
       chatDeleting = false;
     }
@@ -882,61 +880,59 @@
           <div class="sidebar__list">
             {#if sidebarTab === 'chats' && !showContactsInChat}
               {#each chatSenders as sender}
-                <button
-                  type="button"
-                  class="chat-item {selectedSender === sender ? 'active' : ''} {chatActionPeer === sender ? 'is-pressed' : ''}"
-                  onclick={() => selectChat(sender)}
-                  onpointerdown={() => onChatPointerDown(sender)}
-                  onpointerup={onChatPointerEnd}
-                  onpointerleave={onChatPointerEnd}
-                  onpointercancel={onChatPointerEnd}
-                  oncontextmenu={(e) => {
-                    e.preventDefault();
-                    openChatActions(sender);
-                  }}
-                >
-                  <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
-                  <div class="chat-item__info">
-                    <div class="chat-item__name">{getContactName(sender)}</div>
-                    <div class="chat-item__preview">
-                      {#if conversations()[sender]?.length > 0}
-                        {conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...
-                      {:else}
-                        New conversation
-                      {/if}
+                {#if chatActionPeer === sender}
+                  <div class="chat-item chat-item--armed" role="group" aria-label="Delete conversation">
+                    <div class="chat-item__arm-meta">
+                      <span class="chat-item__arm-name">{getContactName(sender)}</span>
+                      <span class="chat-item__arm-hint">Delete this chat?</span>
                     </div>
+                    <button
+                      type="button"
+                      class="chat-item__arm-del"
+                      disabled={chatDeleting}
+                      onclick={() => deleteConversation(sender)}
+                    >
+                      {chatDeleting ? '…' : 'Delete'}
+                    </button>
+                    <button
+                      type="button"
+                      class="chat-item__arm-cancel"
+                      onclick={closeChatActions}
+                    >
+                      Cancel
+                    </button>
                   </div>
-                </button>
+                {:else}
+                  <button
+                    type="button"
+                    class="chat-item {selectedSender === sender ? 'active' : ''}"
+                    onclick={() => selectChat(sender)}
+                    onpointerdown={() => onChatPointerDown(sender)}
+                    onpointerup={onChatPointerEnd}
+                    onpointerleave={onChatPointerEnd}
+                    onpointercancel={onChatPointerEnd}
+                    oncontextmenu={(e) => {
+                      e.preventDefault();
+                      openChatActions(sender);
+                    }}
+                  >
+                    <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
+                    <div class="chat-item__info">
+                      <div class="chat-item__name">{getContactName(sender)}</div>
+                      <div class="chat-item__preview">
+                        {#if conversations()[sender]?.length > 0}
+                          {conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...
+                        {:else}
+                          New conversation
+                        {/if}
+                      </div>
+                    </div>
+                  </button>
+                {/if}
               {/each}
               {#if chatSenders.length === 0}
                 <div class="logs-sidebar-hint">
                   <p>{chatSearchQuery.trim() ? 'No matching chats' : 'No conversations yet'}</p>
-                </div>
-              {/if}
-              {#if chatActionPeer}
-                <!-- iOS-style action sheet -->
-                <div
-                  class="chat-action-backdrop"
-                  role="presentation"
-                  onclick={closeChatActions}
-                ></div>
-                <div class="chat-action-sheet" role="dialog" aria-label="Actions conversation">
-                  <div class="chat-action-sheet__peer">{getContactName(chatActionPeer)}</div>
-                  <button
-                    type="button"
-                    class="chat-action-sheet__btn chat-action-sheet__btn--danger"
-                    disabled={chatDeleting}
-                    onclick={() => deleteConversation(chatActionPeer!)}
-                  >
-                    {chatDeleting ? 'Suppression…' : 'Supprimer la conversation'}
-                  </button>
-                  <button
-                    type="button"
-                    class="chat-action-sheet__btn chat-action-sheet__btn--cancel"
-                    onclick={closeChatActions}
-                  >
-                    Annuler
-                  </button>
                 </div>
               {/if}
             {:else if sidebarTab === 'chats' && showContactsInChat}
@@ -1772,62 +1768,75 @@
     color: #202124;
   }
   .chat-item:hover, .chat-item.active { background: #e8eaed; }
-  .chat-item.is-pressed { background: #d2e3fc; }
   .chat-item {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
     touch-action: manipulation;
   }
-  .chat-action-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 800;
-    background: rgba(0, 0, 0, 0.35);
+  /* Long-press arm: inline B&W on the row — no modal */
+  .chat-item--armed {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 12px 12px 16px;
+    background: #202124;
+    color: #ffffff;
+    border-bottom: 1px solid #202124;
+    cursor: default;
   }
-  .chat-action-sheet {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: 16px;
-    z-index: 801;
-    max-width: 360px;
-    margin: 0 auto;
+  .chat-item__arm-meta {
+    flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    pointer-events: none;
+    gap: 2px;
   }
-  .chat-action-sheet__peer {
-    pointer-events: none;
-    text-align: center;
-    font-size: 13px;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-    margin-bottom: 4px;
-  }
-  .chat-action-sheet__btn {
-    pointer-events: auto;
-    width: 100%;
-    border: none;
-    border-radius: 14px;
-    padding: 16px;
-    font-size: 17px;
+  .chat-item__arm-name {
     font-weight: 600;
-    cursor: pointer;
-    background: #fff;
-    color: #007aff;
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .chat-action-sheet__btn--danger {
-    color: #ff3b30;
+  .chat-item__arm-hint {
+    font-size: 12px;
+    color: #bdc1c6;
   }
-  .chat-action-sheet__btn--cancel {
+  .chat-item__arm-del {
+    flex-shrink: 0;
+    border: 1px solid #ffffff;
+    background: #ffffff;
+    color: #202124;
+    font-size: 12px;
     font-weight: 700;
-    margin-top: 4px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 0;
   }
-  .chat-action-sheet__btn:disabled {
-    opacity: 0.6;
+  .chat-item__arm-del:hover:not(:disabled) {
+    background: #f1f3f4;
+  }
+  .chat-item__arm-del:disabled {
+    opacity: 0.5;
     cursor: wait;
+  }
+  .chat-item__arm-cancel {
+    flex-shrink: 0;
+    border: 1px solid #ffffff;
+    background: transparent;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 10px;
+    cursor: pointer;
+    border-radius: 0;
+  }
+  .chat-item__arm-cancel:hover {
+    background: #ffffff;
+    color: #202124;
   }
   .chat-item__open {
     display: flex;
