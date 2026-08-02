@@ -490,6 +490,22 @@ func syncSmsHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DELETE /api/web/sms/conversation?peer=… — remove a whole chat thread (all rows for that peer).
+func deleteSmsConversationHandler(w http.ResponseWriter, r *http.Request) {
+	peer := strings.TrimSpace(r.URL.Query().Get("peer"))
+	if peer == "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "peer required"})
+		return
+	}
+	res, err := db.Exec(`DELETE FROM gafam_sms WHERE sender = ?`, peer)
+	if err != nil {
+		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+		return
+	}
+	n, _ := res.RowsAffected()
+	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": n, "peer": peer})
+}
+
 func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("SELECT id, sender, body, timestamp, created_at, status FROM gafam_sms ORDER BY timestamp DESC")
 	if err != nil {

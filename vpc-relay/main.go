@@ -333,6 +333,7 @@ func main() {
 
 	// Session-protected routes for Web Client
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
+	mux.HandleFunc("DELETE /api/web/sms/conversation", sessionMiddleware(deleteSmsConversationHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
 
 	// SMS compose aids — place book + time presets (rendezvous chips)
