@@ -13,6 +13,7 @@
   import VaultView from '$lib/VaultView.svelte';
   import FederationView from '$lib/FederationView.svelte';
   import SmsComposeAids from '$lib/SmsComposeAids.svelte';
+  import SmsManagerView from '$lib/SmsManagerView.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
 
   let { data }: { data: PageData } = $props();
@@ -36,8 +37,9 @@
   let vpcUrl: string = $state((data as any).savedVpcUrl || '');
   let certFingerprint: string = $state((data as any).certFingerprint || '');
   let smsList: any[] = $state([]);
+  let mmsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' = $state('chats');
+  let sidebarTab: 'chats' | 'sms' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
   let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' | 'providers' = $state('vpc');
   let contactSearchQuery: string = $state('');
@@ -86,7 +88,7 @@
   let isProfileMenuOpen = $state(false);
 
   // Navigation: Chat (left), Organic Tools (center), Settings (right)
-  type SidebarTab = 'chats' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault' | 'federation';
+  type SidebarTab = 'chats' | 'sms' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault' | 'federation';
   let showContactsInChat = $state(false);
   let toolsWiggle = $state(false);
   let appsMenuOpen = $state(false);
@@ -502,6 +504,27 @@
       );
       if (!isDup) list.push({ ...sms, direction });
     }
+
+    // Merge carrier MMS into the same conversation threads
+    for (const mms of mmsList) {
+      const peer = mms.sender;
+      if (!groups[peer]) groups[peer] = [];
+      const direction = mms.direction || 'inbound';
+      const textParts = (mms.parts || []).filter((p: any) => p.text).map((p: any) => p.text);
+      const hasMedia = (mms.parts || []).some((p: any) => p.has_media);
+      const list = groups[peer];
+      const isDup = list.some(
+        (m) => m.is_mms && m.id === mms.id
+      );
+      if (!isDup) {
+        list.push({
+          ...mms,
+          direction,
+          is_mms: true,
+          body: textParts.join('\n') || (hasMedia ? '📷 Photo' : '(MMS)'),
+        });
+      }
+    }
     
     if (selectedSender && !groups[selectedSender]) {
       groups[selectedSender] = [];
@@ -654,6 +677,7 @@
 
   async function loadSms() {
     loadContacts();
+    loadMms();
     try {
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
       const res = await fetch(`/api/proxy?${proxyParams.toString()}`);
@@ -686,6 +710,48 @@
     } catch (e: any) {
       statusMsg = 'Cannot reach Cloudflare proxy: ' + e.message;
     }
+  }
+
+  async function loadMms() {
+    try {
+      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
+      const res = await fetch(`/api/proxy/mms?${proxyParams.toString()}`);
+      if (res.ok) {
+        const payload: any = await res.json();
+        if (payload.encrypted_data && payload.iv) {
+          try {
+            const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+            mmsList = JSON.parse(plaintext);
+          } catch (e) {
+            console.error("Failed to decrypt MMS", e);
+          }
+        } else if (Array.isArray(payload)) {
+          mmsList = payload;
+        }
+      }
+    } catch (e) {}
+  }
+
+  /** Cache of decrypted MMS media part URLs (blob:) keyed by part id. */
+  let mmsMediaUrls: Record<number, string> = $state({});
+
+  async function loadMmsMediaPart(partId: number) {
+    if (mmsMediaUrls[partId] || !vpcUrl || !sessionToken) return;
+    try {
+      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, id: String(partId) });
+      const res = await fetch(`/api/proxy/mms-media?${proxyParams.toString()}`);
+      if (!res.ok) return;
+      const payload: any = await res.json();
+      if (!payload.encrypted_data || !payload.iv) return;
+      const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+      const part = JSON.parse(plaintext);
+      if (!part.data_base64) return;
+      const bin = atob(part.data_base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: part.content_type || 'application/octet-stream' });
+      mmsMediaUrls = { ...mmsMediaUrls, [partId]: URL.createObjectURL(blob) };
+    } catch (e) {}
   }
 
   async function sendSms(e: Event) {
@@ -814,6 +880,11 @@
                   class="tab {sidebarTab === 'chats' ? 'active' : ''}"
                   onclick={() => selectSidebarTab('chats')}
                 >Chats</button>
+                <button
+                  type="button"
+                  class="tab {sidebarTab === 'sms' ? 'active' : ''}"
+                  onclick={() => selectSidebarTab('sms')}
+                >SMS</button>
               </div>
               <div class="sidebar__tabs-center">
                 <button
@@ -1002,6 +1073,13 @@
                   <div class="logs-sidebar-hint"><p>No days yet</p><p class="hint-sub">APK ships logs every few seconds after pairing.</p></div>
                 {/if}
               {/if}
+            {:else if sidebarTab === 'sms'}
+              <div class="logs-archive-label">SMS Manager</div>
+              <div class="logs-archive-sub">{smsList.length} SMS · {mmsList.length} MMS</div>
+              <div class="logs-sidebar-hint" style="padding: 12px 16px;">
+                <p>Full message database: stats, filters, bulk delete, export.</p>
+                <p class="hint-sub">MMS media load on demand inside chats. RCS content stays inside Google Messages (see manifest 16).</p>
+              </div>
             {:else if sidebarTab === 'settings'}
               <button
                 type="button"
@@ -1104,6 +1182,15 @@
               {sessionToken}
               {vpcUrl}
             />
+          {:else if sidebarTab === 'sms'}
+            <SmsManagerView
+              {sessionToken}
+              {vpcUrl}
+              {smsList}
+              {mmsList}
+              {contacts}
+              onChanged={() => loadSms()}
+            />
           {:else if selectedSender}
             {@const msgs = conversations()[selectedSender] || []}
             {@const filteredMsgs = chatSearch ? msgs.filter(m => m.body.toLowerCase().includes(chatSearch.toLowerCase())) : msgs}
@@ -1137,9 +1224,34 @@
             </div>
             <div class="chat-main__messages" bind:this={messagesEl}>
               {#each filteredMsgs as sms}
-                {@const codes = sms.direction !== 'outbound' ? smsCodes(sms) : []}
+                {@const codes = sms.direction !== 'outbound' && !sms.is_mms ? smsCodes(sms) : []}
                 <div class="msg {sms.direction === 'outbound' ? 'msg--out' : 'msg--in'} {sms.status === 'sending' ? 'msg--sending' : ''}">
-                  <div class="msg__bubble">{sms.body}</div>
+                  {#if sms.is_mms && sms.parts?.some((p: any) => p.has_media)}
+                    <div class="msg__media">
+                      {#each sms.parts.filter((p: any) => p.has_media) as part}
+                        {#if mmsMediaUrls[part.id]}
+                          {#if part.content_type?.startsWith('image/')}
+                            <a href={mmsMediaUrls[part.id]} target="_blank" rel="noopener">
+                              <img class="msg__media-img" src={mmsMediaUrls[part.id]} alt={part.name || 'MMS image'} />
+                            </a>
+                          {:else if part.content_type?.startsWith('video/')}
+                            <video class="msg__media-img" src={mmsMediaUrls[part.id]} controls></video>
+                          {:else if part.content_type?.startsWith('audio/')}
+                            <audio src={mmsMediaUrls[part.id]} controls></audio>
+                          {:else}
+                            <a class="msg__media-file" href={mmsMediaUrls[part.id]} download={part.name || 'attachment'}>📎 {part.name || 'Attachment'}</a>
+                          {/if}
+                        {:else}
+                          <button type="button" class="msg__media-load" onclick={() => loadMmsMediaPart(part.id)}>
+                            📷 Load media ({Math.round((part.size || 0) / 1024)} KB)
+                          </button>
+                        {/if}
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if sms.body && sms.body !== '📷 Photo'}
+                    <div class="msg__bubble">{sms.body}</div>
+                  {/if}
                   {#if codes.length > 0}
                     <div class="msg__codes">
                       <span class="msg__codes-label">Code</span>
@@ -1156,7 +1268,17 @@
                   {/if}
                   <div class="msg__time">
                      {formatTime(sms.timestamp)}
-                     {#if sms.status === 'sending'} <span>(Sending...)</span>{/if}
+                     {#if sms.status === 'sending'}
+                       <span class="msg__status">(Sending...)</span>
+                     {:else if sms.direction === 'outbound'}
+                       {#if sms.status === 'sent'}
+                         <span class="msg__status msg__status--sent" title="Sent by phone">✓</span>
+                       {:else if sms.status === 'failed'}
+                         <span class="msg__status msg__status--failed" title="Send failed">✗</span>
+                       {:else if sms.status === 'outbound'}
+                         <span class="msg__status msg__status--queued" title="Queued on relay">⏳</span>
+                       {/if}
+                     {/if}
                   </div>
                 </div>
               {/each}
@@ -2005,6 +2127,38 @@
   .msg--out .msg__bubble { background: #202124; color: #ffffff; padding: 12px 16px; border-radius: 16px; border-bottom-right-radius: 4px; font-size: 15px; line-height: 1.4; }
   .msg--out .msg__time { font-size: 11px; color: #80868b; margin-top: 4px; margin-right: 4px; text-align: right; }
   .msg--sending { opacity: 0.6; }
+  .msg__status { margin-left: 6px; font-size: 11px; }
+  .msg__status--sent { color: #137333; font-weight: 700; }
+  .msg__status--failed { color: #d93025; font-weight: 700; }
+  .msg__status--queued { color: #80868b; }
+  .msg__media { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+  .msg__media-img {
+    max-width: 260px;
+    max-height: 260px;
+    border-radius: 12px;
+    display: block;
+    object-fit: cover;
+  }
+  .msg__media-file {
+    display: inline-block;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #f1f3f4;
+    color: #202124;
+    font-size: 13px;
+    text-decoration: none;
+  }
+  .msg__media-load {
+    padding: 10px 14px;
+    border: 1px dashed #bdc1c6;
+    border-radius: 12px;
+    background: #f8f9fa;
+    color: #5f6368;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .msg__media-load:hover { background: #f1f3f4; color: #202124; }
   .msg__codes {
     display: flex;
     flex-wrap: wrap;

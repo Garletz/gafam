@@ -252,11 +252,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("contacts_sync_enabled", isChecked).apply()
             updateVpcSettings("contacts_sync_enabled", if (isChecked) "true" else "false")
             if (isChecked) {
-                val apiUrl = prefs.getString("apiUrl", null)
-                val jwtSecret = prefs.getString("jwtSecret", null)
-                if (apiUrl != null && jwtSecret != null) {
-                    syncContacts(apiUrl, jwtSecret)
-                }
+                ContactSync.syncAsync(this, force = true)
             }
         }
         layout.addView(syncContactsSwitch)
@@ -401,7 +397,7 @@ class MainActivity : AppCompatActivity() {
         val jwtSecret = prefs.getString("jwtSecret", null)
         if (apiUrl != null && jwtSecret != null) {
             RelayForegroundService.start(this)
-            syncContacts(apiUrl, jwtSecret)
+            ContactSync.syncAsync(this, force = true)
             SmsHistorySync.syncAsync(this, force = true)
             LogShipper.event(this, "I", "boot", "Paired relay online — foreground service active")
         }
@@ -675,80 +671,6 @@ class MainActivity : AppCompatActivity() {
                 client.newCall(request).execute()
             } catch (e: Exception) {
                 Log.e("GAFAM_Relay", "Error updating VPC settings", e)
-            }
-        }
-    }
-
-    private fun syncContacts(apiUrl: String, jwtSecret: String) {
-        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("contacts_sync_enabled", true)) {
-            Log.d("GAFAM_Relay", "Contact sync disabled, skipping.")
-            return
-        }
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return
-
-        thread {
-            try {
-                val contacts = org.json.JSONArray()
-                val cursor = contentResolver.query(
-                    android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    null, null, null, null
-                )
-                
-                cursor?.use {
-                    val nameIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                    val phoneIdx = it.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    
-                    while (it.moveToNext()) {
-                        val name = it.getString(nameIdx) ?: "Unknown"
-                        val phone = it.getString(phoneIdx)?.replace(" ", "") ?: ""
-                        if (phone.isNotEmpty()) {
-                            val contactObj = JSONObject().apply {
-                                put("phone_number", phone)
-                                put("display_name", name)
-                                put("is_verified", 1) // Default local contacts to verified friends
-                            }
-                            contacts.put(contactObj)
-                        }
-                    }
-                }
-
-                val plaintext = contacts.toString().toByteArray(Charsets.UTF_8)
-
-                // Derive key using SHA-256
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                val keyBytes = digest.digest(jwtSecret.toByteArray(Charsets.UTF_8))
-                val secretKey = javax.crypto.spec.SecretKeySpec(keyBytes, "AES")
-
-                // Encrypt using AES/GCM/NoPadding
-                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-                val iv = ByteArray(12)
-                java.security.SecureRandom().nextBytes(iv)
-                val gcmSpec = javax.crypto.spec.GCMParameterSpec(128, iv)
-                cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
-                
-                val ciphertext = cipher.doFinal(plaintext)
-                
-                val encryptedPayload = JSONObject().apply {
-                    put("encrypted_data", android.util.Base64.encodeToString(ciphertext, android.util.Base64.NO_WRAP))
-                    put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
-                }
-
-                val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/gafam/contacts")
-                val client = ApiClient.getClient(this) ?: return@thread
-                
-                val requestBody = encryptedPayload.toString().toRequestBody("application/json".toMediaType())
-                val request = Request.Builder()
-                    .url(spoofedUrl)
-                    .post(requestBody)
-                    .addHeader("Authorization", "Bearer $jwtSecret")
-                    .build()
-                
-                client.newCall(request).execute()
-                Log.d("GAFAM_Relay", "Contacts synced successfully")
-            } catch (e: Exception) {
-                Log.e("GAFAM_Relay", "Failed to sync contacts", e)
             }
         }
     }

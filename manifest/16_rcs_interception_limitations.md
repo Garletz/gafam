@@ -1,29 +1,49 @@
-# Limitations et Contraintes : Interception RCS et Sécurité Android
+# 16. RCS : Limites d'interception, contournements légitimes, et la voie du remplacement
 
-Ce document détaille les limites techniques, architecturales et éthiques concernant l'implémentation de systèmes de contournement pour la lecture des messages RCS (Rich Communication Services) sur Android.
+Ce document clarifie trois choses : pourquoi le RCS ne peut pas être intercepté comme un SMS, ce que GAFAM fait légitimement sur le téléphone relai de l'utilisateur, et pourquoi la réponse stratégique au RCS n'est pas l'interception mais le remplacement.
 
-## 1. Ce qui est structurellement impossible (Architecture Android)
+## 1. Le constat technique : RCS est une forteresse fermée
 
-Android est conçu avec un modèle de sécurité compartimenté (Sandboxing) qui impose des limites strictes aux applications tierces.
+L'interception du RCS par une application tierce est **structurellement impossible** sur Android, indépendamment de l'ingéniosité déployée :
 
-*   **Pas d'API Publique RCS :** Contrairement au protocole SMS (`android.provider.Telephony.SMS_RECEIVED`), Android ne fournit aucune API publique permettant à une application tierce d'écouter, de lire ou d'intercepter le flux de données RCS en transit. Le protocole est fermé et géré en exclusivité par l'application client (généralement Google Messages) et les Google Play Services.
-*   **Chiffrement de Bout en Bout (E2EE) :** Les messages RCS échangés via Google Jibe sont chiffrés. Il est cryptographiquement impossible pour une application locale d'intercepter le trafic réseau pour lire le contenu des messages avant qu'ils ne soient déchiffrés par l'application cible.
-*   **Isolement des Processus :** L'APK GAFAM Relay ne peut pas accéder directement à la mémoire ou à l'espace de stockage privé de l'application Google Messages pour y extraire des données en clair.
+* **Aucune API publique.** Contrairement au SMS (`SMS_RECEIVED`, `SMS_DELIVER`, `content://sms`), Android n'expose aucun broadcast ni aucun provider pour le RCS. Les messages RCS n'apparaissent jamais dans `content://sms` ni `content://mms` — ils vivent dans la base privée de Google Messages.
+* **Privilèges opérateur.** Le RCS repose sur l'enregistrement IMS (SIP/MSRP) auprès du réseau mobile. Cet enregistrement exige des privilèges "carrier" réservés aux applications préinstallées ou signées par l'opérateur ou Google. Une application tierce ne peut pas s'enregistrer IMS sur la quasi-totalité des appareils.
+* **Infrastructure Jibe + E2EE.** La majorité du RCS mondial transite par les serveurs Jibe de Google, et le trafic entre utilisateurs Google Messages est chiffré de bout en bout (migration vers MLS en cours). Même une capture réseau ne donnerait que du chiffré.
+* **Un seul client par SIM.** L'enregistrement IMS est exclusif : implémenter le protocole soi-même entrerait en conflit avec le client existant, en plus de représenter un effort démesuré.
 
-## 2. Ce qui ne sera pas implémenté (Contraintes Éthiques et de Sécurité)
+Conclusion : le RCS n'est pas une cible d'interception. C'est un protocole fermé, sur un serveur fermé, avec un client fermé. Le contourner est une impasse.
 
-Conformément aux directives de sécurité de l'IA, aucun code, plan d'architecture détaillée, ou assistance technique ne sera fourni pour développer des mécanismes de surveillance ou d'interception furtive. Cela inclut explicitement :
+## 2. Ce que GAFAM fait légitimement sur le téléphone relai
 
-*   **Implémentation de `NotificationListenerService` à des fins d'espionnage :** Aucun code ne sera généré pour créer un service écoutant les notifications de Google Messages dans le but d'en extraire silencieusement le contenu RCS et de masquer la notification à l'utilisateur.
-*   **Implémentation de `ContentObserver` furtifs :** Aucun script ou architecture ne sera fourni pour surveiller la base de données de téléphonie (`content://sms` ou `content://mms-sms/`) afin d'exfiltrer discrètement les messages RCS au moment de leur écriture par l'application par défaut.
-*   **Détournement d'`AccessibilityService` :** Aucun code ne sera fourni pour créer un service d'accessibilité dont le but serait de "lire" l'écran de l'utilisateur à son insu lorsque l'application Google Messages est ouverte, pour en extraire le texte des bulles de discussion.
-*   **Mécanismes de persistance et d'élévation de privilèges :** Aucune assistance ne sera donnée pour forcer ou tromper l'utilisateur afin qu'il accorde les permissions sensibles (comme l'accès aux notifications ou à l'accessibilité) nécessaires à ces méthodes de contournement.
+Le téléphone relai appartient à l'utilisateur, transporte les messages de l'utilisateur, et toutes les permissions sensibles sont accordées explicitement par l'utilisateur dans l'interface de l'APK. Dans ce cadre — et uniquement dans ce cadre — les mécanismes suivants sont légitimes et cohérents avec le reste du projet :
 
-## 3. Alternative Légitime
+* **Lecture des notifications (`NotificationListenerService`).** Le projet utilise déjà ce mécanisme pour Gmail/Outlook (`EmailNotificationListener.kt`). Le même service peut lire les notifications de Google Messages : expéditeur et texte des messages RCS entrants sont ainsi relayés au VPC (les pièces jointes RCS n'y figurent pas — une photo apparaît comme "📷 Photo"). Les notifications ne sont jamais masquées à l'utilisateur.
+* **Réponses via `RemoteInput`.** Les notifications de messagerie exposent une action "Répondre". L'APK peut y injecter une réponse, ce qui permet d'envoyer un message RCS sortant à travers le client officiel, sans contourner son chiffrement.
+* **Fallback SMS par désactivation du RCS.** Le relai n'a pas besoin du RCS : il a besoin que les messages soient lisibles. Désactiver les "fonctionnalités de chat" dans Google Messages sur le téléphone relai fait basculer automatiquement tous les correspondants en SMS/MMS classiques (le fallback est natif côté expéditeur). L'intégralité du trafic redevient alors interceptable par l'infrastructure existante.
 
-La seule méthode supportée pour interagir avec la messagerie sur Android reste l'utilisation des API standards documentées par Google :
+Ces mécanismes sont des relais de première personne, documentés et visibles dans l'interface de l'APK — à l'image du relais SMS qui est la fonctionnalité fondatrice du projet.
 
-*   **Gestion des SMS/MMS classiques :** Utilisation de `BroadcastReceiver` pour `SMS_RECEIVED` et `SMS_DELIVER` si l'application est configurée et explicitement choisie par l'utilisateur comme application SMS par défaut.
-*   Cette méthode, déjà implémentée dans le projet, reste aveugle au protocole RCS par design.
+## 3. La réponse stratégique : ne pas intercepter RCS, le remplacer
+
+RCS/Jibe et GAFAM occupent exactement la même case conceptuelle — à ceci près que l'un est fermé et l'autre souverain :
+
+| | RCS / Google | GAFAM |
+|---|---|---|
+| Identité | Numéro de téléphone | Numéro de téléphone |
+| Serveur de routage | Jibe (Google) | Le VPC de l'utilisateur |
+| Client | Google Messages | Client web + APK relai |
+| Chiffrement | E2EE opa que, clés gérées par Google | AES-256-GCM + Ed25519, clés gérées par l'utilisateur |
+| Fédération | Aucune (Jibe centralise) | VPC ↔ VPC (manifest 17, Poneglyph) |
+| Fallback réseau | SMS/MMS | SMS/MMS |
+
+Le manifest 2 décrit déjà le routing intelligent : le VPC d'Alice découvre si le numéro de Bob est fédéré ; si oui, tunnel chiffré direct VPC↔VPC ; sinon, fallback vers la carte SIM du relai. C'est précisément la sémantique du RCS ("data si possible, SMS sinon") — sans Jibe, sans Google, sans intermédiaire autre que les VPC des pairs.
+
+À mesure que le réseau de nœuds grandit, la part du trafic routée en fédération augmente et la part dépendante des opérateurs et de Google diminue mécaniquement. Le RCS ne se pirate pas : il se rend obsolète, nœud après nœud.
+
+## Références croisées
+
+* [2. Le Protocole Fédéré (Messagerie)](2_federated_messaging.md) — le routing discovery → tunnel P2P → fallback SMS.
+* [4. Le Handshake GAFAM](4_anti_spam_handshake.md) — le filtre zero-trust à l'entrée des messages.
+* [17. Le Canal Poneglyph](17_poneglyph_conjugation_channel.md) — la fédération par publication souveraine entre VPC.
 
 -_- -> -_-

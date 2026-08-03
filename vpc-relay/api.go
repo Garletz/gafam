@@ -157,16 +157,16 @@ func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stmt := `INSERT INTO gafam_outbox (recipient, body) VALUES (?, ?)`
-	res, err := db.Exec(stmt, params.Recipient, params.Body)
+	// Persist in chat history so web UI still shows the message after reload
+	ts := time.Now().UnixMilli()
+	smsId, _, _ := insertSmsDeduped(params.Recipient, params.Body, ts, "outbound")
+
+	stmt := `INSERT INTO gafam_outbox (recipient, body, sms_id) VALUES (?, ?, ?)`
+	res, err := db.Exec(stmt, params.Recipient, params.Body, smsId)
 	if err != nil {
 		http.Error(w, "Failed to save to outbox", http.StatusInternalServerError)
 		return
 	}
-
-	// Persist in chat history so web UI still shows the message after reload
-	ts := time.Now().UnixMilli()
-	_, _, _ = insertSmsDeduped(params.Recipient, params.Body, ts, "outbound")
 
 	id, _ := res.LastInsertId()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
@@ -176,7 +176,7 @@ func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getOutboxHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, recipient, body, created_at FROM gafam_outbox ORDER BY created_at ASC")
+	rows, err := db.Query("SELECT id, recipient, body, created_at, COALESCE(sms_id, 0) FROM gafam_outbox ORDER BY created_at ASC")
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -186,13 +186,15 @@ func getOutboxHandler(w http.ResponseWriter, r *http.Request) {
 	var outboxList []map[string]interface{}
 	for rows.Next() {
 		var id int
+		var smsId int64
 		var recipient, body, createdAt string
-		if err := rows.Scan(&id, &recipient, &body, &createdAt); err == nil {
+		if err := rows.Scan(&id, &recipient, &body, &createdAt, &smsId); err == nil {
 			outboxList = append(outboxList, map[string]interface{}{
 				"id":         id,
 				"recipient":  recipient,
 				"body":       body,
 				"created_at": createdAt,
+				"sms_id":     smsId,
 			})
 		}
 	}
@@ -236,6 +238,84 @@ func deleteOutboxHandler(w http.ResponseWriter, r *http.Request) {
 
 	touchApkRelay()
 	sendJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// POST /api/auth/sms/status — the APK reports the real outcome of an outbox SMS
+// (SmsManager sent-report). Marks the gafam_sms row and removes the outbox entry.
+type SmsStatusParams struct {
+	OutboxID int    `json:"outbox_id"`
+	SmsID    int64  `json:"sms_id"`
+	Status   string `json:"status"` // "sent" | "failed"
+}
+
+func updateSmsStatusHandler(w http.ResponseWriter, r *http.Request) {
+	var payload EncryptedPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	key := deriveKey(string(jwtSecret))
+	plaintext, err := decryptAESGCM(key, payload.EncryptedData, payload.IV)
+	if err != nil {
+		http.Error(w, "Decryption failed", http.StatusForbidden)
+		return
+	}
+
+	var params SmsStatusParams
+	if err := json.Unmarshal(plaintext, &params); err != nil {
+		http.Error(w, "Invalid decrypted JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	if params.Status != "sent" && params.Status != "failed" {
+		http.Error(w, "Invalid status", http.StatusBadRequest)
+		return
+	}
+
+	if params.SmsID > 0 {
+		if _, err := db.Exec(`UPDATE gafam_sms SET status = ? WHERE id = ?`, params.Status, params.SmsID); err != nil {
+			log.Printf("sms status: update gafam_sms %d failed: %v", params.SmsID, err)
+		}
+	}
+	if params.OutboxID > 0 {
+		if _, err := db.Exec(`DELETE FROM gafam_outbox WHERE id = ?`, params.OutboxID); err != nil {
+			log.Printf("sms status: delete outbox %d failed: %v", params.OutboxID, err)
+		}
+	}
+
+	touchApkRelay()
+	sendJSON(w, http.StatusOK, map[string]string{"status": "recorded"})
+}
+
+// POST /api/web/sms/delete — bulk delete SMS rows by id (web client, session-protected)
+func deleteSmsBulkHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.IDs) == 0 {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "ids required"})
+		return
+	}
+	if len(req.IDs) > 5000 {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "too many ids"})
+		return
+	}
+	stmt, err := db.Prepare(`DELETE FROM gafam_sms WHERE id = ?`)
+	if err != nil {
+		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+		return
+	}
+	defer stmt.Close()
+	deleted := 0
+	for _, id := range req.IDs {
+		if res, err := stmt.Exec(id); err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				deleted++
+			}
+		}
+	}
+	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": deleted})
 }
 
 // Handlers
@@ -941,8 +1021,20 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Two payload shapes:
+	//   legacy:  [ {phone_number, display_name, ...}, ... ]          → upsert only
+	//   full:    {"full": true, "contacts": [ ... ]}                 → authoritative snapshot
+	// The full snapshot also DELETES contacts that vanished from the phone.
 	var contacts []ContactPayload
-	if err := json.Unmarshal(plaintext, &contacts); err != nil {
+	fullSync := false
+	var envelope struct {
+		Full     bool             `json:"full"`
+		Contacts []ContactPayload `json:"contacts"`
+	}
+	if err := json.Unmarshal(plaintext, &envelope); err == nil && envelope.Contacts != nil {
+		contacts = envelope.Contacts
+		fullSync = envelope.Full
+	} else if err := json.Unmarshal(plaintext, &contacts); err != nil {
 		http.Error(w, "Invalid decrypted JSON payload", http.StatusBadRequest)
 		return
 	}
@@ -954,8 +1046,8 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO gafam_contacts (phone, name) 
-		VALUES (?, ?) 
+		INSERT INTO gafam_contacts (phone, name)
+		VALUES (?, ?)
 		ON CONFLICT(phone) DO UPDATE SET name=excluded.name
 	`)
 	if err != nil {
@@ -965,17 +1057,58 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
+	seen := make([]string, 0, len(contacts))
 	for _, c := range contacts {
-		_, err := stmt.Exec(c.Phone, c.DisplayName)
-		if err != nil {
+		if c.Phone == "" {
+			continue
+		}
+		if _, err := stmt.Exec(c.Phone, c.DisplayName); err != nil {
 			tx.Rollback()
 			http.Error(w, "DB insert error", http.StatusInternalServerError)
 			return
 		}
+		seen = append(seen, c.Phone)
+	}
+
+	deleted := int64(0)
+	if fullSync {
+		// Remove contacts that are no longer on the phone
+		rows, err := tx.Query(`SELECT phone FROM gafam_contacts`)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, "DB query error", http.StatusInternalServerError)
+			return
+		}
+		incoming := make(map[string]struct{}, len(seen))
+		for _, p := range seen {
+			incoming[p] = struct{}{}
+		}
+		var stale []string
+		for rows.Next() {
+			var p string
+			if err := rows.Scan(&p); err == nil {
+				if _, ok := incoming[p]; !ok {
+					stale = append(stale, p)
+				}
+			}
+		}
+		rows.Close()
+		for _, p := range stale {
+			res, err := tx.Exec(`DELETE FROM gafam_contacts WHERE phone = ?`, p)
+			if err == nil {
+				if n, _ := res.RowsAffected(); n > 0 {
+					deleted += n
+				}
+			}
+		}
 	}
 	tx.Commit()
 
-	sendJSON(w, http.StatusOK, map[string]string{"status": "contacts_synced"})
+	sendJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "contacts_synced",
+		"upserts": len(seen),
+		"deleted": deleted,
+	})
 }
 
 // --- Trusted Guardians Handlers ---

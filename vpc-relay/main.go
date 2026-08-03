@@ -104,6 +104,36 @@ func initDB() {
 	if _, err := db.Exec(createOutboxTable); err != nil {
 		log.Fatal("Failed to create gafam_outbox table:", err)
 	}
+	// Link each queued outbox row to its gafam_sms history row (delivery status feedback)
+	db.Exec("ALTER TABLE gafam_outbox ADD COLUMN sms_id INTEGER;")
+
+	createMmsTable := `
+	CREATE TABLE IF NOT EXISTS gafam_mms (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		address TEXT,
+		timestamp INTEGER,
+		status TEXT DEFAULT 'inbox',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createMmsTable); err != nil {
+		log.Fatal("Failed to create gafam_mms table:", err)
+	}
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gafam_mms_dedup ON gafam_mms(address, timestamp)`)
+
+	createMmsPartsTable := `
+	CREATE TABLE IF NOT EXISTS gafam_mms_parts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		mms_id INTEGER,
+		content_type TEXT,
+		name TEXT,
+		text TEXT,
+		data BLOB,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createMmsPartsTable); err != nil {
+		log.Fatal("Failed to create gafam_mms_parts table:", err)
+	}
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_gafam_mms_parts_mms ON gafam_mms_parts(mms_id)`)
 
 	createContactsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_contacts (
@@ -314,8 +344,10 @@ func main() {
 	mux.HandleFunc("POST /api/gafam/pair-device", authMiddleware(pairDeviceHandler))
 	mux.HandleFunc("POST /api/auth/sms/", authMiddleware(smsHandler))
 	mux.HandleFunc("POST /api/auth/sms/sync", authMiddleware(syncSmsHistoryHandler))
+	mux.HandleFunc("POST /api/auth/sms/status", authMiddleware(updateSmsStatusHandler))
 	mux.HandleFunc("GET /api/auth/sms/outbox", authMiddleware(getOutboxHandler))
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
+	mux.HandleFunc("POST /api/auth/mms/sync", authMiddleware(syncMmsHandler))
 	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))
 	mux.HandleFunc("POST /api/auth/logs", authMiddleware(postLogsHandler))
 	mux.HandleFunc("POST /api/auth/edge/sync", authMiddleware(edgeApkSyncHandler))
@@ -335,6 +367,9 @@ func main() {
 	mux.HandleFunc("GET /api/web/sms", sessionMiddleware(getSmsHandler))
 	mux.HandleFunc("DELETE /api/web/sms/conversation", sessionMiddleware(deleteSmsConversationHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
+	mux.HandleFunc("POST /api/web/sms/delete", sessionMiddleware(deleteSmsBulkHandler))
+	mux.HandleFunc("GET /api/web/mms", sessionMiddleware(getMmsHandler))
+	mux.HandleFunc("GET /api/web/mms/part/{id}", sessionMiddleware(getMmsPartHandler))
 
 	// SMS compose aids — place book + time presets (rendezvous chips)
 	mux.HandleFunc("GET /api/web/compose/places", sessionMiddleware(composePlacesHandler))

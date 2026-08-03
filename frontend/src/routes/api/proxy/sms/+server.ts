@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { vpcRequest as vpcRequestShared } from '$lib/vpcProxy';
 
 async function vpcRequest(
 	vpcUrl: string,
@@ -83,5 +84,17 @@ export const DELETE: RequestHandler = async ({ url }) => {
 		'DELETE',
 		`/api/web/sms/conversation?${qs}`
 	);
+	return json(result.data, { status: result.status });
+};
+
+/** POST bulk delete by ids: ?vpcUrl&token — body {ids: number[]} */
+export const POST: RequestHandler = async ({ url, request }) => {
+	const vpcUrl = url.searchParams.get('vpcUrl');
+	const token = url.searchParams.get('token');
+	if (!vpcUrl || !token) return json({ error: 'Missing params' }, { status: 400 });
+
+	const payload = await request.text();
+	const qs = new URLSearchParams({ token });
+	const result = await vpcRequestShared(vpcUrl, token, 'POST', `/api/web/sms/delete?${qs}`, payload);
 	return json(result.data, { status: result.status });
 };
