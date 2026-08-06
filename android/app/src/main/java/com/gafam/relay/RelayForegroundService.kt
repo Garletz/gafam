@@ -49,6 +49,8 @@ class RelayForegroundService : Service() {
         private const val CONTACT_SYNC_PERIOD_MS = 30 * 60 * 1000L
         /** If no sent-report broadcast arrives within this delay, assume the SMS left. */
         private const val SENT_FALLBACK_MS = 45_000L
+        /** Survives process death so a killed relay never re-sends the same outbox row. */
+        private const val PREF_CLAIMED_OUTBOX = "claimed_outbox_ids"
 
         private val running = AtomicBoolean(false)
 
@@ -346,7 +348,9 @@ class RelayForegroundService : Service() {
             for (i in 0 until outboxArray.length()) {
                 present.add(outboxArray.getJSONObject(i).getInt("id"))
             }
+            val before = inFlightOutbox.size
             inFlightOutbox.retainAll(present)
+            if (inFlightOutbox.size != before) persistClaimedOutboxIds()
         }
 
         if (outboxArray.length() > 0) {
@@ -359,11 +363,20 @@ class RelayForegroundService : Service() {
             val smsId = msg.optInt("sms_id", 0)
             val recipient = msg.getString("recipient")
             val body = msg.getString("body")
-            // Skip rows already sent and waiting for their delivery report —
-            // the VPC keeps the row until the report lands, so without this
-            // guard the 1s poll would re-send the SMS dozens of times.
+            // Triple guard against the 1s poll re-sending the same row:
+            //  1) in-memory set  2) persisted claims (survives process death)
+            //  3) eager DELETE right after SmsManager accepts the send
             if (!inFlightOutbox.add(id)) continue
-            sendOutboxSms(id, smsId, recipient, body)
+            if (isClaimedInPrefs(id)) {
+                // Already attempted in a previous process — never re-send,
+                // just push status so the VPC drops the row.
+                Log.w(TAG, "Stuck outbox $id already claimed — clearing without resend")
+                LogShipper.event(this, "W", "outbox", "Clearing stuck outbox $id without resend")
+                SmsSentReceiver.reportStatus(applicationContext, id, smsId, "sent")
+                continue
+            }
+            markClaimedInPrefs(id)
+            sendOutboxSms(id, smsId, recipient, body, apiUrl, jwtSecret)
         }
 
         if (outboxArray.length() > 0) {
@@ -374,12 +387,19 @@ class RelayForegroundService : Service() {
     /**
      * Sends one outbox SMS and wires the delivery feedback loop:
      *  - SmsManager throws immediately  → report "failed" to the VPC
+     *  - SmsManager accepts the send    → eager-DELETE outbox (stops poll loops)
      *  - sent-report broadcast arrives  → SmsSentReceiver reports sent/failed
      *  - no broadcast within 45 s       → assume "sent" (many devices never fire it)
-     * The VPC status endpoint updates gafam_sms and removes the outbox row,
-     * so the web UI always reflects what really happened.
+     * The status endpoint still updates gafam_sms even if the outbox row is gone.
      */
-    private fun sendOutboxSms(outboxId: Int, smsId: Int, recipient: String, body: String) {
+    private fun sendOutboxSms(
+        outboxId: Int,
+        smsId: Int,
+        recipient: String,
+        body: String,
+        apiUrl: String,
+        jwtSecret: String
+    ) {
         try {
             val smsManager = SmsManager.getDefault()
             val parts = smsManager.divideMessage(body)
@@ -398,11 +418,68 @@ class RelayForegroundService : Service() {
             }
             Log.d(TAG, "Sent remote SMS to $recipient")
             LogShipper.event(this, "I", "outbox", "Sent SMS to $recipient (${body.length} chars)")
+            // Critical: drop the VPC row immediately so the next 1s poll cannot
+            // re-send, even if the sent-report broadcast is delayed/missing.
+            deleteFromOutbox(apiUrl, jwtSecret, outboxId)
             scheduleSentFallback(outboxId, smsId)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send SMS to $recipient", e)
             LogShipper.event(this, "E", "outbox", "Failed SMS to $recipient: ${e.message}")
+            releaseOutboxClaim(outboxId)
             SmsSentReceiver.reportStatus(applicationContext, outboxId, smsId, "failed")
+        }
+    }
+
+    /** Best-effort DELETE so a stuck outbox row cannot be polled again. */
+    private fun deleteFromOutbox(apiUrl: String, jwtSecret: String, id: Int) {
+        try {
+            val client = ApiClient.getClient(this) ?: return
+            val spoofedUrl = ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/outbox?id=$id")
+            val request = Request.Builder()
+                .url(spoofedUrl)
+                .delete()
+                .addHeader("Authorization", "Bearer $jwtSecret")
+                .build()
+            val response = client.newCall(request).execute()
+            Log.d(TAG, "Eager outbox delete $id → HTTP ${response.code}")
+            response.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Eager outbox delete $id failed (inFlight still holds it)", e)
+        }
+    }
+
+    private fun isClaimedInPrefs(id: Int): Boolean {
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val claimed = prefs.getStringSet(PREF_CLAIMED_OUTBOX, emptySet()) ?: emptySet()
+        return id.toString() in claimed
+    }
+
+    private fun markClaimedInPrefs(id: Int) {
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val claimed = HashSet(prefs.getStringSet(PREF_CLAIMED_OUTBOX, emptySet()) ?: emptySet())
+        claimed.add(id.toString())
+        // Bound growth — drop lowest ids if we ever exceed 200.
+        if (claimed.size > 200) {
+            val sorted = claimed.mapNotNull { it.toIntOrNull() }.sorted()
+            val drop = sorted.take(claimed.size - 200).map { it.toString() }.toSet()
+            claimed.removeAll(drop)
+        }
+        prefs.edit().putStringSet(PREF_CLAIMED_OUTBOX, claimed).apply()
+    }
+
+    private fun persistClaimedOutboxIds() {
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putStringSet(PREF_CLAIMED_OUTBOX, inFlightOutbox.map { it.toString() }.toSet())
+            .apply()
+    }
+
+    private fun releaseOutboxClaim(id: Int) {
+        inFlightOutbox.remove(id)
+        val prefs = getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
+        val claimed = HashSet(prefs.getStringSet(PREF_CLAIMED_OUTBOX, emptySet()) ?: emptySet())
+        if (claimed.remove(id.toString())) {
+            prefs.edit().putStringSet(PREF_CLAIMED_OUTBOX, claimed).apply()
         }
     }
 

@@ -170,6 +170,15 @@
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Sent-report for outbox SMS (delivery status feedback to VPC) -->
+        <receiver
+            android:name="com.gafam.relay.SmsSentReceiver"
+            android:exported="false" >
+            <intent-filter>
+                <action android:name="com.gafam.relay.SMS_SENT" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name="com.gafam.relay.GmailAlarmReceiver"
             android:exported="false" />
