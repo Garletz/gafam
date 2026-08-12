@@ -1,138 +1,138 @@
 # Agent Hall of Fame · 2026-08-12
 
-> *Quand le film sera fini, on citera tous les agents qui ont fait des trucs exceptionnels.*
+> *When the movie is over, we'll name every agent who did something exceptional.*
 
 ---
 
-## L'Intention
+## The Intent
 
-Un rêve simple : pouvoir taper un SMS sur le client web, et voir le texte s'écrire **en temps réel** sur l'app du téléphone — comme Simplenote, mais pour les SMS. Et inversement.
+A simple dream: type an SMS draft on the web client, and watch it appear **in real time** on the phone app — like Simplenote, but for SMS. And vice versa.
 
-L'infrastructure existait déjà : un VPC Go/SQLite, une APK Kotlin relais SMS, un frontend SvelteKit 5 sur Cloudflare Workers. Il fallait juste inventer la couche de synchronisation qui manquait.
+The infrastructure was already there: a Go/SQLite VPC, a Kotlin SMS relay APK, a SvelteKit 5 frontend on Cloudflare Workers. All that was missing was the sync layer.
 
 ---
 
-## La Conception du Protocole
+## Protocol Design
 
-**Agent général · 09:17 UTC**
+**General agent · 09:17 UTC**
 
-Mission : étudier les protocoles de sync temps réel existants (Simplenote/Simperium, Firebase, Signal) et proposer le meilleur pour notre cas.
+Mission: study real-time sync protocols (Simplenote/Simperium, Firebase, Signal) and pick the best one for this use case.
 
-**Move décisif** : L'agent a choisi le modèle **Last-Write-Wins avec timestamp versionné** — le même que Simperium, le protocole de Simplenote depuis 2008. Pas de WebSocket, pas de CRDT. Juste un `updated_at` en millisecondes qui fait office de juge de paix.
+**Decisive move**: The agent chose the **Last-Write-Wins versioned model** — the same protocol Simplenote has used since 2008. No WebSockets, no CRDTs. Just a `updated_at` timestamp acting as arbiter.
 
 ```
-Chaque draft a un updated_at.
-Chaque client stocke son lastKnownVersion.
-Poll 1.5s : si serveur.updated_at > lastKnownVersion → l'autre a écrit → mettre à jour.
+Every draft has an updated_at.
+Every client tracks its lastKnownVersion.
+Poll every 1.5s: if server.updated_at > lastKnownVersion → the other side wrote → update.
 ```
 
-Simple. Robuste. Ça a tenu tout le long.
+Simple. Robust. It held up the entire session.
 
 ---
 
-## La Chasse aux Bugs — 3 Agents Parallèles
+## The Bug Hunt — 3 Parallel Agents
 
-**Agents déployés · 11:10 UTC**
+**Agents deployed · 11:10 UTC**
 
-Trois agents lancés simultanément : un sur l'APK, un sur le VPC, un sur le flux de données web. Ils ont lu l'intégralité du code source — 3000+ lignes de Kotlin, 1500 lignes de Go, 2400 lignes de Svelte.
+Three agents launched simultaneously: one on the APK, one on the VPC, one on the web data flow. They read every line of source code — 3000+ lines of Kotlin, 1500 lines of Go, 2400 lines of Svelte.
 
-**Résultat** : 66 bugs identifiés et classés, 52 corrigés dans la session.
+**Result**: 66 bugs identified and classified, 52 fixed in the session.
 
-| # | Fichier | Bug | Sévérité |
-|---|---------|-----|----------|
-| 1 | `SmsPanel.kt:99` | `setText()` appelé depuis un thread background → crash UI | CRITICAL |
-| 2 | `ContactsPanel.kt:195` | `startActivity()` depuis un thread background → crash | CRITICAL |
-| 3 | `+page.svelte:868` | `draftTimer` jamais remis à `null` → poll web bloqué définitivement | CRITICAL |
-| 4 | `SmsPanel.kt:111` | `draftDirty` à `false` avant la réponse HTTP → race condition | HIGH |
-| 5 | `+page.svelte:100` | `draftLoading` pas `$state` → guard anti-feedback loop bypassé | HIGH |
-| 6 | `SmsPanel.kt:282` | Codes courts et senders alphanumériques (AMAZON, banques) ignorés | DATA LOSS |
-| 7 | `SmsPanel.kt:523` | `deleteConversation` supprimait une seule variante d'adresse | DATA INCONSISTENCY |
-| 8 | `api.go:474` | Anti-spam utilisait `LIKE %` ambigu → filtrage incorrect | SECURITY |
-
----
-
-## Le Redesign UX — Inspiration QKSMS
-
-**2 agents parallèles · 11:40 UTC**
-
-L'APK avait une interface fonctionnelle mais brute. Deux agents ont été chargés de la repenser : un pour étudier les meilleures apps SMS open-source (QKSMS, Signal, Simple SMS Messenger), l'autre pour concevoir les specs exactes.
-
-**Résultat** :
-- Barre de saisie façon messagerie moderne : bulle arrondie 22dp, minHeight 44dp
-- Bouton envoi → avec alpha progressif (0.4 grisé → 1.0 actif)
-- Bulles de chat groupées par expéditeur, timestamps intégrés
-- Compteur de caractères `/160`
-- Sidebar rétractable, back stack navigation, badge SMS non lus
-- Photos de contacts, favoris, pull-to-refresh, export vCard
+| # | File | Bug | Severity |
+|---|------|-----|----------|
+| 1 | `SmsPanel.kt:99` | `setText()` called from background thread → UI crash | CRITICAL |
+| 2 | `ContactsPanel.kt:195` | `startActivity()` called from background thread → crash | CRITICAL |
+| 3 | `+page.svelte:868` | `draftTimer` never reset to `null` → web poll blocked forever | CRITICAL |
+| 4 | `SmsPanel.kt:111` | `draftDirty` set to `false` before HTTP response → race condition | HIGH |
+| 5 | `+page.svelte:100` | `draftLoading` not `$state` → anti-feedback guard bypassed | HIGH |
+| 6 | `SmsPanel.kt:282` | Short codes and alphanumeric senders (AMAZON, banks) silently dropped | DATA LOSS |
+| 7 | `SmsPanel.kt:523` | `deleteConversation` only deleted one address variant | DATA INCONSISTENCY |
+| 8 | `api.go:474` | Anti-spam filter used ambiguous `LIKE %` match | SECURITY |
 
 ---
 
-## La Découverte du Bug Racine
+## UX Redesign — QKSMS Inspired
 
-**Agent d'analyse · 13:40 UTC**
+**2 parallel agents · 11:40 UTC**
 
-Après 4 heures de debugging, 6 déploiements frontend, et des tests API qui prouvaient que l'infrastructure fonctionnait parfaitement, un agent a tracé le chemin exact du code, fonction par fonction, et a trouvé la cause.
+The APK had a functional but rough interface. Two agents were tasked with redesigning it: one to study the best open-source SMS apps (QKSMS, Signal, Simple SMS Messenger), the other to produce exact specs.
 
-**`+page.svelte:878`** — Dans l'effet Svelte 5 de changement de conversation :
+**Result**:
+- Modern messaging compose bar: 22dp rounded bubble, 44dp min height
+- Send button → with progressive alpha (0.4 disabled → 1.0 active)
+- Chat bubbles grouped by sender, embedded timestamps
+- Character counter `/160`
+- Collapsible sidebar, back stack navigation, unread SMS badge
+- Contact photos, favorites, pull-to-refresh, vCard export
+
+---
+
+## The Root Cause Discovery
+
+**Analysis agent · 13:40 UTC**
+
+After 4 hours of debugging, 6 frontend deployments, and API tests proving the infrastructure was flawless, an agent traced the exact code path, function by function, and found the cause.
+
+**`+page.svelte:878`** — Inside the conversation-switch Svelte 5 effect:
 
 ```javascript
-draftCache[lastDraftPeer] = outboxBody; // ← LECTURE → Svelte tracke cette variable
+draftCache[lastDraftPeer] = outboxBody; // ← SYNCHRONOUS READ → Svelte tracks this variable
 ```
 
-Svelte 5 enregistre `outboxBody` comme dépendance réactive. Quand l'utilisateur tape un caractère, `outboxBody` change → l'effet se RÉACTIVE → exécute `outboxBody = ''` (ligne 882) → le texte est effacé avant d'avoir pu être sauvegardé. Le brouillon tapé sur le web n'atteignait jamais le VPC.
+Svelte 5 registers `outboxBody` as a reactive dependency. When the user types a character, `outboxBody` changes → the effect RE-FIRES → executes `outboxBody = ''` (line 882) → **the typed text is erased before it can be saved**. The draft never reaches the VPC.
 
-**Le piège** : les lectures asynchrones (dans des callbacks `setTimeout`) ne sont PAS trackées par Svelte 5. C'est la lecture *synchrone* accidentelle qui a créé le bug.
+**The trap**: asynchronous reads (inside `setTimeout` callbacks) are NOT tracked by Svelte 5. It was the accidental *synchronous* read that created the bug.
 
-**Fix** : `if (peer === lastDraftPeer) return;` — l'effet ne s'exécute que lors d'un vrai changement de conversation. Plus un `oninput` handler direct sur le textarea en backup, pour ne plus dépendre uniquement du framework.
+**Fix**: `if (peer === lastDraftPeer) return;` — the effect only executes on an actual conversation switch. Plus a direct `oninput` handler on the textarea as backup, no longer relying solely on framework reactivity.
 
 ---
 
 ## Credits
 
-> *Quand le film sera fini.*
+> *When the movie is over.*
 
 | Agent ID | Mission | Contribution |
 |----------|---------|-------------|
-| `ses_00aaf8f4` | Veille architecturale | A étudié Simperium, Firebase, Signal — a proposé le protocole de versionnage qui a tenu toute la session |
-| `ses_00aa252f` | Bug hunt APK | A lu l'intégralité du code Kotlin, classé 30 bugs avec `file:line`, dont 2 crashes critiques |
-| `ses_00aa2410` | Bug hunt VPC | A audité le serveur Go : SQLITE_BUSY, WAL checkpoint, orphelins outbox, encryption |
-| `ses_00aa2249` | Bug hunt Web | A tracé le flux complet : race conditions, memory leaks, draft cache, version tracking |
-| `ses_00a960cb` | Fix APK batch | 11 corrections : retry SMS, OOM protection, delete multi-adresses, draft timer |
-| `ses_00a95dfb` | Fix VPC batch | 10 corrections : ms `updated_at`, pagination SQL, orphelins outbox, ALTER TABLE migrations |
-| `ses_00a95aed` | Fix Web batch | 8 corrections : draft cache par conversation, poll cleanup, version tracking |
-| `ses_00a85a62` | UX SMS | Plan complet inspiré de QKSMS : specs exactes, wireframes ASCII, priorités |
-| `ses_00a85960` | UX Contacts | Data model multi-numéros, photos système, favoris, détails, appels |
-| `ses_00a85800` | UX Navigation | Back stack, sidebar rétractable, badges, animations |
-| `ses_00a6f444` | Root cause | **La découverte décisive** : le bug Svelte 5 `$effect` reactivity |
-| `ses_00a839f6` | Implémentation SMS UX | Bulles groupées, timestamps, typing indicator, send animation |
-| `ses_00a8372d` | Implémentation Contacts UX | Photos, favoris, pull-to-refresh, barre rétractable, thème dark |
-| `ses_00a3e86f` | Vérification VPC | Tests end-to-end : web PUT → VPC → APK GET, confirmation HTTP 200 |
-| `ses_00a3e73b` | Trace Web | A tracé le chemin exact du code, fonction par fonction, découvert la lecture synchrone accidentelle |
-| `ses_00a3e630` | Vérification APK | Capture logcat en direct : `Updated from remote: WEB-DRAFT-TEST` |
-| `ses_00a3e4fb` | Synthèse | A croisé les findings de tous les agents pour confirmer le diagnostic |
+| `ses_00aaf8f4` | Architecture research | Studied Simperium, Firebase, Signal — proposed the versioned protocol that held the entire session |
+| `ses_00aa252f` | APK bug hunt | Read every Kotlin file, classified 30 bugs with `file:line`, including 2 critical crashes |
+| `ses_00aa2410` | VPC bug hunt | Audited the Go server: SQLITE_BUSY, WAL checkpoints, orphan outbox entries, encryption |
+| `ses_00aa2249` | Web bug hunt | Traced the full data flow: race conditions, memory leaks, draft cache, version tracking |
+| `ses_00a960cb` | APK batch fixes | 11 fixes: SMS retry, OOM protection, multi-address delete, draft timer lifecycle |
+| `ses_00a95dfb` | VPC batch fixes | 10 fixes: millisecond `updated_at`, SQL pagination, orphan cleanup, ALTER TABLE migrations |
+| `ses_00a95aed` | Web batch fixes | 8 fixes: per-conversation draft cache, poll cleanup, version tracking, error handling |
+| `ses_00a85a62` | SMS UX design | Full QKSMS-inspired plan: exact specs, ASCII wireframes, priority order |
+| `ses_00a85960` | Contacts UX design | Multi-number data model, system photos, favorites, call button, detail view |
+| `ses_00a85800` | Navigation UX design | Back stack, collapsible sidebar, badge counters, animations, dark theme |
+| `ses_00a6f444` | Root cause analysis | **The decisive discovery**: Svelte 5 `$effect` reactivity tracking bug |
+| `ses_00a839f6` | SMS UX implementation | Message grouping, embedded timestamps, typing indicator, send animation |
+| `ses_00a8372d` | Contacts UX implementation | Contact photos, favorites, pull-to-refresh, collapsible bar, dark theme |
+| `ses_00a3e86f` | VPC verification | End-to-end tests: web PUT → VPC → APK GET, confirmed HTTP 200 |
+| `ses_00a3e73b` | Web code trace | Traced every function call, discovered the accidental synchronous read |
+| `ses_00a3e630` | APK verification | Live logcat capture: `Updated from remote: WEB-DRAFT-TEST` confirmed |
+| `ses_00a3e4fb` | Cross-agent synthesis | Combined findings from all agents to confirm the diagnosis |
 
 ---
 
-## Chiffres de la Session
+## Session Numbers
 
-| Métrique | Valeur |
-|----------|--------|
-| Agents déployés | 17 |
-| Heures de session | ~5h |
-| Fichiers modifiés | 12 |
-| Bugs trouvés | 66 |
-| Bugs corrigés | 52 |
-| Builds APK | 11 |
-| Déploiements frontend | 9 |
-| ~2000 lignes modifiées | Go · Kotlin · TypeScript · Svelte |
+| Metric | Value |
+|--------|-------|
+| Agents deployed | 17 |
+| Session duration | ~5 hours |
+| Files modified | 12 |
+| Bugs found | 66 |
+| Bugs fixed | 52 |
+| APK builds | 11 |
+| Frontend deployments | 9 |
+| ~2000 lines changed | Go · Kotlin · TypeScript · Svelte |
 | Stack | SvelteKit 5 · Cloudflare Workers · Go · SQLite · Kotlin · ADB |
 
 ---
 
-## Le Mot de la Fin
+## Final Word
 
-> Le live draft sync est devenu réalité. Ce qui était un concept abstrait le matin — taper sur le web et voir le texte apparaître sur le téléphone — est devenu une feature concrète le soir. Et quand le créateur a tapé « ça marche u feu de dieu », on a su que la mission était accomplie.
+> Live draft sync became real. What was an abstract concept in the morning — typing on the web and seeing the text appear on the phone — became a concrete feature by evening. And when the creator typed *"it works like wildfire"*, the mission was accomplished.
 
 ---
 
-*Session du 12 août 2026 · Projet GAFAM · गाफाम*
+*Session of August 12, 2026 · GAFAM Project · गाफाम*
