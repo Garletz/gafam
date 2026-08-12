@@ -639,7 +639,10 @@ func putWebDraftHandler(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
 		return
 	}
-	sendJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+
+	var updatedAt string
+	db.QueryRow(`SELECT updated_at FROM gafam_drafts WHERE phone = ? AND peer = ?`, phone, params.Peer).Scan(&updatedAt)
+	sendJSON(w, http.StatusOK, map[string]string{"ok": "true", "updated_at": updatedAt})
 }
 
 // GET /api/web/sms/draft?peer=X — web client retrieves draft for a conversation
@@ -650,14 +653,14 @@ func getWebDraftHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	phone := getPhoneFromSession(r)
-	var body string
-	err := db.QueryRow(`SELECT body FROM gafam_drafts WHERE phone = ? AND peer = ?`,
-		phone, peer).Scan(&body)
+	var body, updatedAt string
+	err := db.QueryRow(`SELECT body, updated_at FROM gafam_drafts WHERE phone = ? AND peer = ?`,
+		phone, peer).Scan(&body, &updatedAt)
 	if err != nil {
-		sendJSON(w, http.StatusOK, map[string]string{"body": ""})
+		sendJSON(w, http.StatusOK, map[string]interface{}{"body": "", "updated_at": ""})
 		return
 	}
-	sendJSON(w, http.StatusOK, map[string]string{"body": body})
+	sendJSON(w, http.StatusOK, map[string]interface{}{"body": body, "updated_at": updatedAt})
 }
 
 // PUT /api/auth/sms/draft — APK saves draft
@@ -698,7 +701,10 @@ func putApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
 		return
 	}
-	sendJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+
+	var updatedAt string
+	db.QueryRow(`SELECT updated_at FROM gafam_drafts WHERE phone = ? AND peer = ?`, phone, params.Peer).Scan(&updatedAt)
+	sendJSON(w, http.StatusOK, map[string]string{"ok": "true", "updated_at": updatedAt})
 }
 
 // GET /api/auth/sms/draft?peer=X&phone=Y — APK retrieves draft
@@ -712,14 +718,14 @@ func getApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 	if phone == "" {
 		phone = getPhoneFromApkAuth(r)
 	}
-	var body string
-	err := db.QueryRow(`SELECT body FROM gafam_drafts WHERE phone = ? AND peer = ?`,
-		phone, peer).Scan(&body)
+	var body, updatedAt string
+	err := db.QueryRow(`SELECT body, updated_at FROM gafam_drafts WHERE phone = ? AND peer = ?`,
+		phone, peer).Scan(&body, &updatedAt)
 	if err != nil {
-		sendJSON(w, http.StatusOK, map[string]string{"body": ""})
+		sendJSON(w, http.StatusOK, map[string]interface{}{"body": "", "updated_at": ""})
 		return
 	}
-	sendJSON(w, http.StatusOK, map[string]string{"body": body})
+	sendJSON(w, http.StatusOK, map[string]interface{}{"body": body, "updated_at": updatedAt})
 }
 
 // getPhoneFromSession extracts the phone number from the web session token

@@ -34,6 +34,7 @@ object SmsPanel {
     private var draftPollTimer: java.util.Timer? = null
     @Volatile private var draftDirty = false
     @Volatile private var draftLoading = false
+    private var lastDraftVersion: String? = null
 
     fun create(ctx: Context): View {
         ctxRef = ctx
@@ -90,8 +91,10 @@ object SmsPanel {
         refs.composeBar.addView(compBar)
 
         // Draft sync
-        loadDraftFromVpc(ctx, conv.address) { draftBody ->
+        lastDraftVersion = null // reset on new conversation
+        loadDraftFromVpc(ctx, conv.address) { draftBody, updatedAt ->
             if (currentConv?.address == conv.address) {
+                lastDraftVersion = updatedAt
                 draftLoading = true
                 bodyEdit?.setText(draftBody)
                 if (draftBody.isNotEmpty()) bodyEdit?.setSelection(draftBody.length)
@@ -128,8 +131,10 @@ object SmsPanel {
             override fun run() {
                 if (currentConv?.address != conv.address) return
                 if (draftDirty) return  // user is typing locally — don't overwrite
-                loadDraftFromVpc(ctx, conv.address) { draftBody ->
+                loadDraftFromVpc(ctx, conv.address) { draftBody, updatedAt ->
                     if (currentConv?.address == conv.address) {
+                        if (updatedAt.isEmpty() || updatedAt == lastDraftVersion) return@loadDraftFromVpc
+                        lastDraftVersion = updatedAt
                         val current = bodyEdit?.text?.toString() ?: ""
                         if (current != draftBody) {
                             (ctx as? android.app.Activity)?.runOnUiThread {
@@ -548,12 +553,17 @@ object SmsPanel {
                 val req = Request.Builder().url(ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/draft"))
                     .put(payload.toString().toRequestBody("application/json".toMediaType()))
                     .addHeader("Authorization", "Bearer $jwtSecret").build()
-                client.newCall(req).execute().close()
+                val resp = client.newCall(req).execute()
+                val respStr = resp.body?.string() ?: ""
+                resp.close()
+                val respJson = JSONObject(respStr)
+                val updatedAt = respJson.optString("updated_at", "")
+                if (updatedAt.isNotEmpty()) lastDraftVersion = updatedAt
             } catch (_: Exception) {}
         }
     }
 
-    private fun loadDraftFromVpc(ctx: Context, peer: String, cb: (String) -> Unit) {
+    private fun loadDraftFromVpc(ctx: Context, peer: String, cb: (body: String, updatedAt: String) -> Unit) {
         val prefs = ctx.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         val apiUrl = prefs.getString("apiUrl", null) ?: return
         val jwtSecret = prefs.getString("jwtSecret", null) ?: return
@@ -566,8 +576,9 @@ object SmsPanel {
                     .addHeader("Authorization", "Bearer $jwtSecret").build()
                 val resp = client.newCall(req).execute()
                 val body = resp.body?.string() ?: ""; resp.close()
-                cb(JSONObject(body).optString("body", ""))
-            } catch (_: Exception) { cb("") }
+                val json = JSONObject(body)
+                cb(json.optString("body", ""), json.optString("updated_at", ""))
+            } catch (_: Exception) { cb("", "") }
         }
     }
 

@@ -87,6 +87,8 @@
   let lastDraftPeer: string | null = $state(null);
   let lastDraftSync: number = $state(0);
   let lastDraftSaved: number = $state(0);
+  let lastDraftVersion = '';
+  let draftLoading = false;
   
   // Profile menu state
   let isProfileMenuOpen = $state(false);
@@ -807,12 +809,16 @@
       const plaintext = JSON.stringify({ peer, body });
       const encryptedPayload = await encryptAESGCM(plaintext, sessionToken);
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
-      await fetch(`/api/proxy/draft?${proxyParams.toString()}`, {
+      const res = await fetch(`/api/proxy/draft?${proxyParams.toString()}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(encryptedPayload)
       });
-      lastDraftSaved = Date.now();
+      if (res.ok) {
+        const data = await res.json();
+        if (data.updated_at) lastDraftVersion = data.updated_at;
+        lastDraftSaved = Date.now();
+      }
     } catch (_) {}
   }
 
@@ -823,7 +829,12 @@
       const res = await fetch(`/api/proxy/draft?${proxyParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
+        // Only update if version is newer (or first load)
+        if (!data.updated_at || data.updated_at === lastDraftVersion) return;
+        lastDraftVersion = data.updated_at;
+        draftLoading = true;
         outboxBody = data.body ?? '';
+        draftLoading = false;
         lastDraftSync = Date.now();
       }
     } catch (_) {}
@@ -832,7 +843,7 @@
   $effect(() => {
     // Debounced save: whenever outboxBody changes and we have a selected peer
     const peer = selectedSender;
-    if (!peer || !outboxBody) return;
+    if (!peer || !outboxBody || draftLoading) return;
     if (draftTimer) clearTimeout(draftTimer);
     draftTimer = setTimeout(() => saveDraft(peer, outboxBody), 300);
   });
@@ -841,6 +852,7 @@
     // When switching conversations, load draft for the new peer
     const peer = selectedSender;
     if (!peer) return;
+    lastDraftVersion = '';
     outboxBody = '';
     loadDraft(peer);
     lastDraftPeer = peer;
