@@ -857,24 +857,20 @@
     } catch (_) {}
   }
 
-  $effect(() => {
-    // Debounced save: whenever outboxBody changes and we have a selected peer
-    const peer = selectedSender;
-    const body = outboxBody;
-    if (!vpcUrl || !sessionToken || !peer) return;
+  function triggerDraftSave(body: string) {
+    if (!vpcUrl || !sessionToken || !selectedSender) return;
     if (draftTimer) clearTimeout(draftTimer);
     draftTimer = setTimeout(async () => {
-      console.log('[draft] saving:', peer, body?.substring(0, 20));
-      await saveDraft(peer, body);
+      await saveDraft(selectedSender!, body);
       draftTimer = null;
     }, 300);
-  });
+  }
 
   $effect(() => {
     // When switching conversations, load draft for the new peer
     const peer = selectedSender;
     if (!peer) return;
-    if (peer === lastDraftPeer) return; // guard against spurious re-runs from outboxBody changes
+    if (peer === lastDraftPeer) return;
     if (lastDraftPeer) {
       draftCache[lastDraftPeer] = outboxBody;
     }
@@ -882,6 +878,18 @@
     lastDraftVersion = '';
     outboxBody = '';
     loadDraft(peer);
+  });
+
+  $effect(() => {
+    // Track outboxBody changes for draft save
+    const body = outboxBody;
+    const peer = selectedSender;
+    if (!vpcUrl || !sessionToken || !peer) return;
+    if (draftTimer) clearTimeout(draftTimer);
+    draftTimer = setTimeout(async () => {
+      await saveDraft(peer, body);
+      draftTimer = null;
+    }, 300);
   });
 
   async function loadSettings() {
@@ -1403,6 +1411,7 @@
                   placeholder="Écrire un SMS… (heure / lieu via les chips)"
                   rows="2"
                   required
+                  oninput={(e) => triggerDraftSave(e.currentTarget.value)}
                 ></textarea>
                 <button type="submit" class="btn-send" onclick={() => outboxRecipient = selectedSender!}>Send</button>
               </form>
