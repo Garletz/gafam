@@ -85,8 +85,8 @@ object SmsPanel {
         // Compose bar — no recipient field for known conversations
         refs.composeBar.removeAllViews()
         val isNew = conv.address == conv.name && conv.count == 0
-        val (compBar, bodyEdit) = buildComposeBar(ctx, conv.address, isNew) { body ->
-            sendSms(ctx, conv.address, body) { loadMessages(conv.address, refs.msgContainer) }
+        val (compBar, bodyEdit) = buildComposeBar(ctx, conv.address, isNew) { recipient, body ->
+            sendSms(ctx, recipient, body) { loadMessages(conv.address, refs.msgContainer) }
         }
         refs.composeBar.addView(compBar)
 
@@ -436,7 +436,7 @@ object SmsPanel {
 
     private fun buildComposeBar(
         ctx: Context, recipient: String, isNew: Boolean,
-        onSend: (body: String) -> Unit
+        onSend: (recipient: String, body: String) -> Unit
     ): Pair<LinearLayout, EditText?> {
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
         val bar = LinearLayout(ctx).apply {
@@ -484,7 +484,7 @@ object SmsPanel {
             setOnClickListener {
                 val b = bodyInput.text.toString().trim()
                 val r = if (isNew) recipientInput?.text?.toString()?.trim() ?: recipient else recipient
-                if (r.isNotEmpty() && b.isNotEmpty()) { onSend(b); bodyInput.text.clear() }
+                if (r.isNotEmpty() && b.isNotEmpty()) { onSend(r, b); bodyInput.text.clear() }
             }
         }
         inputRow.addView(bodyInput); inputRow.addView(sendBtn)
