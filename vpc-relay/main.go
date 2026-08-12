@@ -550,6 +550,16 @@ func main() {
 	startHoneypotGenerator()
 	log.Println("Honeypot generator started (OPSEC)")
 
+	// Periodic WAL checkpoint to prevent SQLITE_BUSY from large accumulated writes
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+				log.Printf("WAL checkpoint error: %v", err)
+			}
+		}
+	}()
+
 	if tlsPort != "" && tlsCert != "" && tlsKey != "" {
 		tlsServer := &http.Server{
 			Addr:    "0.0.0.0:" + tlsPort,
