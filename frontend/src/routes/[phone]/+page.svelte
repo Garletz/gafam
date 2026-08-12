@@ -874,7 +874,8 @@
     // When switching conversations, load draft for the new peer
     const peer = selectedSender;
     if (!peer) return;
-    if (lastDraftPeer && lastDraftPeer !== peer) {
+    if (peer === lastDraftPeer) return; // guard against spurious re-runs from outboxBody changes
+    if (lastDraftPeer) {
       draftCache[lastDraftPeer] = outboxBody;
     }
     lastDraftPeer = peer;
