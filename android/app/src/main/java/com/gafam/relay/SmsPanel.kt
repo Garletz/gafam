@@ -93,6 +93,7 @@ object SmsPanel {
             if (currentConv?.address == conv.address) {
                 bodyEdit?.setText(draftBody)
                 if (draftBody.isNotEmpty()) bodyEdit?.setSelection(draftBody.length)
+                (ctx as? android.app.Activity)?.runOnUiThread { refs.syncDot.setTextColor(0xFF34A853.toInt()) }
             }
         }
         bodyEdit?.addTextChangedListener(object : android.text.TextWatcher {
@@ -140,7 +141,8 @@ object SmsPanel {
 
     private class ChatRefs(
         val titleText: TextView, val subtitleText: TextView, val msgContainer: LinearLayout,
-        val scroll: ScrollView, val composeBar: LinearLayout, val backBtn: TextView, val deleteBtn: TextView
+        val scroll: ScrollView, val composeBar: LinearLayout, val backBtn: TextView, val deleteBtn: TextView,
+        val syncDot: TextView
     )
 
     private fun buildChatDetailLayout(ctx: Context): LinearLayout {
@@ -167,8 +169,12 @@ object SmsPanel {
             setTextColor(0xFF888888.toInt()); textSize = 11f; maxLines = 1
         }
         titleBlock.addView(titleText); titleBlock.addView(subtitleText)
+        val syncDot = TextView(ctx).apply {
+            text = "\u25CF"; setTextColor(0xFF444444.toInt()); textSize = 10f
+            gravity = Gravity.CENTER; width = dp(24); height = dp(24)
+        }
         val deleteBtn = buildIconBtn(ctx, "\uD83D\uDDD1", dp(42))
-        header.addView(backBtn); header.addView(avatar); header.addView(titleBlock); header.addView(deleteBtn)
+        header.addView(backBtn); header.addView(avatar); header.addView(titleBlock); header.addView(syncDot); header.addView(deleteBtn)
 
         val chatScroll = ScrollView(ctx).apply {
             setBackgroundColor(0xFF111111.toInt())
@@ -182,7 +188,7 @@ object SmsPanel {
         val composeBar = LinearLayout(ctx)
 
         layout.addView(header); layout.addView(chatScroll); layout.addView(composeBar)
-        layout.tag = ChatRefs(titleText, subtitleText, msgContainer, chatScroll, composeBar, backBtn, deleteBtn)
+        layout.tag = ChatRefs(titleText, subtitleText, msgContainer, chatScroll, composeBar, backBtn, deleteBtn, syncDot)
         return layout
     }
 

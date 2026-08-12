@@ -85,6 +85,8 @@
   let outboxTextarea: HTMLTextAreaElement | null = $state(null);
   let draftTimer: ReturnType<typeof setTimeout> | null = null;
   let lastDraftPeer: string | null = $state(null);
+  let lastDraftSync: number = $state(0);
+  let lastDraftSaved: number = $state(0);
   
   // Profile menu state
   let isProfileMenuOpen = $state(false);
@@ -810,6 +812,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(encryptedPayload)
       });
+      lastDraftSaved = Date.now();
     } catch (_) {}
   }
 
@@ -821,6 +824,7 @@
       if (res.ok) {
         const data = await res.json();
         outboxBody = data.body ?? '';
+        lastDraftSync = Date.now();
       }
     } catch (_) {}
   }
@@ -1248,7 +1252,15 @@
             {@const filteredMsgs = chatSearch ? msgs.filter(m => m.body.toLowerCase().includes(chatSearch.toLowerCase())) : msgs}
             <div class="chat-main__header">
               <div class="chat-main__identity">
-                <h3>{getContactName(selectedSender)}</h3>
+                <h3>
+                  {getContactName(selectedSender)}
+                  <span
+                    class="sync-dot"
+                    class:synced={lastDraftSaved > 0}
+                    class:live={Date.now() - lastDraftSync < 3000}
+                    title={lastDraftSaved ? 'Live sync active' : 'Sync idle'}
+                  ></span>
+                </h3>
                 <div class="chat-main__phone">
                   <span class="chat-main__number" title={selectedSender}>{selectedSender}</span>
                   <button
@@ -2137,6 +2149,26 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .sync-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #444;
+    margin-left: 6px;
+    vertical-align: middle;
+    transition: background 0.3s;
+  }
+  .sync-dot.synced { background: #5f6368; }
+  .sync-dot.live {
+    background: #34a853;
+    box-shadow: 0 0 6px #34a853;
+    animation: sync-pulse 1.5s infinite;
+  }
+  @keyframes sync-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
   }
   .btn-copy {
     flex-shrink: 0;

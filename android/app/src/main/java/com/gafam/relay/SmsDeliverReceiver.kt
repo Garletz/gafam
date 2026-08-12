@@ -1,8 +1,10 @@
 package com.gafam.relay
 
 import android.content.BroadcastReceiver
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.Telephony
 import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
@@ -28,10 +30,26 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 bodyBuilder.append(sms.messageBody ?: "")
             }
             val body = bodyBuilder.toString()
+            val ts = if (messages[0].timestampMillis > 0) messages[0].timestampMillis else System.currentTimeMillis()
             
             Log.d("GAFAM_Relay", "SMS Deliver Intercepté de $sender : $body")
             LogShipper.event(context, "I", "sms", "Delivered SMS from $sender (${body.length} chars)")
             RelayForegroundService.start(context.applicationContext)
+
+            // Write to SMS provider so the APK SMS panel shows it
+            try {
+                val values = ContentValues().apply {
+                    put("address", sender)
+                    put("body", body)
+                    put("date", ts)
+                    put("date_sent", ts)
+                    put("type", 1) // inbox
+                    put("read", 0)
+                }
+                context.contentResolver.insert(Uri.parse("content://sms/inbox"), values)
+            } catch (e: Exception) {
+                Log.w("GAFAM_Relay", "Failed to write SMS to provider: ${e.message}")
+            }
 
             // Intercept verification SMS
             if (body.startsWith("GAFAM-VFY-")) {
@@ -42,7 +60,7 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 return
             }
 
-            sendToVpc(context, sender, body, messages[0].timestampMillis, pendingResult)
+            sendToVpc(context, sender, body, ts, pendingResult)
         }
     }
 
