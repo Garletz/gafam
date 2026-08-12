@@ -32,6 +32,7 @@ object SmsPanel {
     private var currentConv: Conversation? = null
     private var draftTimer: java.util.Timer? = null
     private var draftPollTimer: java.util.Timer? = null
+    @Volatile private var draftDirty = false
 
     fun create(ctx: Context): View {
         ctxRef = ctx
@@ -96,10 +97,14 @@ object SmsPanel {
         }
         bodyEdit?.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) {
+                draftDirty = true
                 draftTimer?.cancel(); draftTimer = java.util.Timer(true)
                 draftTimer?.schedule(object : java.util.TimerTask() {
-                    override fun run() { saveDraftToVpc(ctx, conv.address, s?.toString() ?: "") }
-                }, 1500)
+                    override fun run() {
+                        saveDraftToVpc(ctx, conv.address, s?.toString() ?: "")
+                        draftDirty = false
+                    }
+                }, 300)
             }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -109,6 +114,7 @@ object SmsPanel {
         draftPollTimer?.schedule(object : java.util.TimerTask() {
             override fun run() {
                 if (currentConv?.address != conv.address) return
+                if (draftDirty) return  // user is typing locally — don't overwrite
                 loadDraftFromVpc(ctx, conv.address) { draftBody ->
                     if (currentConv?.address == conv.address) {
                         val current = bodyEdit?.text?.toString() ?: ""
@@ -123,7 +129,7 @@ object SmsPanel {
                     }
                 }
             }
-        }, 3000, 3000)
+        }, 1500, 1500)
 
         loadMessages(conv.address, refs.msgContainer)
         mc.removeAllViews(); mc.addView(cl)

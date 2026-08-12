@@ -39,8 +39,8 @@
   let smsList: any[] = $state([]);
   let mmsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'sms' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' = $state('chats');
-  let settingsSection: 'node' | 'recovery' | 'contacts' = $state('node');
+  let sidebarTab: 'chats' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' = $state('chats');
+  let settingsSection: 'node' | 'recovery' | 'contacts' | 'sms_manager' = $state('node');
   let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' | 'providers' = $state('vpc');
   let contactSearchQuery: string = $state('');
   let chatSearchQuery: string = $state('');
@@ -90,7 +90,7 @@
   let isProfileMenuOpen = $state(false);
 
   // Navigation: Chat (left), Organic Tools (center), Settings (right)
-  type SidebarTab = 'chats' | 'sms' | 'contacts' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault' | 'federation';
+  type SidebarTab = 'chats' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault' | 'federation';
   let showContactsInChat = $state(false);
   let toolsWiggle = $state(false);
   let appsMenuOpen = $state(false);
@@ -259,7 +259,7 @@
       // Poll drafts from phone every 3s (only if user isn't currently editing)
       const draftPoll = setInterval(() => {
         if (selectedSender && !draftTimer) loadDraft(selectedSender);
-      }, 3000);
+      }, 1500);
     } else {
       appState = 'setup';
       // Deep link from recovery SMS: https://{phone}.gafam.cloud/?t=1834
@@ -830,7 +830,7 @@
     const peer = selectedSender;
     if (!peer || !outboxBody) return;
     if (draftTimer) clearTimeout(draftTimer);
-    draftTimer = setTimeout(() => saveDraft(peer, outboxBody), 1500);
+    draftTimer = setTimeout(() => saveDraft(peer, outboxBody), 300);
   });
 
   $effect(() => {
@@ -931,11 +931,6 @@
                   class="tab {sidebarTab === 'chats' ? 'active' : ''}"
                   onclick={() => selectSidebarTab('chats')}
                 >Chats</button>
-                <button
-                  type="button"
-                  class="tab {sidebarTab === 'sms' ? 'active' : ''}"
-                  onclick={() => selectSidebarTab('sms')}
-                >SMS</button>
               </div>
               <div class="sidebar__tabs-center">
                 <button
@@ -1124,13 +1119,6 @@
                   <div class="logs-sidebar-hint"><p>No days yet</p><p class="hint-sub">APK ships logs every few seconds after pairing.</p></div>
                 {/if}
               {/if}
-            {:else if sidebarTab === 'sms'}
-              <div class="logs-archive-label">SMS Manager</div>
-              <div class="logs-archive-sub">{smsList.length} SMS · {mmsList.length} MMS</div>
-              <div class="logs-sidebar-hint" style="padding: 12px 16px;">
-                <p>Full message database: stats, filters, bulk delete, export.</p>
-                <p class="hint-sub">MMS media load on demand inside chats. RCS content stays inside Google Messages (see manifest 16).</p>
-              </div>
             {:else if sidebarTab === 'settings'}
               <button
                 type="button"
@@ -1165,6 +1153,17 @@
                   <div class="chat-item__preview">Sync from Android</div>
                 </div>
               </button>
+              <button
+                type="button"
+                class="chat-item settings-nav {settingsSection === 'sms_manager' ? 'active' : ''}"
+                onclick={() => { settingsSection = 'sms_manager'; }}
+              >
+                <div class="chat-item__avatar settings-nav__icon">S</div>
+                <div class="chat-item__info">
+                  <div class="chat-item__name">SMS Manager</div>
+                  <div class="chat-item__preview">Bulk ops, export, stats</div>
+                </div>
+              </button>
             {/if}
           </div>
         </aside>
@@ -1185,6 +1184,16 @@
             </header>
           {/if}
           {#if sidebarTab === 'settings'}
+            {#if settingsSection === 'sms_manager'}
+              <SmsManagerView
+                {sessionToken}
+                {vpcUrl}
+                {smsList}
+                {mmsList}
+                {contacts}
+                onChanged={() => loadSms()}
+              />
+            {:else}
             <Settings
               {sessionToken}
               {vpcUrl}
@@ -1192,6 +1201,7 @@
               bind:syncContacts
               onContactSyncChange={toggleContactSync}
             />
+            {/if}
           {:else if sidebarTab === 'quests'}
             <QuestBoard {sessionToken} {vpcUrl} />
           {:else if sidebarTab === 'suparna'}
@@ -1232,15 +1242,6 @@
             <FederationView
               {sessionToken}
               {vpcUrl}
-            />
-          {:else if sidebarTab === 'sms'}
-            <SmsManagerView
-              {sessionToken}
-              {vpcUrl}
-              {smsList}
-              {mmsList}
-              {contacts}
-              onChanged={() => loadSms()}
             />
           {:else if selectedSender}
             {@const msgs = conversations()[selectedSender] || []}
