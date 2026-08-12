@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.gafam.relay.app-mergeDebugResources-30:/values-hi/values-hi.xml",
+            "outputFile": "com.gafam.relay.app-mergeDebugResources-31:/values-hi/values-hi.xml",
             "map": [
                 {
                     "source": "/Users/gary/.gradle/caches/8.14.3/transforms/4686ac4281a9f66dfd0370723642e0a0/transformed/appcompat-1.6.1/res/values-hi/values-hi.xml",

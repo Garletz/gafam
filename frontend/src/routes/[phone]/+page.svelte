@@ -50,11 +50,17 @@
   let chatSearch = $state('');
   let messagesEl: HTMLDivElement | undefined = $state();
 
+  let scrollTick = $state(0);
+
   $effect(() => {
-    // Auto-scroll to bottom when switching conversations or new messages
+    // Auto-scroll to bottom when new messages arrive or switching conversations
     if (selectedSender && messagesEl) {
+      const msgs = conversations()[selectedSender];
+      if (msgs) scrollTick; // reactive dependency: re-triggers on any conversation change
       requestAnimationFrame(() => {
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (messagesEl) {
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
       });
     }
   });
@@ -91,7 +97,6 @@
   let lastDraftSaved: number = $state(0);
   let lastDraftVersion: Record<string, string> = $state({});
   let draftCache: Record<string, string> = {};
-  let draftLoading = false;
   
   // Profile menu state
   let isProfileMenuOpen = $state(false);
@@ -263,7 +268,7 @@
       appState = 'connected' | 'error';
       loadSms();
       pollInterval = setInterval(loadSms, 5000);
-      // Poll drafts from phone every 3s (only if user isn't currently editing)
+      // Poll drafts every 1.5s (only if user isn't currently editing)
       const draftPoll = setInterval(() => {
         if (selectedSender && !draftTimer) loadDraft(selectedSender);
       }, 1500);
@@ -703,14 +708,16 @@
         } else         if (payload.encrypted_data && payload.iv) {
            try {
              const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
-             smsList = JSON.parse(plaintext);
-             if (appState === 'connected') statusMsg = '';
+              smsList = JSON.parse(plaintext);
+              scrollTick++;
+              if (appState === 'connected') statusMsg = '';
            } catch (decErr: any) {
              statusMsg = 'Decryption failed: ' + decErr.message;
            }
         } else {
-           smsList = payload;
-           if (appState === 'connected') statusMsg = '';
+            smsList = payload;
+            scrollTick++;
+            if (appState === 'connected') statusMsg = '';
         }
       } else if (res.status === 403) {
         if (pollInterval) clearInterval(pollInterval);
@@ -840,13 +847,9 @@
       const res = await fetch(`/api/proxy/draft?${proxyParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        if (!data.updated_at || data.updated_at === lastDraftVersion[peer]) return;
-        if (peer !== selectedSender) return;
-        lastDraftVersion[peer] = data.updated_at;
-        draftLoading = true;
+        if (!data.updated_at || data.updated_at === lastDraftVersion) return;
+        lastDraftVersion = data.updated_at;
         outboxBody = data.body ?? '';
-        draftCache[peer] = outboxBody;
-        draftLoading = false;
         lastDraftSync = Date.now();
       }
     } catch (_) {}
@@ -855,9 +858,12 @@
   $effect(() => {
     // Debounced save: whenever outboxBody changes and we have a selected peer
     const peer = selectedSender;
-    if (!vpcUrl || !sessionToken || !peer || draftLoading) return;
+    if (!vpcUrl || !sessionToken || !peer) return;
     if (draftTimer) clearTimeout(draftTimer);
-    draftTimer = setTimeout(() => saveDraft(peer, outboxBody), 300);
+    draftTimer = setTimeout(async () => {
+      await saveDraft(peer, outboxBody);
+      draftTimer = null;
+    }, 300);
   });
 
   $effect(() => {
@@ -867,7 +873,6 @@
     if (lastDraftPeer && lastDraftPeer !== peer) {
       draftCache[lastDraftPeer] = outboxBody;
     }
-    outboxBody = draftCache[peer] ?? '';
     lastDraftPeer = peer;
     loadDraft(peer);
   });

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.animation.ValueAnimator
 import android.telephony.SmsManager
 import android.text.InputType
 import android.util.Log
@@ -62,6 +63,12 @@ class MainActivity : AppCompatActivity() {
     private var contactsView: View? = null
     private var smsView: View? = null
     private var activePanel = "dashboard"
+    private val panelBackStack = ArrayDeque<String>()
+    private var sidebarCollapsed = false
+    private lateinit var sidebarToggle: TextView
+    private var smsBadgeCount = 0
+    private lateinit var smsBadge: TextView
+    private lateinit var navBar: LinearLayout
     private lateinit var navDashboard: TextView
     private lateinit var navContacts: TextView
     private lateinit var navSms: TextView
@@ -75,16 +82,51 @@ class MainActivity : AppCompatActivity() {
         }
 
         // ── Side navigation bar ──
-        val navBar = LinearLayout(this).apply {
+        navBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF181818.toInt())
             layoutParams = LinearLayout.LayoutParams(52.dp, LinearLayout.LayoutParams.MATCH_PARENT)
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        navContacts = makeNavIcon("☎")
-        navDashboard = makeNavIcon("⊚")
-        navSms = makeNavIcon("✉")
+        sidebarToggle = TextView(this).apply {
+            text = "\u25C0"
+            textSize = 10f
+            setTextColor(0xFF777777.toInt())
+            gravity = Gravity.CENTER
+            setPadding(0, 4.dp, 0, 2.dp)
+            setOnClickListener { toggleSidebar() }
+        }
+        navBar.addView(sidebarToggle)
+        // Tap anywhere on collapsed sidebar to expand
+        navBar.setOnClickListener {
+            if (sidebarCollapsed) toggleSidebar()
+        }
+
+        navContacts = makeNavIcon("\u260E")
+        navDashboard = makeNavIcon("\u229A")
+        val smsIconFrame = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(52.dp, 52.dp)
+        }
+        navSms = makeNavIcon("\u2709")
+        smsIconFrame.addView(navSms)
+        smsBadge = TextView(this).apply {
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 10f
+            gravity = Gravity.CENTER
+            width = 18.dp
+            height = 18.dp
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFFDD3333.toInt())
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+            }
+            visibility = View.GONE
+        }
+        val badgeParams = FrameLayout.LayoutParams(18.dp, 18.dp).apply {
+            gravity = Gravity.TOP or Gravity.END
+            setMargins(0, 4.dp, 0, 0)
+        }
+        smsIconFrame.addView(smsBadge, badgeParams)
 
         navContacts.setOnClickListener { switchPanel("contacts") }
         navDashboard.setOnClickListener { switchPanel("dashboard") }
@@ -108,7 +150,7 @@ class MainActivity : AppCompatActivity() {
         navBar.addView(navMidSpacer1)
         navBar.addView(navDashboard)
         navBar.addView(navMidSpacer2)
-        navBar.addView(navSms)
+        navBar.addView(smsIconFrame)
         navBar.addView(navBtmSpacer)
 
         // ── Content area ──
@@ -139,7 +181,8 @@ class MainActivity : AppCompatActivity() {
                 Manifest.permission.SEND_SMS,
                 Manifest.permission.INTERNET,
                 Manifest.permission.CAMERA,
-                Manifest.permission.READ_CONTACTS
+                Manifest.permission.READ_CONTACTS,
+                Manifest.permission.CALL_PHONE
             )
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                 perms.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -208,6 +251,11 @@ class MainActivity : AppCompatActivity() {
                 smsHistory.add(0, "From: $sender\n$body\n")
                 if (smsHistory.size > 10) smsHistory.removeAt(smsHistory.size - 1)
                 smsLogText.text = smsHistory.joinToString("\n---\n")
+                if (activePanel != "sms") {
+                    smsBadgeCount++
+                    smsBadge.text = "$smsBadgeCount"
+                    smsBadge.visibility = View.VISIBLE
+                }
             }
         }
         val uiFilter = IntentFilter("com.gafam.relay.NEW_SMS")
@@ -246,19 +294,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
-        if (activePanel == "sms" || activePanel == "contacts") {
-            switchPanel("dashboard")
-        } else {
-            super.onBackPressed()
+        if (activePanel == "contacts" && ContactsPanel.onBackPressed()) return
+        if (activePanel == "sms" && SmsPanel.onBackPressed()) return
+        if (panelBackStack.isNotEmpty()) {
+            val prev = panelBackStack.removeLast()
+            switchPanel(prev, pushToStack = false)
+            return
         }
+        super.onBackPressed()
     }
 
-    private fun switchPanel(panel: String) {
+    private fun switchPanel(panel: String, pushToStack: Boolean = true) {
         if (activePanel == panel) return
         if (activePanel == "sms") SmsPanel.onPanelHidden()
+        if (pushToStack) panelBackStack.addLast(activePanel)
         activePanel = panel
         contentFrame.removeAllViews()
         highlightNav(panel)
+        if (panel == "sms") {
+            smsBadgeCount = 0
+            smsBadge.text = ""
+            smsBadge.visibility = View.GONE
+        }
         when (panel) {
             "contacts" -> {
                 if (contactsView == null) contactsView = ContactsPanel.create(this)
@@ -278,9 +335,34 @@ class MainActivity : AppCompatActivity() {
     private fun highlightNav(panel: String) {
         val active = 0xFFAAAAAA.toInt()
         val inactive = 0xFF444444.toInt()
-        navContacts.setTextColor(if (panel == "contacts") active else inactive)
-        navDashboard.setTextColor(if (panel == "dashboard") active else inactive)
-        navSms.setTextColor(if (panel == "sms") active else inactive)
+        val icons = mapOf("contacts" to navContacts, "dashboard" to navDashboard, "sms" to navSms)
+        for ((key, view) in icons) {
+            val target = if (key == panel) active else inactive
+            val current = view.currentTextColor
+            ValueAnimator.ofArgb(current, target).apply {
+                duration = 200
+                addUpdateListener { view.setTextColor(it.animatedValue as Int) }
+                start()
+            }
+        }
+    }
+
+    private fun toggleSidebar() {
+        val currentWidth = (navBar.layoutParams as LinearLayout.LayoutParams).width
+        val targetWidth = if (sidebarCollapsed) 52.dp else 8.dp
+        sidebarCollapsed = !sidebarCollapsed
+        // Update toggle icon
+        sidebarToggle.text = if (sidebarCollapsed) "\u25B6" else "\u25C0"
+        sidebarToggle.setTextColor(if (sidebarCollapsed) 0xFFCCCCCC.toInt() else 0xFF777777.toInt())
+        ValueAnimator.ofInt(currentWidth, targetWidth).apply {
+            duration = 200
+            addUpdateListener {
+                val lp = navBar.layoutParams as LinearLayout.LayoutParams
+                lp.width = it.animatedValue as Int
+                navBar.layoutParams = lp
+            }
+            start()
+        }
     }
 
     private fun makeNavIcon(symbol: String): TextView {

@@ -28,7 +28,7 @@ export const PUT: RequestHandler = async ({ url, request }) => {
 	try {
 		const body = await request.text();
 		const qs = new URLSearchParams({ token });
-		const result = await vpcRequest(vpcUrl, token, 'PUT', `/api/web/sms/draft?${qs}`, body, true);
+		const result = await vpcRequest(vpcUrl, token, 'PUT', `/api/web/sms/draft?${qs}`, body, false);
 		return json(result.data, { status: result.status });
 	} catch (e: any) {
 		return json({ error: 'Draft proxy error: ' + (e?.message || 'unknown') }, { status: 502 });

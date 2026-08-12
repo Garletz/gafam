@@ -48,6 +48,7 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     // GenAI 0.14 dlopen libonnxruntime.so at runtime (separate AAR on Android)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.1")
     implementation(files("libs/onnxruntime-genai-android-0.14.0.aar"))

@@ -40,6 +40,8 @@ object SmsPanel {
     @Volatile private var panelVisible = false
     private var composeIsNew = false
     private var currentBodyEdit: EditText? = null
+    private var smsRefreshReceiver: android.content.BroadcastReceiver? = null
+    private var refreshCurrentChat: (() -> Unit)? = null
 
     fun create(ctx: Context): View {
         ctxRef = ctx
@@ -55,6 +57,18 @@ object SmsPanel {
         convListLayout = buildConversationListLayout(ctx)
         chatDetailLayout = buildChatDetailLayout(ctx)
         showConversations()
+
+        smsRefreshReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                refreshCurrentChat?.invoke()
+            }
+        }
+        val filter = android.content.IntentFilter("com.gafam.relay.NEW_SMS")
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            ctx.registerReceiver(smsRefreshReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            ctx.registerReceiver(smsRefreshReceiver, filter)
+        }
         return root
     }
 
@@ -73,10 +87,23 @@ object SmsPanel {
         draftPollTimer?.cancel(); draftPollTimer = null
     }
 
-    fun onDestroy() { draftTimer?.cancel(); draftPollTimer?.cancel() }
+    fun onBackPressed(): Boolean {
+        if (currentConv != null) {
+            showConversations()
+            return true
+        }
+        return false
+    }
+
+    fun onDestroy() {
+        draftTimer?.cancel(); draftPollTimer?.cancel()
+        smsRefreshReceiver?.let { ctxRef?.unregisterReceiver(it) }
+        smsRefreshReceiver = null
+        refreshCurrentChat = null
+    }
 
     private fun showConversations() {
-        currentConv = null; draftPollTimer?.cancel()
+        currentConv = null; draftPollTimer?.cancel(); refreshCurrentChat = null
         val mc = mainContainer ?: return; mc.removeAllViews(); mc.addView(convListLayout)
         convListContainer?.let { loadConversations(it) }
     }
@@ -104,6 +131,14 @@ object SmsPanel {
 
         refs.composeBar.removeAllViews()
         composeIsNew = conv.address == conv.name && conv.count == 0
+
+        // Auto-refresh on incoming SMS
+        refreshCurrentChat = {
+            (ctx as? android.app.Activity)?.runOnUiThread {
+                if (currentConv == conv) loadMessages(conv.address, refs.msgContainer)
+            }
+        }
+
         val (compBar, bodyEdit) = buildComposeBar(ctx, conv.address, composeIsNew) { recipient, body ->
             sendSms(ctx, recipient, body) {
                 loadMessages(conv.address, refs.msgContainer)
@@ -180,6 +215,7 @@ object SmsPanel {
                                     if (draftBody.isNotEmpty()) bodyEdit?.setSelection(draftBody.length)
                                     draftLoading = false
                                     refs.syncDot.setTextColor(0xFF34A853.toInt())
+                                    refs.subtitleText.text = if (draftBody.isNotEmpty()) "typing..." else conv.address
                                 }
                             }
                         }
@@ -363,7 +399,21 @@ object SmsPanel {
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
         c.removeAllViews()
         val div = 0xFF1E1E1E.toInt()
-        if (convs.isEmpty()) { c.addView(centerLabel(ctx, "No conversations yet")); return }
+        if (convs.isEmpty()) {
+            val emptyLayout = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                setPadding(0, dp(80), 0, 0)
+            }
+            emptyLayout.addView(TextView(ctx).apply {
+                text = "\u2709"; setTextColor(0xFF444444.toInt()); textSize = 36f
+                gravity = Gravity.CENTER
+            })
+            emptyLayout.addView(TextView(ctx).apply {
+                text = "No conversations"; setTextColor(0xFF666666.toInt()); textSize = 14f
+                gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0)
+            })
+            c.addView(emptyLayout); return
+        }
         for (conv in convs) {
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL; setPadding(dp(14), dp(12), dp(10), dp(12))
@@ -382,12 +432,11 @@ object SmsPanel {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 setPadding(dp(12), 0, dp(8), 0)
             }
-            val prefix = if (conv.lastType == 2) "You: " else ""
             col.addView(TextView(ctx).apply {
                 text = conv.name; setTextColor(0xFFDDDDDD.toInt()); textSize = 15f; maxLines = 1
             })
             col.addView(TextView(ctx).apply {
-                text = (prefix + conv.lastBody).take(70)
+                text = conv.lastBody.take(70)
                 setTextColor(0xFF888888.toInt()); textSize = 13f; maxLines = 1
                 setPadding(0, dp(3), 0, 0)
             })
@@ -455,50 +504,83 @@ object SmsPanel {
     private fun renderMessages(ctx: Context, msgs: List<SmsMsg>, container: LinearLayout) {
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
         container.removeAllViews()
-        if (msgs.isEmpty()) { container.addView(centerLabel(ctx, "No messages yet")); return }
+        if (msgs.isEmpty()) {
+            val emptyLayout = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                setPadding(0, dp(80), 0, 0)
+            }
+            emptyLayout.addView(TextView(ctx).apply {
+                text = "\uD83D\uDCAC"; setTextColor(0xFF444444.toInt()); textSize = 36f
+                gravity = Gravity.CENTER
+            })
+            emptyLayout.addView(TextView(ctx).apply {
+                text = "No messages yet"; setTextColor(0xFF666666.toInt()); textSize = 14f
+                gravity = Gravity.CENTER; setPadding(0, dp(12), 0, 0)
+            })
+            container.addView(emptyLayout); return
+        }
 
-        val bubbleIn = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFF2A2A2A.toInt()); cornerRadius = dp(14).toFloat()
-        }
-        val bubbleOut = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFF1A3A5A.toInt()); cornerRadius = dp(14).toFloat()
-        }
         val mw = ctx.resources.displayMetrics.widthPixels - dp(64)
 
         var lastDateBlock: String? = null
+        var lastMsgType: Int? = null
         for (msg in msgs) {
             val db = formatDateBlock(msg.date)
             if (db != lastDateBlock) {
                 lastDateBlock = db
+                lastMsgType = null
                 container.addView(TextView(ctx).apply {
                     text = db; setTextColor(0xFF777777.toInt()); textSize = 12f
                     gravity = Gravity.CENTER; setPadding(0, dp(20), 0, dp(12))
                 })
             }
             val isOut = msg.type == 2
+            val firstInGroup = lastMsgType != msg.type
+            lastMsgType = msg.type
+
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(8), dp(3), dp(8), dp(3))
+                setPadding(dp(8), if (firstInGroup) dp(6) else dp(1), dp(8), dp(1))
                 gravity = if (isOut) Gravity.END else Gravity.START
             }
-            val bubble = TextView(ctx).apply {
-                text = msg.body; setTextColor(0xFFDDDDDD.toInt()); textSize = 14f
-                setPadding(dp(14), dp(10), dp(14), dp(10))
-                background = if (isOut) bubbleOut else bubbleIn; maxWidth = mw
-                setLineSpacing(dp(2).toFloat(), 1f)
+
+            if (firstInGroup) {
+                row.addView(TextView(ctx).apply {
+                    text = if (isOut) "You" else (currentConv?.name ?: msg.address)
+                    setTextColor(0xFF888888.toInt()); textSize = 11f
+                    setPadding(dp(4), 0, dp(4), dp(4))
+                })
+            }
+
+            val bubbleBg = android.graphics.drawable.GradientDrawable().apply {
+                setColor(if (isOut) 0xFF1E4D2B.toInt() else 0xFF2A2A2A.toInt())
+                cornerRadius = dp(16).toFloat()
+            }
+            val bubble = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = bubbleBg
                 setOnLongClickListener {
                     val clip = android.content.ClipData.newPlainText("sms", msg.body)
                     (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(clip)
-                    android.widget.Toast.makeText(ctx, "Copied", android.widget.Toast.LENGTH_SHORT).show(); true
+                    android.widget.Toast.makeText(ctx, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                    true
                 }
             }
-            val timeLbl = TextView(ctx).apply {
-                text = formatTime(msg.date); setTextColor(0xFF555555.toInt()); textSize = 11f
-                gravity = if (isOut) Gravity.END else Gravity.START
-                setPadding(dp(8), dp(4), dp(8), 0)
-            }
-            row.addView(bubble); row.addView(timeLbl); container.addView(row)
+            bubble.addView(TextView(ctx).apply {
+                text = msg.body; setTextColor(0xFFDDDDDD.toInt()); textSize = 14f
+                setLineSpacing(dp(3).toFloat(), 1.4f)
+                maxWidth = mw
+            })
+            bubble.addView(TextView(ctx).apply {
+                text = formatTime(msg.date)
+                setTextColor(if (isOut) 0xFFAACCDD.toInt() else 0xFF777777.toInt())
+                textSize = 10f; gravity = Gravity.END
+                setPadding(0, dp(4), 0, 0)
+            })
+            row.addView(bubble)
+            container.addView(row)
         }
     }
 
@@ -508,75 +590,105 @@ object SmsPanel {
     ): Pair<LinearLayout, EditText?> {
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
         val bar = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(0xFF181818.toInt())
-            setPadding(dp(4), dp(4), dp(4), dp(8))
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF111111.toInt())
+            setPadding(dp(4), 0, dp(4), dp(6))
         }
 
         var recipientInput: EditText? = null
         if (isNew) {
             recipientInput = EditText(ctx).apply {
-                hint = "Recipient"; setHintTextColor(0xFF555555.toInt())
-                setTextColor(0xFFDDDDDD.toInt()); setBackgroundColor(0xFF1E1E1E.toInt())
-                setPadding(dp(12), dp(8), dp(12), dp(8)); textSize = 13f; maxLines = 1
+                hint = "To"; setHintTextColor(0xFF777777.toInt())
+                setTextColor(0xFFDDDDDD.toInt()); setBackgroundColor(0xFF2C2C2E.toInt())
+                setPadding(dp(16), dp(12), dp(16), dp(12)); textSize = 14f; maxLines = 1
                 inputType = android.text.InputType.TYPE_CLASS_PHONE; setSingleLine(true)
                 setText(recipient)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF2C2C2E.toInt()); cornerRadius = dp(22).toFloat()
+                }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(dp(4), 0, dp(4), dp(4)) }
+                ).apply { setMargins(dp(8), 0, 0, dp(4)) }
             }
             bar.addView(recipientInput)
         }
 
-        val inputRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            setPadding(dp(4), 0, dp(4), 0)
-        }
-        val bodyInput = EditText(ctx).apply {
-            hint = "Message..."; setHintTextColor(0xFF555555.toInt())
-            setTextColor(0xFFDDDDDD.toInt()); setBackgroundColor(0xFF222222.toInt())
-            setPadding(dp(14), dp(12), dp(14), dp(12)); textSize = 15f
-            maxLines = 8; minLines = 1; gravity = Gravity.TOP or Gravity.START
-            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+        // QKSMS-inspired bubble: rounded rectangle containing input + send
+        val bubble = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(4), dp(8), dp(4))
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF222222.toInt()); cornerRadius = dp(24).toFloat()
+                setColor(0xFF2C2C2E.toInt())
+                cornerRadius = dp(22).toFloat()
             }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(8), dp(2), 0, 0) }
+        }
+
+        val bodyInput = EditText(ctx).apply {
+            hint = "Message"; setHintTextColor(0xFF777777.toInt())
+            setTextColor(0xFFDDDDDD.toInt()); setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setPadding(dp(12), dp(10), dp(8), dp(10)); textSize = 15f
+            maxLines = 5; minLines = 1; minHeight = dp(44)
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setSingleLine(false)
         }
+
         val sendBtn = TextView(ctx).apply {
-            text = "\u25B6"; setTextColor(0xFF888888.toInt()); textSize = 16f
-            gravity = Gravity.CENTER; width = dp(44); height = dp(44)
+            text = "\u2192"; setTextColor(0xFF555555.toInt()); textSize = 20f
+            gravity = Gravity.CENTER; width = dp(40); height = dp(40)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0xFF444444.toInt()); shape = android.graphics.drawable.GradientDrawable.OVAL
             }
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { setMargins(dp(8), 0, 0, 0) }
-            setOnClickListener {
-                val b = bodyInput.text.toString().trim()
-                val r = if (isNew) recipientInput?.text?.toString()?.trim() ?: recipient else recipient
-                if (r.isNotEmpty() && b.isNotEmpty()) { onSend(r, b); bodyInput.text.clear() }
-                else android.widget.Toast.makeText(ctx, "Enter recipient and message", android.widget.Toast.LENGTH_SHORT).show()
-            }
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            isEnabled = false
         }
-        val updateSendBtn = {
-            val hasBody = bodyInput.text.toString().trim().isNotEmpty()
-            val hasRec = if (isNew) recipientInput?.text?.toString()?.trim()?.isNotEmpty() == true else true
-            val enabled = hasBody && hasRec
+
+        // Enable/disable with alpha (QKSMS style)
+        fun setSendEnabled(enabled: Boolean) {
+            sendBtn.isEnabled = enabled
+            sendBtn.alpha = if (enabled) 1f else 0.4f
             sendBtn.setTextColor(if (enabled) 0xFF111111.toInt() else 0xFF888888.toInt())
             (sendBtn.background as? android.graphics.drawable.GradientDrawable)?.setColor(
                 if (enabled) 0xFFAAAAAA.toInt() else 0xFF444444.toInt())
         }
-        bodyInput.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) { updateSendBtn() }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-        if (isNew) recipientInput?.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) { updateSendBtn() }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-        inputRow.addView(bodyInput); inputRow.addView(sendBtn)
-        bar.addView(inputRow)
 
+        sendBtn.setOnClickListener {
+            val b = bodyInput.text.toString().trim()
+            val r = if (isNew) recipientInput?.text?.toString()?.trim() ?: recipient else recipient
+            if (r.isNotEmpty() && b.isNotEmpty()) {
+                sendBtn.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80).withEndAction {
+                    sendBtn.animate().scaleX(1f).scaleY(1f).setDuration(80)
+                }
+                onSend(r, b); bodyInput.text.clear()
+            }
+        }
+
+        // Character counter below bubble
+        val charCount = TextView(ctx).apply {
+            text = ""; setTextColor(0xFF555555.toInt()); textSize = 10f
+            gravity = Gravity.END; setPadding(0, dp(2), dp(14), 0)
+        }
+
+        // Single TextWatcher for enable state + char count
+        val watcher = object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val len = s?.length ?: 0; charCount.text = if (len > 0) "$len/160" else ""
+                val hasBody = s?.isNotEmpty() == true
+                val hasRec = if (isNew) recipientInput?.text?.toString()?.trim()?.isNotEmpty() == true else true
+                setSendEnabled(hasBody && hasRec)
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        }
+        bodyInput.addTextChangedListener(watcher)
+        if (isNew) recipientInput?.addTextChangedListener(watcher)
+
+        bubble.addView(bodyInput); bubble.addView(sendBtn)
+        bar.addView(bubble); bar.addView(charCount)
         return bar to bodyInput
     }
 
@@ -584,18 +696,21 @@ object SmsPanel {
         try {
             val mgr = SmsManager.getDefault()
             val parts = mgr.divideMessage(body)
+            val beforeMsgs = readMessages(ctx, recipient)
+            val beforeCount = beforeMsgs.size
             if (parts.size > 1) mgr.sendMultipartTextMessage(recipient, null, parts, null, null)
             else mgr.sendTextMessage(recipient, null, body, null, null)
             android.widget.Toast.makeText(ctx, "Sent", android.widget.Toast.LENGTH_SHORT).show()
             thread(name = "gafam-sms-reload", isDaemon = true) {
-                for (attempt in 0 until 5) {
-                    Thread.sleep(300)
+                for (attempt in 0 until 8) {
+                    Thread.sleep(400)
                     val msgs = readMessages(ctx, recipient)
-                    if (msgs.isNotEmpty()) {
+                    if (msgs.size > beforeCount) {
                         (ctx as? android.app.Activity)?.runOnUiThread { reload() }
                         return@thread
                     }
                 }
+                // Fallback: reload anyway after timeout
                 (ctx as? android.app.Activity)?.runOnUiThread { reload() }
             }
             SmsHistorySync.syncAsync(ctx, force = true)
@@ -641,8 +756,9 @@ object SmsPanel {
 
     private fun saveDraftToVpc(ctx: Context, peer: String, body: String, onDone: (() -> Unit)? = null) {
         val prefs = ctx.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
-        val apiUrl = prefs.getString("apiUrl", null) ?: return
-        val jwtSecret = prefs.getString("jwtSecret", null) ?: return
+        val apiUrl = prefs.getString("apiUrl", null)
+        val jwtSecret = prefs.getString("jwtSecret", null)
+        if (apiUrl == null || jwtSecret == null) { onDone?.invoke(); return }
         val myPhone = prefs.getString("myPhoneNumber", "") ?: ""
         thread(name = "gafam-draft-save", isDaemon = true) {
             try {
@@ -659,7 +775,7 @@ object SmsPanel {
                     put("encrypted_data", android.util.Base64.encodeToString(ct, android.util.Base64.NO_WRAP))
                     put("iv", android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP))
                 }
-                val client = ApiClient.getClient(ctx) ?: return@thread
+                val client = ApiClient.getClient(ctx) ?: run { onDone?.invoke(); return@thread }
                 val req = Request.Builder().url(ApiClient.getSpoofedUrl(apiUrl, "/api/auth/sms/draft"))
                     .put(payload.toString().toRequestBody("application/json".toMediaType()))
                     .addHeader("Authorization", "Bearer $jwtSecret").build()
@@ -670,7 +786,7 @@ object SmsPanel {
                 val updatedAt = respJson.optString("updated_at", "")
                 if (updatedAt.isNotEmpty()) lastDraftVersion = updatedAt
                 onDone?.invoke()
-            } catch (_: Exception) {}
+            } catch (_: Exception) { onDone?.invoke() }
         }
     }
 

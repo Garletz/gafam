@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.gafam.relay.app-mergeDebugResources-30:/values-id/values-id.xml",
+            "outputFile": "com.gafam.relay.app-mergeDebugResources-31:/values-id/values-id.xml",
             "map": [
                 {
                     "source": "/Users/gary/.gradle/caches/8.14.3/transforms/a989ca3cf3eae89a1d59ce67fea9b260/transformed/jetified-zxing-android-embedded-4.3.0/res/values-id/values-id.xml",
