@@ -77,6 +77,7 @@
   let logQuotaBytes = $state(1 << 30);
   let pollInterval: ReturnType<typeof setInterval>;
   let countdownInterval: ReturnType<typeof setInterval>;
+  let draftPollInterval: ReturnType<typeof setInterval>;
   let statusMsg = $state('');
   
   let outboxRecipient = $state('');
@@ -264,6 +265,7 @@
       const draftPoll = setInterval(() => {
         if (selectedSender && !draftTimer) loadDraft(selectedSender);
       }, 1500);
+      draftPollInterval = draftPoll;
     } else {
       appState = 'setup';
       // Deep link from recovery SMS: https://{phone}.gafam.cloud/?t=1834
@@ -281,6 +283,7 @@
     return () => {
       if (pollInterval) clearInterval(pollInterval);
       if (countdownInterval) clearInterval(countdownInterval);
+      if (draftPollInterval) clearInterval(draftPollInterval);
     };
   });
 
@@ -795,9 +798,11 @@
       
       if (!res.ok) {
         outboxStatus = 'Failed to send: HTTP ' + res.status;
+        outboxBody = body; // restore text on failure
       }
     } catch (err: any) {
       outboxStatus = 'Error: ' + err.message;
+      outboxBody = body; // restore text on failure
     }
   }
 
@@ -843,7 +848,7 @@
   $effect(() => {
     // Debounced save: whenever outboxBody changes and we have a selected peer
     const peer = selectedSender;
-    if (!peer || !outboxBody || draftLoading) return;
+    if (!vpcUrl || !sessionToken || !peer || draftLoading) return;
     if (draftTimer) clearTimeout(draftTimer);
     draftTimer = setTimeout(() => saveDraft(peer, outboxBody), 300);
   });

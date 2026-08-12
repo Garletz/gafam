@@ -192,12 +192,10 @@ object ContactsPanel {
         textCol.addView(phoneTv)
 
         val smsBtn = buildMiniBtn(ctx, "SMS") {
-            Thread {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    data = android.net.Uri.parse("sms:${contact.number}")
-                }
-                ctx.startActivity(intent)
-            }.start()
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = android.net.Uri.parse("sms:${contact.number}")
+            }
+            ctx.startActivity(intent)
         }
         smsBtn.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT

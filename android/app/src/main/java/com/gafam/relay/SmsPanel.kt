@@ -95,11 +95,13 @@ object SmsPanel {
         loadDraftFromVpc(ctx, conv.address) { draftBody, updatedAt ->
             if (currentConv?.address == conv.address) {
                 lastDraftVersion = updatedAt
-                draftLoading = true
-                bodyEdit?.setText(draftBody)
-                if (draftBody.isNotEmpty()) bodyEdit?.setSelection(draftBody.length)
-                draftLoading = false
-                (ctx as? android.app.Activity)?.runOnUiThread { refs.syncDot.setTextColor(0xFF34A853.toInt()) }
+                (ctx as? android.app.Activity)?.runOnUiThread {
+                    draftLoading = true
+                    bodyEdit?.setText(draftBody)
+                    if (draftBody.isNotEmpty()) bodyEdit?.setSelection(draftBody.length)
+                    draftLoading = false
+                    refs.syncDot.setTextColor(0xFF34A853.toInt())
+                }
             }
         }
 
@@ -115,8 +117,9 @@ object SmsPanel {
                 draftTimer?.cancel(); draftTimer = java.util.Timer(true)
                 draftTimer?.schedule(object : java.util.TimerTask() {
                     override fun run() {
-                        saveDraftToVpc(ctx, conv.address, s?.toString() ?: "")
-                        draftDirty = false
+                        saveDraftToVpc(ctx, conv.address, s?.toString() ?: "") {
+                            draftDirty = false
+                        }
                     }
                 }, 300)
             }
@@ -280,7 +283,8 @@ object SmsPanel {
                 val a = it.getString(aI) ?: ""; if (a.isBlank()) continue
                 val msg = SmsMsg(it.getLong(idI), a, it.getString(bI) ?: "", it.getLong(dI), it.getInt(tI))
                 val norm = a.filter { c -> c.isDigit() }.takeLast(9)
-                if (norm.length >= 7) map.getOrPut(norm) { mutableListOf() }.add(msg)
+                if (norm.length >= 4) map.getOrPut(norm) { mutableListOf() }.add(msg)
+                else if (a.isNotBlank()) map.getOrPut(a) { mutableListOf() }.add(msg)
             }
         }
         return map.map { (_, msgs) ->
@@ -379,7 +383,10 @@ object SmsPanel {
 
     private fun phonesMatch(a: String, b: String): Boolean {
         val d = { s: String -> s.filter { it.isDigit() }.takeLast(9) }
-        return d(a).length >= 7 && d(b).length >= 7 && d(a) == d(b)
+        val da = d(a); val db = d(b)
+        if (da.length >= 4 && db.length >= 4 && da == db) return true
+        // Also match exact for alphanumeric/short codes
+        return a.equals(b, ignoreCase = true)
     }
 
     private fun renderMessages(ctx: Context, msgs: List<SmsMsg>, container: LinearLayout) {
@@ -475,18 +482,38 @@ object SmsPanel {
             setSingleLine(false)
         }
         val sendBtn = TextView(ctx).apply {
-            text = "\u25B6"; setTextColor(0xFF111111.toInt()); textSize = 16f
+            text = "\u25B6"; setTextColor(0xFF888888.toInt()); textSize = 16f
             gravity = Gravity.CENTER; width = dp(44); height = dp(44)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFFAAAAAA.toInt()); shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(0xFF444444.toInt()); shape = android.graphics.drawable.GradientDrawable.OVAL
             }
             layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { setMargins(dp(8), 0, 0, 0) }
             setOnClickListener {
                 val b = bodyInput.text.toString().trim()
                 val r = if (isNew) recipientInput?.text?.toString()?.trim() ?: recipient else recipient
                 if (r.isNotEmpty() && b.isNotEmpty()) { onSend(r, b); bodyInput.text.clear() }
+                else android.widget.Toast.makeText(ctx, "Enter recipient and message", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
+        // Enable/disable button dynamically
+        val updateSendBtn = {
+            val hasBody = bodyInput.text.toString().trim().isNotEmpty()
+            val hasRec = if (isNew) recipientInput?.text?.toString()?.trim()?.isNotEmpty() == true else true
+            val enabled = hasBody && hasRec
+            sendBtn.setTextColor(if (enabled) 0xFF111111.toInt() else 0xFF888888.toInt())
+            (sendBtn.background as? android.graphics.drawable.GradientDrawable)?.setColor(
+                if (enabled) 0xFFAAAAAA.toInt() else 0xFF444444.toInt())
+        }
+        bodyInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) { updateSendBtn() }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+        if (isNew) recipientInput?.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) { updateSendBtn() }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
         inputRow.addView(bodyInput); inputRow.addView(sendBtn)
         bar.addView(inputRow)
 
@@ -517,19 +544,42 @@ object SmsPanel {
     private fun deleteConversation(ctx: Context, address: String) {
         if (ContextCompat.checkSelfPermission(ctx, "android.permission.WRITE_SMS")
             != PackageManager.PERMISSION_GRANTED) {
-            android.widget.Toast.makeText(ctx, "Need WRITE_SMS permission", android.widget.Toast.LENGTH_LONG).show(); return
+            (ctx as? android.app.Activity)?.runOnUiThread {
+                android.widget.Toast.makeText(ctx, "Need WRITE_SMS permission", android.widget.Toast.LENGTH_LONG).show()
+            }; return
         }
-        try {
-            val n = ctx.contentResolver.delete(Uri.parse("content://sms"), "address = ?", arrayOf(address))
-            android.widget.Toast.makeText(ctx, "Deleted $n messages", android.widget.Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(ctx, "Delete failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+        thread(name = "gafam-delete-conv", isDaemon = true) {
+            try {
+                // Find all address variants matching the same contact
+                val norm = address.filter { it.isDigit() }.takeLast(9)
+                val addrs = mutableSetOf(address)
+                ctx.contentResolver.query(Uri.parse("content://sms"),
+                    arrayOf("DISTINCT address"), null, null, null)?.use { c ->
+                    val ai = c.getColumnIndex("address")
+                    while (c.moveToNext()) {
+                        val a = c.getString(ai) ?: ""
+                        if (a.filter { it.isDigit() }.takeLast(9) == norm || a == address) addrs.add(a)
+                    }
+                }
+                var total = 0
+                for (a in addrs) {
+                    total += ctx.contentResolver.delete(Uri.parse("content://sms"), "address = ?", arrayOf(a))
+                }
+                val msg = "Deleted $total messages"
+                (ctx as? android.app.Activity)?.runOnUiThread {
+                    android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                (ctx as? android.app.Activity)?.runOnUiThread {
+                    android.widget.Toast.makeText(ctx, "Delete failed: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
     // ── Draft sync ──
 
-    private fun saveDraftToVpc(ctx: Context, peer: String, body: String) {
+    private fun saveDraftToVpc(ctx: Context, peer: String, body: String, onDone: (() -> Unit)? = null) {
         val prefs = ctx.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
         val apiUrl = prefs.getString("apiUrl", null) ?: return
         val jwtSecret = prefs.getString("jwtSecret", null) ?: return
@@ -559,6 +609,7 @@ object SmsPanel {
                 val respJson = JSONObject(respStr)
                 val updatedAt = respJson.optString("updated_at", "")
                 if (updatedAt.isNotEmpty()) lastDraftVersion = updatedAt
+                onDone?.invoke()
             } catch (_: Exception) {}
         }
     }

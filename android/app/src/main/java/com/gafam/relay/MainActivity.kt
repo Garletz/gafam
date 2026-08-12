@@ -245,6 +245,14 @@ class MainActivity : AppCompatActivity() {
         smsUiReceiver?.let { unregisterReceiver(it) }
     }
 
+    override fun onBackPressed() {
+        if (activePanel == "sms" || activePanel == "contacts") {
+            switchPanel("dashboard")
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     private fun switchPanel(panel: String) {
         if (activePanel == panel) return
         activePanel = panel

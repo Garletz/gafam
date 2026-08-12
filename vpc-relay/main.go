@@ -554,7 +554,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
-			if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			if _, err := db.Exec("PRAGMA wal_checkpoint(PASSIVE)"); err != nil {
 				log.Printf("WAL checkpoint error: %v", err)
 			}
 		}

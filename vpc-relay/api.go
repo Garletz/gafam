@@ -630,8 +630,8 @@ func putWebDraftHandler(w http.ResponseWriter, r *http.Request) {
 
 	phone := getPhoneFromSession(r)
 	_, err := db.Exec(
-		`INSERT INTO gafam_drafts (phone, peer, body, updated_at) VALUES (?, ?, ?, datetime('now'))
-		 ON CONFLICT(phone, peer) DO UPDATE SET body = ?, updated_at = datetime('now')`,
+		`INSERT INTO gafam_drafts (phone, peer, body, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))
+		 ON CONFLICT(phone, peer) DO UPDATE SET body = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')`,
 		phone, params.Peer, params.Body, params.Body,
 	)
 	if err != nil {
@@ -692,8 +692,8 @@ func putApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := db.Exec(
-		`INSERT INTO gafam_drafts (phone, peer, body, updated_at) VALUES (?, ?, ?, datetime('now'))
-		 ON CONFLICT(phone, peer) DO UPDATE SET body = ?, updated_at = datetime('now')`,
+		`INSERT INTO gafam_drafts (phone, peer, body, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))
+		 ON CONFLICT(phone, peer) DO UPDATE SET body = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')`,
 		phone, params.Peer, params.Body, params.Body,
 	)
 	if err != nil {
