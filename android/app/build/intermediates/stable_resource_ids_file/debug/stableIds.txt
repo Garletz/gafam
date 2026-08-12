@@ -1,3 +1,4 @@
+com.gafam.relay:xml/file_paths = 0x7f120001
 com.gafam.relay:styleable/zxing_view = 0x7f110094
 com.gafam.relay:styleable/View = 0x7f11008e
 com.gafam.relay:styleable/Transition = 0x7f11008c

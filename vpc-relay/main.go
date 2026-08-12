@@ -182,6 +182,19 @@ func initDB() {
 		log.Fatal("Failed to create gafam_settings table:", err)
 	}
 
+	createDraftsTable := `
+	CREATE TABLE IF NOT EXISTS gafam_drafts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		phone TEXT,
+		peer TEXT,
+		body TEXT,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(createDraftsTable); err != nil {
+		log.Fatal("Failed to create gafam_drafts table:", err)
+	}
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gafam_drafts_phone_peer ON gafam_drafts(phone, peer)`)
+
 	log.Println("Database initialized successfully.")
 }
 
@@ -347,6 +360,8 @@ func main() {
 	mux.HandleFunc("POST /api/auth/sms/status", authMiddleware(updateSmsStatusHandler))
 	mux.HandleFunc("GET /api/auth/sms/outbox", authMiddleware(getOutboxHandler))
 	mux.HandleFunc("DELETE /api/auth/sms/outbox", authMiddleware(deleteOutboxHandler))
+	mux.HandleFunc("GET /api/auth/sms/draft", authMiddleware(getApkDraftHandler))
+	mux.HandleFunc("PUT /api/auth/sms/draft", authMiddleware(putApkDraftHandler))
 	mux.HandleFunc("POST /api/auth/mms/sync", authMiddleware(syncMmsHandler))
 	mux.HandleFunc("POST /api/gafam/contacts", authMiddleware(syncContactsHandler))
 	mux.HandleFunc("POST /api/auth/logs", authMiddleware(postLogsHandler))
@@ -368,6 +383,8 @@ func main() {
 	mux.HandleFunc("DELETE /api/web/sms/conversation", sessionMiddleware(deleteSmsConversationHandler))
 	mux.HandleFunc("POST /api/web/sms/outbox", sessionMiddleware(queueOutboxHandler))
 	mux.HandleFunc("POST /api/web/sms/delete", sessionMiddleware(deleteSmsBulkHandler))
+	mux.HandleFunc("GET /api/web/sms/draft", sessionMiddleware(getWebDraftHandler))
+	mux.HandleFunc("PUT /api/web/sms/draft", sessionMiddleware(putWebDraftHandler))
 	mux.HandleFunc("GET /api/web/mms", sessionMiddleware(getMmsHandler))
 	mux.HandleFunc("GET /api/web/mms/part/{id}", sessionMiddleware(getMmsPartHandler))
 

@@ -6777,3 +6777,4 @@ int styleable zxing_finder_zxing_viewfinder_mask 4
 int[] styleable zxing_view { 0x7f030487 }
 int styleable zxing_view_zxing_scanner_layout 0
 int xml accessibility_config 0x7f120000
+int xml file_paths 0x7f120001

@@ -83,6 +83,8 @@
   let outboxBody = $state('');
   let outboxStatus = $state('');
   let outboxTextarea: HTMLTextAreaElement | null = $state(null);
+  let draftTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastDraftPeer: string | null = $state(null);
   
   // Profile menu state
   let isProfileMenuOpen = $state(false);
@@ -254,6 +256,10 @@
       appState = 'connected' | 'error';
       loadSms();
       pollInterval = setInterval(loadSms, 5000);
+      // Poll drafts from phone every 3s (only if user isn't currently editing)
+      const draftPoll = setInterval(() => {
+        if (!draftTimer && selectedSender) loadDraft(selectedSender);
+      }, 3000);
     } else {
       appState = 'setup';
       // Deep link from recovery SMS: https://{phone}.gafam.cloud/?t=1834
@@ -790,6 +796,51 @@
       outboxStatus = 'Error: ' + err.message;
     }
   }
+
+  // ── Draft sync (cross-device typing) ──
+
+  async function saveDraft(peer: string, body: string) {
+    if (!vpcUrl || !sessionToken || !peer) return;
+    try {
+      const plaintext = JSON.stringify({ peer, body });
+      const encryptedPayload = await encryptAESGCM(plaintext, sessionToken);
+      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint });
+      await fetch(`/api/proxy/draft?${proxyParams.toString()}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(encryptedPayload)
+      });
+    } catch (_) {}
+  }
+
+  async function loadDraft(peer: string) {
+    if (!vpcUrl || !sessionToken || !peer) return;
+    try {
+      const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken, certFingerprint, peer });
+      const res = await fetch(`/api/proxy/draft?${proxyParams.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.body) outboxBody = data.body;
+      }
+    } catch (_) {}
+  }
+
+  $effect(() => {
+    // Debounced save: whenever outboxBody changes and we have a selected peer
+    const peer = selectedSender;
+    if (!peer || !outboxBody) return;
+    if (draftTimer) clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => saveDraft(peer, outboxBody), 1500);
+  });
+
+  $effect(() => {
+    // When switching conversations, load draft for the new peer
+    const peer = selectedSender;
+    if (!peer) return;
+    outboxBody = '';
+    loadDraft(peer);
+    lastDraftPeer = peer;
+  });
 
   async function loadSettings() {
     try {

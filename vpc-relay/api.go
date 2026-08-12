@@ -586,6 +586,161 @@ func deleteSmsConversationHandler(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": n, "peer": peer})
 }
 
+// --- Draft endpoints (cross-device typing sync) ---
+
+type DraftParams struct {
+	Peer string `json:"peer"`
+	Body string `json:"body"`
+}
+
+// PUT /api/web/sms/draft — web client saves draft for a conversation
+func putWebDraftHandler(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token = parts[1]
+			}
+		}
+	}
+
+	key := deriveKey(token)
+	var params DraftParams
+
+	var encrypted EncryptedPayload
+	if json.Unmarshal(bodyBytes, &encrypted) == nil && encrypted.EncryptedData != "" {
+		plaintext, decErr := decryptAESGCM(key, encrypted.EncryptedData, encrypted.IV)
+		if decErr == nil {
+			json.Unmarshal(plaintext, &params)
+		}
+	}
+	if params.Body == "" {
+		json.Unmarshal(bodyBytes, &params)
+	}
+	if params.Peer == "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "peer required"})
+		return
+	}
+
+	phone := getPhoneFromSession(r)
+	_, err := db.Exec(
+		`INSERT INTO gafam_drafts (phone, peer, body, updated_at) VALUES (?, ?, ?, datetime('now'))
+		 ON CONFLICT(phone, peer) DO UPDATE SET body = ?, updated_at = datetime('now')`,
+		phone, params.Peer, params.Body, params.Body,
+	)
+	if err != nil {
+		log.Printf("Draft save error: %v", err)
+		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+// GET /api/web/sms/draft?peer=X — web client retrieves draft for a conversation
+func getWebDraftHandler(w http.ResponseWriter, r *http.Request) {
+	peer := strings.TrimSpace(r.URL.Query().Get("peer"))
+	if peer == "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "peer required"})
+		return
+	}
+	phone := getPhoneFromSession(r)
+	var body string
+	err := db.QueryRow(`SELECT body FROM gafam_drafts WHERE phone = ? AND peer = ?`,
+		phone, peer).Scan(&body)
+	if err != nil {
+		sendJSON(w, http.StatusOK, map[string]string{"body": ""})
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"body": body})
+}
+
+// PUT /api/auth/sms/draft — APK saves draft
+func putApkDraftHandler(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+
+	key := deriveKey(string(jwtSecret))
+	var params DraftParams
+
+	var encrypted EncryptedPayload
+	if json.Unmarshal(bodyBytes, &encrypted) == nil && encrypted.EncryptedData != "" {
+		plaintext, decErr := decryptAESGCM(key, encrypted.EncryptedData, encrypted.IV)
+		if decErr == nil {
+			json.Unmarshal(plaintext, &params)
+		}
+	}
+	if params.Body == "" {
+		json.Unmarshal(bodyBytes, &params)
+	}
+	if params.Peer == "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "peer required"})
+		return
+	}
+
+	phone := getPhoneFromApkAuth(r)
+	_, err := db.Exec(
+		`INSERT INTO gafam_drafts (phone, peer, body, updated_at) VALUES (?, ?, ?, datetime('now'))
+		 ON CONFLICT(phone, peer) DO UPDATE SET body = ?, updated_at = datetime('now')`,
+		phone, params.Peer, params.Body, params.Body,
+	)
+	if err != nil {
+		log.Printf("APK draft save error: %v", err)
+		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+// GET /api/auth/sms/draft?peer=X — APK retrieves draft
+func getApkDraftHandler(w http.ResponseWriter, r *http.Request) {
+	peer := strings.TrimSpace(r.URL.Query().Get("peer"))
+	if peer == "" {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "peer required"})
+		return
+	}
+	phone := getPhoneFromApkAuth(r)
+	var body string
+	err := db.QueryRow(`SELECT body FROM gafam_drafts WHERE phone = ? AND peer = ?`,
+		phone, peer).Scan(&body)
+	if err != nil {
+		sendJSON(w, http.StatusOK, map[string]string{"body": ""})
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"body": body})
+}
+
+// getPhoneFromSession extracts the phone number from the web session token
+func getPhoneFromSession(r *http.Request) string {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "" {
+			parts := strings.Split(authHeader, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token = parts[1]
+			}
+		}
+	}
+	if token == "" {
+		return ""
+	}
+	var phone string
+	db.QueryRow(`SELECT phone FROM gafam_sessions WHERE session_token = ?`, token).Scan(&phone)
+	return phone
+}
+
+// getPhoneFromApkAuth extracts the phone number for APK-authenticated requests
+func getPhoneFromApkAuth(r *http.Request) string {
+	var phone string
+	db.QueryRow(`SELECT value FROM gafam_settings WHERE key = 'self_phone'`).Scan(&phone)
+	return phone
+}
+
 func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("SELECT id, sender, body, timestamp, created_at, status FROM gafam_sms ORDER BY timestamp DESC")
 	if err != nil {
