@@ -258,7 +258,7 @@
       pollInterval = setInterval(loadSms, 5000);
       // Poll drafts from phone every 3s (only if user isn't currently editing)
       const draftPoll = setInterval(() => {
-        if (!draftTimer && selectedSender) loadDraft(selectedSender);
+        if (selectedSender && !draftTimer) loadDraft(selectedSender);
       }, 3000);
     } else {
       appState = 'setup';
@@ -820,7 +820,7 @@
       const res = await fetch(`/api/proxy/draft?${proxyParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.body) outboxBody = data.body;
+        outboxBody = data.body ?? '';
       }
     } catch (_) {}
   }

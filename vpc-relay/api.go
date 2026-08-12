@@ -589,8 +589,9 @@ func deleteSmsConversationHandler(w http.ResponseWriter, r *http.Request) {
 // --- Draft endpoints (cross-device typing sync) ---
 
 type DraftParams struct {
-	Peer string `json:"peer"`
-	Body string `json:"body"`
+	Phone string `json:"phone"`
+	Peer  string `json:"peer"`
+	Body  string `json:"body"`
 }
 
 // PUT /api/web/sms/draft — web client saves draft for a conversation
@@ -682,7 +683,11 @@ func putApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	phone := getPhoneFromApkAuth(r)
+	phone := params.Phone
+	if phone == "" {
+		phone = getPhoneFromApkAuth(r)
+	}
+
 	_, err := db.Exec(
 		`INSERT INTO gafam_drafts (phone, peer, body, updated_at) VALUES (?, ?, ?, datetime('now'))
 		 ON CONFLICT(phone, peer) DO UPDATE SET body = ?, updated_at = datetime('now')`,
@@ -696,14 +701,17 @@ func putApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
-// GET /api/auth/sms/draft?peer=X — APK retrieves draft
+// GET /api/auth/sms/draft?peer=X&phone=Y — APK retrieves draft
 func getApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 	peer := strings.TrimSpace(r.URL.Query().Get("peer"))
 	if peer == "" {
 		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "peer required"})
 		return
 	}
-	phone := getPhoneFromApkAuth(r)
+	phone := strings.TrimSpace(r.URL.Query().Get("phone"))
+	if phone == "" {
+		phone = getPhoneFromApkAuth(r)
+	}
 	var body string
 	err := db.QueryRow(`SELECT body FROM gafam_drafts WHERE phone = ? AND peer = ?`,
 		phone, peer).Scan(&body)
