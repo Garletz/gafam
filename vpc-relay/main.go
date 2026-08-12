@@ -27,6 +27,27 @@ import (
 var db *sql.DB
 var jwtSecret []byte
 
+// columnExists checks whether a column exists in a table (safe migration helper).
+func columnExists(table, column string) bool {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			continue
+		}
+		if name == column {
+			return true
+		}
+	}
+	return false
+}
+
 // CertFingerprint is the SHA-256 fingerprint of the self-signed TLS certificate.
 // It is announced to the Cloudflare directory so the Worker can verify the VPC identity.
 func initDB() {
@@ -73,8 +94,10 @@ func initDB() {
 		log.Fatal("Failed to create gafam_sms table:", err)
 	}
 
-	// Try to add status column if upgrading an existing DB
-	db.Exec("ALTER TABLE gafam_sms ADD COLUMN status TEXT DEFAULT 'inbox';")
+	// Migrate: add status column if upgrading an existing DB
+	if !columnExists("gafam_sms", "status") {
+		db.Exec("ALTER TABLE gafam_sms ADD COLUMN status TEXT DEFAULT 'inbox'")
+	}
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gafam_sms_dedup ON gafam_sms(sender, body, timestamp)`)
 	purgeNearDuplicateSms()
 
@@ -104,8 +127,10 @@ func initDB() {
 	if _, err := db.Exec(createOutboxTable); err != nil {
 		log.Fatal("Failed to create gafam_outbox table:", err)
 	}
-	// Link each queued outbox row to its gafam_sms history row (delivery status feedback)
-	db.Exec("ALTER TABLE gafam_outbox ADD COLUMN sms_id INTEGER;")
+	// Migrate: link each queued outbox row to its gafam_sms history row (delivery status feedback)
+	if !columnExists("gafam_outbox", "sms_id") {
+		db.Exec("ALTER TABLE gafam_outbox ADD COLUMN sms_id INTEGER")
+	}
 
 	createMmsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_mms (

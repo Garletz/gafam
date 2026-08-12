@@ -45,6 +45,7 @@
   let contactSearchQuery: string = $state('');
   let chatSearchQuery: string = $state('');
   let syncContacts: boolean = $state(true);
+  let syncContactsLoading: boolean = $state(true);
   let selectedSender: string | null = $state(null);
   let chatSearch = $state('');
   let messagesEl: HTMLDivElement | undefined = $state();
@@ -88,7 +89,8 @@
   let lastDraftPeer: string | null = $state(null);
   let lastDraftSync: number = $state(0);
   let lastDraftSaved: number = $state(0);
-  let lastDraftVersion = '';
+  let lastDraftVersion: Record<string, string> = $state({});
+  let draftCache: Record<string, string> = {};
   let draftLoading = false;
   
   // Profile menu state
@@ -698,20 +700,21 @@
         const payload: any = await res.json();
         if (payload.error) {
            statusMsg = 'VPC returned an error: ' + payload.error;
-        } else if (payload.encrypted_data && payload.iv) {
+        } else         if (payload.encrypted_data && payload.iv) {
            try {
              const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
              smsList = JSON.parse(plaintext);
-             statusMsg = '';
+             if (appState === 'connected') statusMsg = '';
            } catch (decErr: any) {
              statusMsg = 'Decryption failed: ' + decErr.message;
            }
         } else {
            smsList = payload;
-           statusMsg = '';
+           if (appState === 'connected') statusMsg = '';
         }
       } else if (res.status === 403) {
         if (pollInterval) clearInterval(pollInterval);
+        if (draftPollInterval) clearInterval(draftPollInterval);
         appState = 'setup';
         sessionToken = '';
         vpcUrl = '';
@@ -798,11 +801,13 @@
       
       if (!res.ok) {
         outboxStatus = 'Failed to send: HTTP ' + res.status;
-        outboxBody = body; // restore text on failure
+        outboxBody = body;
+        optimisticSms = optimisticSms.filter(m => m !== optMsg);
       }
     } catch (err: any) {
       outboxStatus = 'Error: ' + err.message;
-      outboxBody = body; // restore text on failure
+      outboxBody = body;
+      optimisticSms = optimisticSms.filter(m => m !== optMsg);
     }
   }
 
@@ -821,8 +826,9 @@
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.updated_at) lastDraftVersion = data.updated_at;
+        if (data.updated_at) lastDraftVersion[peer] = data.updated_at;
         lastDraftSaved = Date.now();
+        draftCache[peer] = body;
       }
     } catch (_) {}
   }
@@ -834,11 +840,12 @@
       const res = await fetch(`/api/proxy/draft?${proxyParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        // Only update if version is newer (or first load)
-        if (!data.updated_at || data.updated_at === lastDraftVersion) return;
-        lastDraftVersion = data.updated_at;
+        if (!data.updated_at || data.updated_at === lastDraftVersion[peer]) return;
+        if (peer !== selectedSender) return;
+        lastDraftVersion[peer] = data.updated_at;
         draftLoading = true;
         outboxBody = data.body ?? '';
+        draftCache[peer] = outboxBody;
         draftLoading = false;
         lastDraftSync = Date.now();
       }
@@ -857,14 +864,17 @@
     // When switching conversations, load draft for the new peer
     const peer = selectedSender;
     if (!peer) return;
-    lastDraftVersion = '';
-    outboxBody = '';
-    loadDraft(peer);
+    if (lastDraftPeer && lastDraftPeer !== peer) {
+      draftCache[lastDraftPeer] = outboxBody;
+    }
+    outboxBody = draftCache[peer] ?? '';
     lastDraftPeer = peer;
+    loadDraft(peer);
   });
 
   async function loadSettings() {
     try {
+      syncContactsLoading = true;
       const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken });
       const res = await fetch(`/api/proxy/settings?${proxyParams.toString()}`);
       if (res.ok) {
@@ -879,7 +889,9 @@
           } catch(e) {}
         }
       }
-    } catch (e) {}
+    } catch (e) {} finally {
+      syncContactsLoading = false;
+    }
   }
 
   async function toggleContactSync() {
@@ -993,8 +1005,8 @@
               {#if sidebarTab === 'chats'}
               <div class="chat-sub-actions">
                 <label class="toggle-sync" title="Sync Contacts with Android">
-                  <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} />
-                  <span>Sync</span>
+                  <input type="checkbox" bind:checked={syncContacts} onchange={toggleContactSync} disabled={syncContactsLoading} />
+                  <span>Sync{#if syncContactsLoading}…{/if}</span>
                 </label>
                 <button
                   type="button"

@@ -84,60 +84,70 @@ func insertSmsDeduped(sender, body string, timestamp int64, status string) (int6
 
 // purgeNearDuplicateSms removes historical near-duplicates (keeps lowest id).
 // Runs once at startup so the web UI cleans itself after a VPC pull.
+// Processes in batches to avoid OOM with large SMS databases.
 func purgeNearDuplicateSms() {
-	rows, err := db.Query(`SELECT id, sender, body, timestamp FROM gafam_sms ORDER BY id ASC`)
-	if err != nil {
-		log.Printf("sms dedup purge: query failed: %v", err)
-		return
-	}
-	defer rows.Close()
+	const batchSize = 5000
+	var maxID int64 = 0
+	totalDeleted := 0
 
-	var all []smsRow
-	for rows.Next() {
-		var r smsRow
-		if err := rows.Scan(&r.id, &r.sender, &r.body, &r.timestamp); err != nil {
-			continue
+	for {
+		rows, err := db.Query(`SELECT id, sender, body, timestamp FROM gafam_sms WHERE id > ? ORDER BY id ASC LIMIT ?`, maxID, batchSize)
+		if err != nil {
+			log.Printf("sms dedup purge: query failed: %v", err)
+			return
 		}
-		all = append(all, r)
-	}
 
-	// body → kept rows (small lists; we only retain those still in window range of scan tip)
-	keptByBody := make(map[string][]smsRow, 256)
-	var toDelete []int64
+		var all []smsRow
+		for rows.Next() {
+			var r smsRow
+			if err := rows.Scan(&r.id, &r.sender, &r.body, &r.timestamp); err != nil {
+				continue
+			}
+			all = append(all, r)
+		}
+		rows.Close()
 
-	for _, r := range all {
-		cands := keptByBody[r.body]
-		dup := false
-		// Drop kept entries that can no longer collide (far in the past vs current)
-		alive := cands[:0]
-		for _, k := range cands {
-			if abs64(r.timestamp-k.timestamp) < smsDedupWindowMs*2 {
-				alive = append(alive, k)
+		if len(all) == 0 {
+			break
+		}
+
+		keptByBody := make(map[string][]smsRow, 256)
+		var toDelete []int64
+
+		for _, r := range all {
+			cands := keptByBody[r.body]
+			dup := false
+			alive := cands[:0]
+			for _, k := range cands {
+				if abs64(r.timestamp-k.timestamp) < smsDedupWindowMs*2 {
+					alive = append(alive, k)
+				}
+			}
+			cands = alive
+			for _, k := range cands {
+				if phonesMatch(r.sender, k.sender) && abs64(r.timestamp-k.timestamp) < smsDedupWindowMs {
+					dup = true
+					break
+				}
+			}
+			if dup {
+				toDelete = append(toDelete, r.id)
+			} else {
+				cands = append(cands, r)
+				keptByBody[r.body] = cands
 			}
 		}
-		cands = alive
-		for _, k := range cands {
-			if phonesMatch(r.sender, k.sender) && abs64(r.timestamp-k.timestamp) < smsDedupWindowMs {
-				dup = true
-				break
+
+		for _, id := range toDelete {
+			if _, err := db.Exec(`DELETE FROM gafam_sms WHERE id = ?`, id); err == nil {
+				totalDeleted++
 			}
 		}
-		if dup {
-			toDelete = append(toDelete, r.id)
-		} else {
-			cands = append(cands, r)
-			keptByBody[r.body] = cands
-		}
+
+		maxID = all[len(all)-1].id
 	}
 
-	if len(toDelete) == 0 {
-		return
+	if totalDeleted > 0 {
+		log.Printf("sms dedup purge: removed %d near-duplicate row(s)", totalDeleted)
 	}
-	deleted := 0
-	for _, id := range toDelete {
-		if _, err := db.Exec(`DELETE FROM gafam_sms WHERE id = ?`, id); err == nil {
-			deleted++
-		}
-	}
-	log.Printf("sms dedup purge: removed %d near-duplicate row(s)", deleted)
 }

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -159,7 +160,10 @@ func queueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Persist in chat history so web UI still shows the message after reload
 	ts := time.Now().UnixMilli()
-	smsId, _, _ := insertSmsDeduped(params.Recipient, params.Body, ts, "outbound")
+	smsId, _, dedupErr := insertSmsDeduped(params.Recipient, params.Body, ts, "outbound")
+	if dedupErr != nil {
+		log.Printf("queueOutbox: insertSmsDeduped error: %v", dedupErr)
+	}
 
 	stmt := `INSERT INTO gafam_outbox (recipient, body, sms_id) VALUES (?, ?, ?)`
 	res, err := db.Exec(stmt, params.Recipient, params.Body, smsId)
@@ -583,6 +587,7 @@ func deleteSmsConversationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, _ := res.RowsAffected()
+	db.Exec(`DELETE FROM gafam_outbox WHERE recipient = ?`, peer)
 	sendJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": n, "peer": peer})
 }
 
@@ -614,13 +619,15 @@ func putWebDraftHandler(w http.ResponseWriter, r *http.Request) {
 	var params DraftParams
 
 	var encrypted EncryptedPayload
+	decrypted := false
 	if json.Unmarshal(bodyBytes, &encrypted) == nil && encrypted.EncryptedData != "" {
 		plaintext, decErr := decryptAESGCM(key, encrypted.EncryptedData, encrypted.IV)
 		if decErr == nil {
 			json.Unmarshal(plaintext, &params)
+			decrypted = true
 		}
 	}
-	if params.Body == "" {
+	if !decrypted {
 		json.Unmarshal(bodyBytes, &params)
 	}
 	if params.Peer == "" {
@@ -672,13 +679,15 @@ func putApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 	var params DraftParams
 
 	var encrypted EncryptedPayload
+	decrypted := false
 	if json.Unmarshal(bodyBytes, &encrypted) == nil && encrypted.EncryptedData != "" {
 		plaintext, decErr := decryptAESGCM(key, encrypted.EncryptedData, encrypted.IV)
 		if decErr == nil {
 			json.Unmarshal(plaintext, &params)
+			decrypted = true
 		}
 	}
-	if params.Body == "" {
+	if !decrypted {
 		json.Unmarshal(bodyBytes, &params)
 	}
 	if params.Peer == "" {
@@ -704,6 +713,7 @@ func putApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 
 	var updatedAt string
 	db.QueryRow(`SELECT updated_at FROM gafam_drafts WHERE phone = ? AND peer = ?`, phone, params.Peer).Scan(&updatedAt)
+	touchApkRelay()
 	sendJSON(w, http.StatusOK, map[string]string{"ok": "true", "updated_at": updatedAt})
 }
 
@@ -725,6 +735,7 @@ func getApkDraftHandler(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusOK, map[string]interface{}{"body": "", "updated_at": ""})
 		return
 	}
+	touchApkRelay()
 	sendJSON(w, http.StatusOK, map[string]interface{}{"body": body, "updated_at": updatedAt})
 }
 
@@ -756,7 +767,12 @@ func getPhoneFromApkAuth(r *http.Request) string {
 }
 
 func getSmsHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, sender, body, timestamp, created_at, status FROM gafam_sms ORDER BY timestamp DESC")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 1000
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 10000 {
+		limit = l
+	}
+	rows, err := db.Query("SELECT id, sender, body, timestamp, created_at, status FROM gafam_sms ORDER BY timestamp DESC LIMIT ?", limit)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -1208,6 +1224,11 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if fullSync && len(contacts) > 5000 {
+		http.Error(w, "Too many contacts for full sync (max 5000 per batch)", http.StatusBadRequest)
+		return
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
@@ -1217,7 +1238,7 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 	stmt, err := tx.Prepare(`
 		INSERT INTO gafam_contacts (phone, name)
 		VALUES (?, ?)
-		ON CONFLICT(phone) DO UPDATE SET name=excluded.name
+		ON CONFLICT(phone) DO UPDATE SET name=excluded.name, updated_at = datetime('now')
 	`)
 	if err != nil {
 		tx.Rollback()

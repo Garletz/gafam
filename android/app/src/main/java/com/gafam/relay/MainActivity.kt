@@ -255,6 +255,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchPanel(panel: String) {
         if (activePanel == panel) return
+        if (activePanel == "sms") SmsPanel.onPanelHidden()
         activePanel = panel
         contentFrame.removeAllViews()
         highlightNav(panel)
@@ -265,6 +266,7 @@ class MainActivity : AppCompatActivity() {
             }
             "sms" -> {
                 if (smsView == null) smsView = SmsPanel.create(this)
+                SmsPanel.onPanelShown()
                 contentFrame.addView(smsView)
             }
             else -> {

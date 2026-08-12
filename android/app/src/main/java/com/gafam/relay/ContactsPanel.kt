@@ -29,11 +29,9 @@ object ContactsPanel {
             setBackgroundColor(0xFF111111.toInt())
         }
 
-        // Header bar
         val header = buildHeader(ctx)
         root.addView(header)
 
-        // Search + export row
         val toolbar = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(10, 6, 10, 6)
@@ -63,7 +61,6 @@ object ContactsPanel {
         toolbar.addView(exportBtn)
         root.addView(toolbar)
 
-        // Counter
         val countLabel = TextView(ctx).apply {
             setTextColor(0xFF777777.toInt())
             textSize = 12f
@@ -71,7 +68,6 @@ object ContactsPanel {
         }
         root.addView(countLabel)
 
-        // Contact list
         val listContainer = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(ctx).apply { addView(listContainer) }
         root.addView(scroll, LinearLayout.LayoutParams(
@@ -133,10 +129,9 @@ object ContactsPanel {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
 
-        // Load contacts
         thread(name = "gafam-load-contacts", isDaemon = true) {
             loadContacts(ctx)
-            (ctx as? android.app.Activity)?.runOnUiThread { showList() }
+            (ctx as? android.app.Activity)?.runOnUiThread { showList(searchInput.text.toString()) }
         }
 
         return root
@@ -253,7 +248,7 @@ object ContactsPanel {
             val phoneIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
             while (it.moveToNext()) {
                 val name = it.getString(nameIdx) ?: "Unknown"
-                val number = it.getString(phoneIdx)?.replace(" ", "") ?: ""
+                val number = it.getString(phoneIdx)?.filter { c -> c.isDigit() } ?: ""
                 if (number.isNotBlank() && number.length >= 7) {
                     list.add(Contact(name, number))
                 }
@@ -262,14 +257,21 @@ object ContactsPanel {
         contactsData = list
     }
 
+    private fun escapeVCard(s: String): String {
+        return s.replace("\\", "\\\\")
+            .replace(",", "\\,")
+            .replace(";", "\\;")
+            .replace("\n", "\\n")
+    }
+
     private fun exportContacts(ctx: Context) {
         thread(name = "gafam-export-contacts", isDaemon = true) {
             try {
                 val vcf = buildString {
                     for (c in contactsData) {
                         append("BEGIN:VCARD\nVERSION:3.0\n")
-                        append("FN:${c.name}\n")
-                        append("TEL:${c.number}\n")
+                        append("FN:${escapeVCard(c.name)}\n")
+                        append("TEL:${escapeVCard(c.number)}\n")
                         append("END:VCARD\n")
                     }
                 }

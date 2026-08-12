@@ -26,6 +26,8 @@ object SmsPanel {
 
     private val contactCache = mutableMapOf<String, String>()
     private var convListLayout: LinearLayout? = null
+    private var convListScroll: ScrollView? = null
+    private var convListContainer: LinearLayout? = null
     private var chatDetailLayout: LinearLayout? = null
     private var mainContainer: LinearLayout? = null
     private var ctxRef: Context? = null
@@ -35,6 +37,9 @@ object SmsPanel {
     @Volatile private var draftDirty = false
     @Volatile private var draftLoading = false
     private var lastDraftVersion: String? = null
+    @Volatile private var panelVisible = false
+    private var composeIsNew = false
+    private var currentBodyEdit: EditText? = null
 
     fun create(ctx: Context): View {
         ctxRef = ctx
@@ -53,28 +58,43 @@ object SmsPanel {
         return root
     }
 
-    fun onDestroy() { draftTimer?.cancel(); draftPollTimer?.cancel() }
+    fun onPanelShown() {
+        panelVisible = true
+        currentConv?.let { conv ->
+            val ctx = ctxRef ?: return
+            val refs = chatDetailLayout?.tag as? ChatRefs ?: return
+            startDraftPoll(ctx, conv, currentBodyEdit, refs)
+        }
+    }
 
-    // ── Navigation ──
+    fun onPanelHidden() {
+        panelVisible = false
+        draftTimer?.cancel(); draftTimer = null
+        draftPollTimer?.cancel(); draftPollTimer = null
+    }
+
+    fun onDestroy() { draftTimer?.cancel(); draftPollTimer?.cancel() }
 
     private fun showConversations() {
         currentConv = null; draftPollTimer?.cancel()
         val mc = mainContainer ?: return; mc.removeAllViews(); mc.addView(convListLayout)
-        val cs = convListLayout?.getChildAt(1) as? ScrollView
-        (cs?.getChildAt(0) as? LinearLayout)?.let { loadConversations(it) }
+        convListContainer?.let { loadConversations(it) }
     }
 
     private fun showChat(conv: Conversation) {
         val ctx = ctxRef ?: return; val mc = mainContainer ?: return
         val cl = chatDetailLayout ?: return; val refs = cl.tag as? ChatRefs ?: return
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
+
+        draftTimer?.cancel(); draftTimer = null
+        draftPollTimer?.cancel(); draftPollTimer = null
+        lastDraftVersion = null
         currentConv = conv
 
         refs.titleText.text = conv.name
         refs.subtitleText.text = conv.address
         refs.backBtn.setOnClickListener { showConversations() }
 
-        // Delete
         refs.deleteBtn.setOnClickListener {
             android.app.AlertDialog.Builder(ctx)
                 .setTitle("Delete conversation").setMessage("Delete all messages with ${conv.name}?")
@@ -82,16 +102,20 @@ object SmsPanel {
                 .setNegativeButton("Cancel", null).show()
         }
 
-        // Compose bar — no recipient field for known conversations
         refs.composeBar.removeAllViews()
-        val isNew = conv.address == conv.name && conv.count == 0
-        val (compBar, bodyEdit) = buildComposeBar(ctx, conv.address, isNew) { recipient, body ->
-            sendSms(ctx, recipient, body) { loadMessages(conv.address, refs.msgContainer) }
+        composeIsNew = conv.address == conv.name && conv.count == 0
+        val (compBar, bodyEdit) = buildComposeBar(ctx, conv.address, composeIsNew) { recipient, body ->
+            sendSms(ctx, recipient, body) {
+                loadMessages(conv.address, refs.msgContainer)
+                if (composeIsNew) {
+                    composeIsNew = false
+                    rebuildComposeBar(ctx, conv.address, refs, currentBodyEdit)
+                }
+            }
         }
+        currentBodyEdit = bodyEdit
         refs.composeBar.addView(compBar)
 
-        // Draft sync
-        lastDraftVersion = null // reset on new conversation
         loadDraftFromVpc(ctx, conv.address) { draftBody, updatedAt ->
             if (currentConv?.address == conv.address) {
                 lastDraftVersion = updatedAt
@@ -105,7 +129,6 @@ object SmsPanel {
             }
         }
 
-        // Clean old text watchers
         bodyEdit?.tag?.let { old ->
             try { bodyEdit?.removeTextChangedListener(old as android.text.TextWatcher) } catch (_: Exception) {}
         }
@@ -129,11 +152,21 @@ object SmsPanel {
         bodyEdit?.tag = watcher
         bodyEdit?.addTextChangedListener(watcher)
 
+        if (panelVisible) {
+            startDraftPoll(ctx, conv, bodyEdit, refs)
+        }
+
+        loadMessages(conv.address, refs.msgContainer)
+        mc.removeAllViews(); mc.addView(cl)
+        refs.scroll.post { refs.scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun startDraftPoll(ctx: Context, conv: Conversation, bodyEdit: EditText?, refs: ChatRefs) {
         draftPollTimer?.cancel(); draftPollTimer = java.util.Timer(true)
         draftPollTimer?.schedule(object : java.util.TimerTask() {
             override fun run() {
                 if (currentConv?.address != conv.address) return
-                if (draftDirty) return  // user is typing locally — don't overwrite
+                if (draftDirty) return
                 loadDraftFromVpc(ctx, conv.address) { draftBody, updatedAt ->
                     if (currentConv?.address == conv.address) {
                         if (updatedAt.isEmpty() || updatedAt == lastDraftVersion) return@loadDraftFromVpc
@@ -154,13 +187,47 @@ object SmsPanel {
                 }
             }
         }, 1500, 1500)
-
-        loadMessages(conv.address, refs.msgContainer)
-        mc.removeAllViews(); mc.addView(cl)
-        refs.scroll.post { refs.scroll.fullScroll(View.FOCUS_DOWN) }
     }
 
-    // ── Chat detail layout (header + messages + compose) ──
+    private fun rebuildComposeBar(ctx: Context, address: String, refs: ChatRefs, oldBodyEdit: EditText?) {
+        val (compBar, newBodyEdit) = buildComposeBar(ctx, address, false) { recipient, body ->
+            sendSms(ctx, recipient, body) {
+                loadMessages(address, refs.msgContainer)
+            }
+        }
+        currentBodyEdit = newBodyEdit
+        refs.composeBar.removeAllViews()
+        refs.composeBar.addView(compBar)
+
+        // Copy text and cursor from old body edit
+        oldBodyEdit?.let { old ->
+            val txt = old.text?.toString() ?: ""
+            if (txt.isNotEmpty()) {
+                newBodyEdit?.setText(txt)
+                newBodyEdit?.setSelection(txt.length)
+            }
+        }
+
+        // Reattach text watcher on new body edit
+        val watcher = object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (draftLoading) return
+                draftDirty = true
+                draftTimer?.cancel(); draftTimer = java.util.Timer(true)
+                draftTimer?.schedule(object : java.util.TimerTask() {
+                    override fun run() {
+                        val c = ctxRef ?: return
+                        val conv = currentConv ?: return
+                        saveDraftToVpc(c, conv.address, s?.toString() ?: "") { draftDirty = false }
+                    }
+                }, 300)
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        }
+        newBodyEdit?.tag = watcher
+        newBodyEdit?.addTextChangedListener(watcher)
+    }
 
     private class ChatRefs(
         val titleText: TextView, val subtitleText: TextView, val msgContainer: LinearLayout,
@@ -172,7 +239,6 @@ object SmsPanel {
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
         val layout = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
 
-        // ── Header ──
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; setPadding(dp(6), dp(8), dp(6), dp(8))
             setBackgroundColor(0xFF181818.toInt()); gravity = Gravity.CENTER_VERTICAL
@@ -215,8 +281,6 @@ object SmsPanel {
         return layout
     }
 
-    // ── Conversation list ──
-
     private fun buildConversationListLayout(ctx: Context): LinearLayout {
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
         val layout = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
@@ -251,14 +315,14 @@ object SmsPanel {
         layout.addView(header)
 
         val cs = ScrollView(ctx)
+        convListScroll = cs
         val cc = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        convListContainer = cc
         cs.addView(cc)
         layout.addView(cs, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         return layout
     }
-
-    // ── Load & render conversations ──
 
     private fun loadConversations(c: LinearLayout) {
         val ctx = ctxRef ?: return; c.removeAllViews()
@@ -273,13 +337,15 @@ object SmsPanel {
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS)
             != PackageManager.PERMISSION_GRANTED) return emptyList()
         val map = mutableMapOf<String, MutableList<SmsMsg>>()
+        var totalMsgs = 0
         ctx.contentResolver.query(Uri.parse("content://sms"),
             arrayOf("_id","address","body","date","type"),
             null, null, "date DESC")?.use {
             val idI = it.getColumnIndex("_id"); val aI = it.getColumnIndex("address")
             val bI = it.getColumnIndex("body"); val dI = it.getColumnIndex("date")
             val tI = it.getColumnIndex("type")
-            while (it.moveToNext()) {
+            while (it.moveToNext() && totalMsgs < 500) {
+                totalMsgs++
                 val a = it.getString(aI) ?: ""; if (a.isBlank()) continue
                 val msg = SmsMsg(it.getLong(idI), a, it.getString(bI) ?: "", it.getLong(dI), it.getInt(tI))
                 val norm = a.filter { c -> c.isDigit() }.takeLast(9)
@@ -349,8 +415,6 @@ object SmsPanel {
         }
     }
 
-    // ── Load & render messages ──
-
     private fun loadMessages(address: String, container: LinearLayout) {
         val ctx = ctxRef ?: return; container.removeAllViews()
         container.addView(centerLabel(ctx, "Loading..."))
@@ -385,7 +449,6 @@ object SmsPanel {
         val d = { s: String -> s.filter { it.isDigit() }.takeLast(9) }
         val da = d(a); val db = d(b)
         if (da.length >= 4 && db.length >= 4 && da == db) return true
-        // Also match exact for alphanumeric/short codes
         return a.equals(b, ignoreCase = true)
     }
 
@@ -438,8 +501,6 @@ object SmsPanel {
             row.addView(bubble); row.addView(timeLbl); container.addView(row)
         }
     }
-
-    // ── Compose bar (full width, no recipient for known conversations) ──
 
     private fun buildComposeBar(
         ctx: Context, recipient: String, isNew: Boolean,
@@ -495,7 +556,6 @@ object SmsPanel {
                 else android.widget.Toast.makeText(ctx, "Enter recipient and message", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
-        // Enable/disable button dynamically
         val updateSendBtn = {
             val hasBody = bodyInput.text.toString().trim().isNotEmpty()
             val hasRec = if (isNew) recipientInput?.text?.toString()?.trim()?.isNotEmpty() == true else true
@@ -520,8 +580,6 @@ object SmsPanel {
         return bar to bodyInput
     }
 
-    // ── Send ──
-
     private fun sendSms(ctx: Context, recipient: String, body: String, reload: () -> Unit) {
         try {
             val mgr = SmsManager.getDefault()
@@ -530,7 +588,14 @@ object SmsPanel {
             else mgr.sendTextMessage(recipient, null, body, null, null)
             android.widget.Toast.makeText(ctx, "Sent", android.widget.Toast.LENGTH_SHORT).show()
             thread(name = "gafam-sms-reload", isDaemon = true) {
-                Thread.sleep(800)
+                for (attempt in 0 until 5) {
+                    Thread.sleep(300)
+                    val msgs = readMessages(ctx, recipient)
+                    if (msgs.isNotEmpty()) {
+                        (ctx as? android.app.Activity)?.runOnUiThread { reload() }
+                        return@thread
+                    }
+                }
                 (ctx as? android.app.Activity)?.runOnUiThread { reload() }
             }
             SmsHistorySync.syncAsync(ctx, force = true)
@@ -538,8 +603,6 @@ object SmsPanel {
             android.widget.Toast.makeText(ctx, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
-
-    // ── Delete ──
 
     private fun deleteConversation(ctx: Context, address: String) {
         if (ContextCompat.checkSelfPermission(ctx, "android.permission.WRITE_SMS")
@@ -550,7 +613,6 @@ object SmsPanel {
         }
         thread(name = "gafam-delete-conv", isDaemon = true) {
             try {
-                // Find all address variants matching the same contact
                 val norm = address.filter { it.isDigit() }.takeLast(9)
                 val addrs = mutableSetOf(address)
                 ctx.contentResolver.query(Uri.parse("content://sms"),
@@ -576,8 +638,6 @@ object SmsPanel {
             }
         }
     }
-
-    // ── Draft sync ──
 
     private fun saveDraftToVpc(ctx: Context, peer: String, body: String, onDone: (() -> Unit)? = null) {
         val prefs = ctx.getSharedPreferences("GAFAM_PREFS", Context.MODE_PRIVATE)
@@ -633,11 +693,12 @@ object SmsPanel {
         }
     }
 
-    // ── Contact name ──
-
     private fun lookupName(ctx: Context, phone: String): String {
         val norm = phone.filter { it.isDigit() }.takeLast(9)
-        if (norm.length < 7) return phone
+        if (norm.length < 7) {
+            contactCache[phone] = phone
+            return phone
+        }
         contactCache[norm]?.let { return it }
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS)
             == PackageManager.PERMISSION_GRANTED) {
@@ -656,8 +717,6 @@ object SmsPanel {
         contactCache[norm] = phone; return phone
     }
 
-    // ── UI helpers ──
-
     private fun makeAvatar(ctx: Context, letter: String, bg: Int, sizePx: Int): TextView {
         return TextView(ctx).apply {
             text = letter; setTextColor(0xFF111111.toInt()); textSize = 14f
@@ -672,7 +731,7 @@ object SmsPanel {
         return TextView(ctx).apply {
             this.text = text; setTextColor(0xFFCCCCCC.toInt()); textSize = 18f
             gravity = Gravity.CENTER; width = size; height = size
-            setOnClickListener {} // set by caller
+            setOnClickListener {}
         }
     }
 
