@@ -33,6 +33,7 @@ object SmsPanel {
     private var draftTimer: java.util.Timer? = null
     private var draftPollTimer: java.util.Timer? = null
     @Volatile private var draftDirty = false
+    @Volatile private var draftLoading = false
 
     fun create(ctx: Context): View {
         ctxRef = ctx
@@ -91,13 +92,22 @@ object SmsPanel {
         // Draft sync
         loadDraftFromVpc(ctx, conv.address) { draftBody ->
             if (currentConv?.address == conv.address) {
+                draftLoading = true
                 bodyEdit?.setText(draftBody)
                 if (draftBody.isNotEmpty()) bodyEdit?.setSelection(draftBody.length)
+                draftLoading = false
                 (ctx as? android.app.Activity)?.runOnUiThread { refs.syncDot.setTextColor(0xFF34A853.toInt()) }
             }
         }
-        bodyEdit?.addTextChangedListener(object : android.text.TextWatcher {
+
+        // Clean old text watchers
+        bodyEdit?.tag?.let { old ->
+            try { bodyEdit?.removeTextChangedListener(old as android.text.TextWatcher) } catch (_: Exception) {}
+        }
+
+        val watcher = object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) {
+                if (draftLoading) return
                 draftDirty = true
                 draftTimer?.cancel(); draftTimer = java.util.Timer(true)
                 draftTimer?.schedule(object : java.util.TimerTask() {
@@ -109,7 +119,9 @@ object SmsPanel {
             }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
+        }
+        bodyEdit?.tag = watcher
+        bodyEdit?.addTextChangedListener(watcher)
 
         draftPollTimer?.cancel(); draftPollTimer = java.util.Timer(true)
         draftPollTimer?.schedule(object : java.util.TimerTask() {
@@ -122,8 +134,11 @@ object SmsPanel {
                         if (current != draftBody) {
                             (ctx as? android.app.Activity)?.runOnUiThread {
                                 if (currentConv?.address == conv.address) {
+                                    draftLoading = true
                                     bodyEdit?.setText(draftBody)
                                     if (draftBody.isNotEmpty()) bodyEdit?.setSelection(draftBody.length)
+                                    draftLoading = false
+                                    refs.syncDot.setTextColor(0xFF34A853.toInt())
                                 }
                             }
                         }
