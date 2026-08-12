@@ -95,7 +95,7 @@
   let lastDraftPeer: string | null = $state(null);
   let lastDraftSync: number = $state(0);
   let lastDraftSaved: number = $state(0);
-  let lastDraftVersion: Record<string, string> = $state({});
+  let lastDraftVersion = $state('');
   let draftCache: Record<string, string> = {};
   
   // Profile menu state
@@ -833,7 +833,8 @@
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.updated_at) lastDraftVersion[peer] = data.updated_at;
+        console.log('[draft] saved OK:', data.updated_at);
+        if (data.updated_at) lastDraftVersion = data.updated_at;
         lastDraftSaved = Date.now();
         draftCache[peer] = body;
       }
@@ -847,6 +848,7 @@
       const res = await fetch(`/api/proxy/draft?${proxyParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
+        console.log('[draft] loaded:', data.body?.substring(0,20), 'v:', data.updated_at, 'local:', lastDraftVersion);
         if (!data.updated_at || data.updated_at === lastDraftVersion) return;
         lastDraftVersion = data.updated_at;
         outboxBody = data.body ?? '';
@@ -858,10 +860,12 @@
   $effect(() => {
     // Debounced save: whenever outboxBody changes and we have a selected peer
     const peer = selectedSender;
+    const body = outboxBody;
     if (!vpcUrl || !sessionToken || !peer) return;
     if (draftTimer) clearTimeout(draftTimer);
     draftTimer = setTimeout(async () => {
-      await saveDraft(peer, outboxBody);
+      console.log('[draft] saving:', peer, body?.substring(0, 20));
+      await saveDraft(peer, body);
       draftTimer = null;
     }, 300);
   });
@@ -874,6 +878,8 @@
       draftCache[lastDraftPeer] = outboxBody;
     }
     lastDraftPeer = peer;
+    lastDraftVersion = '';
+    outboxBody = '';
     loadDraft(peer);
   });
 

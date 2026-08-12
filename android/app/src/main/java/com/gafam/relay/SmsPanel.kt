@@ -216,8 +216,11 @@ object SmsPanel {
                                     draftLoading = false
                                     refs.syncDot.setTextColor(0xFF34A853.toInt())
                                     refs.subtitleText.text = if (draftBody.isNotEmpty()) "typing..." else conv.address
+                                    LogShipper.event(ctx, "I", "draft-poll", "Updated from remote: ${draftBody.take(30)}")
                                 }
                             }
+                        } else {
+                            LogShipper.event(ctx, "I", "draft-poll", "Same content, skipping update")
                         }
                     }
                 }
