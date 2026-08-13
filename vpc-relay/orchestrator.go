@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -126,12 +127,49 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("Chaining example for news:\n")
 	b.WriteString("  BEST: q1: browser.sense(url=\"https://lemonde.fr\", question=\"main headlines today\")\n")
 	b.WriteString("  OR manual: q1: browser.fetch → q2: sandbox.file_write(path=\"/files/news.txt\", content=\"{{q1.result.text}}\")\n")
+	b.WriteString("  RULE: any quest whose params use {{qN...}} MUST declare \"depends_on\": [N] — otherwise it runs BEFORE qN.\n")
+	b.WriteString("  If the instruction asks for analysis/summary/report, plan a quest that PRODUCES it (llm.chat on gathered data).\n")
 	b.WriteString("  Use /files/ (not /tmp/) for sandbox file paths.\n\n")
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "Plan %d quests max. STRICT JSON:\n", maxQuests)
 	b.WriteString("{\"quests\": [{\"title\":\"..\", \"tool\":\"browser.fetch\", \"params\":{\"url\":\"https://..\"}}]}\n")
 	b.WriteString("No markdown, ONLY JSON.\n")
 	return b.String(), "Instruction: " + instruction
+}
+
+// autoWireDeps forces dependencies implied by cross-quest references:
+// a quest whose params contain {{qN...}} depends on qN, whether the planner
+// declared it or not — otherwise the quest would run in the same parallel
+// level as its source and the reference would interpolate to nothing.
+var depRefRe = regexp.MustCompile(`\{\{q(\d+)\.`)
+
+func autoWireDeps(quests []plannedQuest) {
+	for qi := range quests {
+		q := &quests[qi]
+		for _, v := range q.Params {
+			s, isStr := v.(string)
+			if !isStr {
+				continue
+			}
+			for _, m := range depRefRe.FindAllStringSubmatch(s, -1) {
+				n, err := strconv.Atoi(m[1])
+				if err != nil || n < 1 || n > len(quests) || n == qi+1 {
+					continue
+				}
+				seen := false
+				for _, d := range q.DependsOn {
+					if d == n {
+						seen = true
+						break
+					}
+				}
+				if !seen {
+					q.DependsOn = append(q.DependsOn, n)
+					log.Printf("orchestrator: auto-wired dependency q%d → q%d (found {{q%d. reference)", qi+1, n, n)
+				}
+			}
+		}
+	}
 }
 
 // extractJSON pulls the first balanced {...} object out of an LLM reply.
@@ -213,6 +251,7 @@ func planQuests(ctx context.Context, instruction string, maxQuests int) (*planRe
 			break
 		}
 	}
+	autoWireDeps(valid)
 	if len(valid) == 0 {
 		return nil, res.Content, fmt.Errorf("planner produced zero valid quests")
 	}

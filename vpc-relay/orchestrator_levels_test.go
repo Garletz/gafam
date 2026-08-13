@@ -191,6 +191,35 @@ func TestApprovalModeParksAskQuests(t *testing.T) {
 	}
 }
 
+func TestAutoWireDependenciesFromInterpolation(t *testing.T) {
+	// A planner that references {{qN...}} without depends_on must get the
+	// dependency auto-wired — otherwise the quests run in the same level and
+	// the reference interpolates to nothing (observed in production).
+	quests := []plannedQuest{
+		{Title: "fetch sms", Tool: "sms.history", Params: map[string]interface{}{}},
+		{Title: "analyze", Tool: "llm.chat", Params: map[string]interface{}{
+			"prompt": "analyse: {{q1.result}} et {{q3.result.stdout}}",
+		}},
+		{Title: "store", Tool: "vault.remember", Params: map[string]interface{}{
+			"body": "{{q2.result.content}}", "title": "x",
+		}, DependsOn: []int{2}},
+		{Title: "self ref ignored", Tool: "llm.chat", Params: map[string]interface{}{
+			"prompt": "{{q4.result}}", // self-reference must be ignored
+		}},
+	}
+	autoWireDeps(quests)
+
+	if len(quests[1].DependsOn) != 2 || quests[1].DependsOn[0] != 1 || quests[1].DependsOn[1] != 3 {
+		t.Errorf("q2 deps = %v, want [1 3]", quests[1].DependsOn)
+	}
+	if len(quests[2].DependsOn) != 1 || quests[2].DependsOn[0] != 2 {
+		t.Errorf("q3 deps = %v, want [2] (unchanged)", quests[2].DependsOn)
+	}
+	if len(quests[3].DependsOn) != 0 {
+		t.Errorf("q4 deps = %v, want [] (self-ref ignored)", quests[3].DependsOn)
+	}
+}
+
 func TestDepCycleCancels(t *testing.T) {
 	setupLevelTest(t)
 	m := moksa.CreateEmptyMission("cycle test")
