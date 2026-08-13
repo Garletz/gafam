@@ -12,6 +12,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/Garletz/gafam/vpc-relay/karaka"
 	_ "modernc.org/sqlite"
 )
 
@@ -31,6 +32,9 @@ func stubLLMServer(t *testing.T, reply string) *httptest.Server {
 
 func setupPipelineEnv(t *testing.T, llmReply string) (cleanup func()) {
 	t.Helper()
+	// SSRF guard off — pipeline tests fetch local httptest servers.
+	karaka.AllowPrivateURLs = true
+	t.Cleanup(func() { karaka.AllowPrivateURLs = false })
 	var err error
 	db, err = sql.Open("sqlite", ":memory:")
 	if err != nil {

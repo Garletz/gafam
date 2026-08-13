@@ -74,6 +74,9 @@ func browserFetchHandler(params map[string]interface{}) (interface{}, error) {
 	if u == "" {
 		return nil, fmt.Errorf("missing 'url'")
 	}
+	if err := GuardPublicURL(u); err != nil {
+		return nil, fmt.Errorf("blocked: %w", err)
+	}
 	return getJSON(browserURL() + "/fetch?url=" + url.QueryEscape(u))
 }
 
@@ -83,6 +86,9 @@ func browserNavigateHandler(params map[string]interface{}) (interface{}, error) 
 	u, _ := params["url"].(string)
 	if u == "" {
 		return nil, fmt.Errorf("missing 'url'")
+	}
+	if err := GuardPublicURL(u); err != nil {
+		return nil, fmt.Errorf("blocked: %w", err)
 	}
 	return postJSON(browserURL()+"/navigate", map[string]interface{}{"url": u})
 }

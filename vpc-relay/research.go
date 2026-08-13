@@ -138,6 +138,9 @@ func vaultFetchNote(ctx context.Context, rawURL, suggestedBy string, tags []stri
 	if !strings.HasPrefix(strings.ToLower(rawURL), "http://") && !strings.HasPrefix(strings.ToLower(rawURL), "https://") {
 		return nil, fmt.Errorf("url must start with http:// or https://")
 	}
+	if err := karaka.GuardPublicURL(rawURL); err != nil {
+		return nil, fmt.Errorf("blocked: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {

@@ -151,10 +151,14 @@ func registerActionTools() {
 			if len(content) > 2000 {
 				content = content[:1996] + "..."
 			}
+			sig, ts, err := signEnvelope(selfPhone, recipient, content)
+			if err != nil {
+				return nil, fmt.Errorf("signing failed: %w", err)
+			}
 			if _, err := db.Exec(
-				`INSERT INTO gafam_envelopes (author_phone, recipient_phone, content, created_at)
-				 VALUES (?, ?, ?, datetime('now'))`,
-				selfPhone, recipient, content,
+				`INSERT INTO gafam_envelopes (author_phone, recipient_phone, content, signature, signed_ts, created_at)
+				 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+				selfPhone, recipient, content, sig, ts,
 			); err != nil {
 				return nil, err
 			}

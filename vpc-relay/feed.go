@@ -39,6 +39,7 @@ type Envelope struct {
 	RecipientPhone string `json:"recipient_phone"`
 	Content        string `json:"content"`
 	Signature      string `json:"signature,omitempty"`
+	SignedTs       int64  `json:"signed_ts,omitempty"`
 	CreatedAt      string `json:"created_at"`
 }
 
@@ -128,19 +129,47 @@ func initFeedTables() {
 			log.Printf("feed: DDL error: %v", err)
 		}
 	}
+	// Migration: envelopes carry the signed timestamp so signatures are
+	// actually verifiable by receiving nodes.
+	if !columnExists("gafam_envelopes", "signed_ts") {
+		if _, err := db.Exec(`ALTER TABLE gafam_envelopes ADD COLUMN signed_ts INTEGER DEFAULT 0`); err != nil {
+			log.Printf("feed: signed_ts migration failed: %v", err)
+		}
+	}
 }
 
 // ─── Signing ───
 
-func signEnvelope(authorPhone, recipientPhone, content string) (string, error) {
+// envelopePayload is the canonical signed message. The timestamp is part of
+// the payload AND stored/served with the envelope — without it the signature
+// is unverifiable even in principle (that was the pre-fix bug).
+func envelopePayload(authorPhone, recipientPhone string, ts int64, content string) string {
+	return fmt.Sprintf("%s|%s|%d|%s", authorPhone, recipientPhone, ts, content)
+}
+
+func signEnvelope(authorPhone, recipientPhone, content string) (string, int64, error) {
 	_, priv, err := getNodeKeypair()
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	ts := time.Now().UnixMilli()
-	msg := fmt.Sprintf("%s|%s|%d|%s", authorPhone, recipientPhone, ts, content)
-	sig := ed25519.Sign(priv, []byte(msg))
-	return hex.EncodeToString(sig), nil
+	sig := ed25519.Sign(priv, []byte(envelopePayload(authorPhone, recipientPhone, ts, content)))
+	return hex.EncodeToString(sig), ts, nil
+}
+
+// verifyEnvelope checks an incoming envelope against the sender link's
+// public key. Returns false for malformed/mismatched signatures.
+func verifyEnvelope(pubKeyHex string, e Envelope) bool {
+	pub, err := hex.DecodeString(pubKeyHex)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return false
+	}
+	sig, err := hex.DecodeString(e.Signature)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+	msg := envelopePayload(e.AuthorPhone, e.RecipientPhone, e.SignedTs, e.Content)
+	return ed25519.Verify(ed25519.PublicKey(pub), []byte(msg), sig)
 }
 
 // ─── Public feed endpoint (called by other VPCs) ───
@@ -151,13 +180,13 @@ func publicFeedHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if since != "" {
 		rows, err = db.Query(
-			`SELECT id, author_phone, recipient_phone, content, signature, created_at 
+			`SELECT id, author_phone, recipient_phone, content, signature, signed_ts, created_at 
 			 FROM gafam_envelopes WHERE created_at > ? ORDER BY created_at DESC LIMIT 100`,
 			since,
 		)
 	} else {
 		rows, err = db.Query(
-			`SELECT id, author_phone, recipient_phone, content, signature, created_at 
+			`SELECT id, author_phone, recipient_phone, content, signature, signed_ts, created_at 
 			 FROM gafam_envelopes ORDER BY created_at DESC LIMIT 50`,
 		)
 	}
@@ -170,7 +199,7 @@ func publicFeedHandler(w http.ResponseWriter, r *http.Request) {
 	envelopes := []Envelope{}
 	for rows.Next() {
 		var e Envelope
-		if err := rows.Scan(&e.ID, &e.AuthorPhone, &e.RecipientPhone, &e.Content, &e.Signature, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.AuthorPhone, &e.RecipientPhone, &e.Content, &e.Signature, &e.SignedTs, &e.CreatedAt); err != nil {
 			continue
 		}
 		envelopes = append(envelopes, e)
@@ -287,7 +316,7 @@ func discoverVpcURL(phone string) (vpcURL, pubKey string) {
 // feedOwnHandler returns envelopes published by this VPC node.
 func feedOwnHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(
-		`SELECT id, author_phone, recipient_phone, content, signature, created_at
+		`SELECT id, author_phone, recipient_phone, content, signature, signed_ts, created_at
 		 FROM gafam_envelopes ORDER BY created_at DESC LIMIT 100`,
 	)
 	if err != nil {
@@ -298,7 +327,7 @@ func feedOwnHandler(w http.ResponseWriter, r *http.Request) {
 	envelopes := []Envelope{}
 	for rows.Next() {
 		var e Envelope
-		if err := rows.Scan(&e.ID, &e.AuthorPhone, &e.RecipientPhone, &e.Content, &e.Signature, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.AuthorPhone, &e.RecipientPhone, &e.Content, &e.Signature, &e.SignedTs, &e.CreatedAt); err != nil {
 			continue
 		}
 		envelopes = append(envelopes, e)
@@ -330,16 +359,16 @@ func feedPublishHandler(w http.ResponseWriter, r *http.Request) {
 		in.RecipientPhone = "*"
 	}
 
-	sig, err := signEnvelope(selfPhone, in.RecipientPhone, in.Content)
+	sig, ts, err := signEnvelope(selfPhone, in.RecipientPhone, in.Content)
 	if err != nil {
 		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "signing failed"})
 		return
 	}
 
 	result, err := db.Exec(
-		`INSERT INTO gafam_envelopes (author_phone, recipient_phone, content, signature, created_at)
-		 VALUES (?, ?, ?, ?, datetime('now'))`,
-		selfPhone, in.RecipientPhone, in.Content, sig,
+		`INSERT INTO gafam_envelopes (author_phone, recipient_phone, content, signature, signed_ts, created_at)
+		 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+		selfPhone, in.RecipientPhone, in.Content, sig, ts,
 	)
 	if err != nil {
 		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -368,8 +397,8 @@ func feedScanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var linkID int64
-	var vpcURL string
-	err := db.QueryRow(`SELECT id, vpc_url FROM gafam_links WHERE phone = ?`, phone).Scan(&linkID, &vpcURL)
+	var vpcURL, linkPubKey string
+	err := db.QueryRow(`SELECT id, vpc_url, public_key FROM gafam_links WHERE phone = ?`, phone).Scan(&linkID, &vpcURL, &linkPubKey)
 	if err != nil {
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": "link not found"})
 		return
@@ -396,10 +425,23 @@ func feedScanHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(io.LimitReader(resp.Body, 1<<18)).Decode(&result)
 
 	newCount := 0
+	rejectedCount := 0
 	for _, env := range result.Envelopes {
 		// Only ingest if addressed to us or broadcast
 		if env.RecipientPhone != "*" && env.RecipientPhone != selfPhone {
 			continue
+		}
+		// Signature verification: an envelope claiming to come from the linked
+		// node must verify against the link's stored public key. Unsigned
+		// legacy envelopes are accepted but logged; forged ones are dropped.
+		if env.Signature != "" && linkPubKey != "" {
+			if !verifyEnvelope(linkPubKey, env) {
+				rejectedCount++
+				log.Printf("feed: REJECTED envelope with invalid signature (link %s, author %s)", phone, env.AuthorPhone)
+				continue
+			}
+		} else if env.Signature == "" {
+			log.Printf("feed: accepting unsigned envelope from %s (legacy)", env.AuthorPhone)
 		}
 		// Avoid duplicates
 		var exists int
@@ -417,11 +459,12 @@ func feedScanHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db.Exec(`UPDATE gafam_links SET last_poll = datetime('now') WHERE id = ?`, linkID)
-	log.Printf("feed: scanned %s — %d new envelopes", phone, newCount)
+	log.Printf("feed: scanned %s — %d new, %d rejected (bad signature)", phone, newCount, rejectedCount)
 	sendJSON(w, http.StatusOK, map[string]interface{}{
-		"phone":      phone,
-		"total":      len(result.Envelopes),
-		"new":        newCount,
+		"phone":    phone,
+		"total":    len(result.Envelopes),
+		"new":      newCount,
+		"rejected": rejectedCount,
 	})
 }
 

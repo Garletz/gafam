@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Garletz/gafam/vpc-relay/karaka"
 	_ "modernc.org/sqlite"
 )
 
@@ -45,6 +46,9 @@ func TestVaultRoundtrip(t *testing.T) {
 	}
 	defer db.Close()
 	initVault()
+	// SSRF guard off — the test fetches a local httptest server.
+	karaka.AllowPrivateURLs = true
+	defer func() { karaka.AllowPrivateURLs = false }()
 
 	// Fake web page to fetch.
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

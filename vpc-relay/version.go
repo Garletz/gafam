@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -46,20 +49,23 @@ func checkWatchtowerReachable() bool {
 	if watchtowerURL == "" {
 		watchtowerURL = "http://watchtower:8080/v1/update"
 	}
-	// HEAD/GET may not be supported; a short POST with auth validates reachability.
-	req, err := http.NewRequest(http.MethodPost, watchtowerURL, nil)
+	// Probe WITHOUT triggering an update: a plain TCP dial to host:port.
+	// (The previous version POSTed /v1/update just to check reachability —
+	// every status page load could start a real rolling update.)
+	u, err := url.Parse(watchtowerURL)
 	if err != nil {
 		return false
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
+	host := u.Host
+	if !strings.Contains(host, ":") {
+		host += ":8080"
+	}
+	conn, err := net.DialTimeout("tcp", host, 2*time.Second)
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
-	// Any HTTP response means Watchtower is reachable (401/403 still counts).
-	return resp.StatusCode > 0
+	conn.Close()
+	return true
 }
 
 func triggerUpdateHandler(w http.ResponseWriter, r *http.Request) {

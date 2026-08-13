@@ -12,6 +12,7 @@ import (
 	"log"
 	mrand "math/rand"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -355,12 +356,15 @@ func main() {
 			if url == "" || question == "" {
 				return nil, fmt.Errorf("url and question required")
 			}
+			if err := karaka.GuardPublicURL(url); err != nil {
+				return nil, fmt.Errorf("blocked: %w", err)
+			}
 			// Fetch the page via browser sidecar
 			browserBase := "http://gafam-browser:6080"
 			if u := os.Getenv("BROWSER_URL"); u != "" {
 				browserBase = strings.TrimRight(u, "/")
 			}
-			fetchURL := browserBase + "/fetch?url=" + url
+			fetchURL := browserBase + "/fetch?url=" + neturl.QueryEscape(url)
 			resp, err := http.Get(fetchURL)
 			if err != nil {
 				return nil, fmt.Errorf("fetch failed: %w", err)

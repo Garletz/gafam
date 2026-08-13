@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import FileTree from './FileTree.svelte';
+  import Markdown from './Markdown.svelte';
   import type { TreeNode } from './FileTreeNode.svelte';
 
   let {
@@ -280,7 +281,9 @@
               <button class="file-action" onclick={() => { selectedNode = null; selectedFileReset(); }}>✕</button>
             </div>
             <div class="preview__body">
-              {#if filePreviewType === 'text'}
+              {#if filePreviewType === 'text' && selectedNode.name.endsWith('.md')}
+                <Markdown text={filePreview || ''} />
+              {:else if filePreviewType === 'text'}
                 <pre>{filePreview || 'Loading...'}</pre>
               {:else if filePreviewType === 'image'}
                 <img src={filePreview} alt={selectedNode.name} />

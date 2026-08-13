@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Markdown from './Markdown.svelte';
 
   let {
     vpcUrl = '',
@@ -128,7 +129,7 @@
           <button type="button" class="note-row" class:is-open={openNote?.id === note.id} onclick={() => open(note.id)}>
             <span class="note-row__title">{note.title}</span>
             {#if note.snippet}
-              <span class="note-row__snippet">{@html note.snippet}</span>
+              <span class="note-row__snippet">{note.snippet.replace(/<\/?b>/g, '')}</span>
             {/if}
             <span class="note-row__meta">{hostOf(note.url)} · {formatDate(note.fetched_at)}</span>
           </button>
@@ -165,7 +166,7 @@
             {#if openNote.tags}<span>· {openNote.tags}</span>{/if}
           </div>
         </div>
-        <pre class="reader__body">{openNote.text}</pre>
+        <div class="reader__body"><Markdown text={openNote.text || ''} /></div>
       {:else}
         <div class="vault__empty vault__empty--big">
           <p>Select a note to read it.</p>

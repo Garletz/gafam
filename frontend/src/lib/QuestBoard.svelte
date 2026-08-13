@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import ReportBox from './ReportBox.svelte';
 
   let {
     vpcUrl = '',
@@ -707,7 +708,12 @@
     </div>
 
     {#if mission.summary}
-      <pre class="qb-summary">{mission.summary}</pre>
+      <ReportBox
+        question={mission.instruction}
+        report={mission.summary}
+        verdict={mission.judge?.verdict ?? ''}
+        score={mission.judge?.score ?? -1}
+      />
     {/if}
   {/if}
 

@@ -1151,10 +1151,15 @@ func publishMissionResult(missionID, recipientPhone string) {
 	if len(content) > 2000 {
 		content = content[:1996] + "..."
 	}
+	sig, ts, err := signEnvelope(selfPhone, recipientPhone, content)
+	if err != nil {
+		log.Printf("feed-publish: signing failed: %v", err)
+		return
+	}
 	if _, err := db.Exec(
-		`INSERT INTO gafam_envelopes (author_phone, recipient_phone, content, created_at) 
-		 VALUES (?, ?, ?, datetime('now'))`,
-		selfPhone, recipientPhone, content,
+		`INSERT INTO gafam_envelopes (author_phone, recipient_phone, content, signature, signed_ts, created_at) 
+		 VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+		selfPhone, recipientPhone, content, sig, ts,
 	); err != nil {
 		log.Printf("feed-publish: insert envelope failed: %v", err)
 		return

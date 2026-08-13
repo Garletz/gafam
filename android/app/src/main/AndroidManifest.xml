@@ -149,10 +149,12 @@
             android:name=".GmailAlarmReceiver"
             android:exported="false" />
 
-        <!-- GAFAM Ghost State Dump Receiver -->
+        <!-- GAFAM Ghost State Dump Receiver — NOT exported: any app could
+             otherwise trigger a dump of /data/data/com.gafam.relay (JWT in
+             plaintext prefs) to /sdcard. Internal broadcasts still work. -->
         <receiver
             android:name=".StateDumpReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="com.gafam.relay.DUMP_STATE" />
             </intent-filter>
