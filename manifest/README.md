@@ -21,3 +21,9 @@ Ce dossier contient l'ensemble des concepts architecturaux et philosophiques du 
 26. [Note de compréhension — L'orchestration](file:///Users/gary/CATEGORIE-SECRETPOWER/GAFAM/manifest/26_orchestration_comprehension.md) : Analyse comparative OpenCode / OpenHands / Manus. Ce qui est important, ce qui ne l'est pas. Ce qui nous est spécifique. Par où commencer.
 27. [Dakṣiṇā — दक्षिणा · l'offrande qui fait grandir le logiciel](file:///Users/gary/CATEGORIE-SECRETPOWER/GAFAM/manifest/27_daksina/README.md) : Le modèle économique du projet. Les dons deviennent des crédits pour un kāraka codeur (OpenCode + Kimi) qui lit le repo entier et améliore le logiciel — sous revue humaine, jamais de push direct. Le métabolisme du nœud.
 22. **[FINAL]** [Pūrṇa — पूर्ण · le sceau de la plénitude](file:///Users/gary/CATEGORIE-SECRETPOWER/GAFAM/manifest/29_purna.md) : Le projet est plein. Périmètre scellé, triple filtre pour toute idée future, élagage encouragé. Fin des manifestes — le travail devient : habiter, consolider, polir.
+
+---
+
+## Version 2 — au-delà du sceau
+
+30. **[VERSION 2 · TRÈS IMPORTANT]** [Vipaṇa — विपण · le bazar souverain des quêtes](file:///Users/gary/CATEGORIE-SECRETPOWER/GAFAM/manifest/30_vipana_public_quest_board.md) : le panneau de quêtes public et fédéré. Quand Saṃyojaka ne peut pas résoudre une demande (physique, humain, légal), il l'épingle ; un humain la décroche, un escrow garantit la transaction. À finaliser **avant** le record custom (Ghost), la fédération et la boîte messages-dans-le-temps.
