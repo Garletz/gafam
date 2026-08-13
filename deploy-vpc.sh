@@ -255,8 +255,8 @@ install_sandbox_sidecar() {
     docker run -d \
       --name gafam-sandbox \
       --network gafam-net \
-      --memory=128m \
-      --memory-swap=256m \
+      --memory=384m \
+      --memory-swap=768m \
       --tmpfs /sandbox/tmp:size=64m \
       --restart no \
       -v /root/gafam_data/sandbox/files:/sandbox/files \

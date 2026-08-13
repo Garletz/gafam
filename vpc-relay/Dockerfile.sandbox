@@ -6,6 +6,8 @@ RUN apk add --no-cache \
     wget \
     python3 \
     py3-pip \
+    nodejs \
+    npm \
     sqlite \
     jq \
     git \
@@ -24,7 +26,15 @@ RUN apk add --no-cache \
     openssh-client-default \
     tmux
 
-RUN pip3 install --break-system-packages websockets fpdf2 matplotlib markdown
+# websockets: required by sandbox_server.py itself (the only baked-in package).
+# Everything else is installed ON DEMAND by agents into PERSISTENT dirs on the
+# /sandbox/files volume — the image stays minimal, capabilities grow at runtime
+# and survive container recreations.
+RUN pip3 install --break-system-packages websockets
+
+ENV PYTHONUSERBASE=/sandbox/files/.pylibs
+ENV NPM_CONFIG_PREFIX=/sandbox/files/.npm-global
+ENV PATH=/sandbox/files/.npm-global/bin:/sandbox/files/.pylibs/bin:$PATH
 
 RUN mkdir -p /sandbox/files /sandbox/tmp /sandbox/downloads /sandbox/screenshots /sandbox/scripts
 RUN adduser -D -h /sandbox sandbox && chown -R sandbox:sandbox /sandbox

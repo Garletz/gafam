@@ -122,7 +122,7 @@ GAFAM/
 | Container | RAM | Purpose |
 |---|---|---|
 | `gafam-browser` (Vātāyana) | 600 MB | Firefox ESR + Xvfb + MJPEG/noVNC |
-| `gafam-sandbox` (Yantraśālā) | 128 MB | Terminal + file API + bash sessions + Python (fpdf2, matplotlib, markdown → PDF reports) |
+| `gafam-sandbox` (Yantraśālā) | 384 MB | Terminal + file API + bash sessions + Python/Node runtimes (agents pip/npm-install packages on demand into the persistent `/sandbox/files` volume) |
 | `gafam-qwen` | 520 MB | llama.cpp server (Qwen3-0.6B GGUF) |
 
 **LLM engine tiers:**
