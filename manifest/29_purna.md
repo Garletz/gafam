@@ -115,3 +115,19 @@ Tant que la réponse est oui, le projet réussit. Tout le reste — les tiers d'
 **पूर्णम्।**
 
 *Fin des manifestes.*
+
+---
+
+## Addendum — Version 2
+
+> *(Ajouté après la rédaction du sceau, pour lever la contradiction avec la suite.)*
+
+Le sceau ci-dessus vaut pour la **Version 1** du nœud : remplacer le téléphone au quotidien. Ce périmètre reste plein, scellé, et le triple filtre continue de le protéger.
+
+Mais une question est apparue **après** le sceau, et elle n'est pas une feature du nœud — elle est son **contraire** : que faire quand le nœud, justement, ne peut pas ? Quand la solution n'est pas un octet mais un geste, une présence, un objet physique ? Le nœud n'a pas de mains. Le manifeste 1 promettait un « ange gardien qui agit en ton absence » — l'absence ne se résout pas qu'avec des agents.
+
+La Version 2 ne rouvre pas le périmètre de la V1. Elle ouvre une **frontière nouvelle** : ce que le nœud ne peut pas faire lui-même, il le confie au monde — par [Phalaka](30_phalaka_public_quest_board.md), le panneau des missions. C'est une extension de la *portée* (des mains physiques), jamais de la *souveraineté* : le nœud ne dépend de rien de nouveau pour vivre, il ne fait que déléguer son résidu.
+
+Le sceau n'est donc pas brisé. Il est **dépassé** — non pas par en-haut, mais par le dehors.
+
+**Le triple filtre reste en vigueur pour tout ce qui touche la V1.** Pour la V2, une seule règle nouvelle : *tout ce qui sort du nœud reste souverain, signé, et sous le sceau d'un humain.*
