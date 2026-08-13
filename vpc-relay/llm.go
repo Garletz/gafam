@@ -45,6 +45,9 @@ type ScopeRouting struct {
 }
 
 func getSetting(key string) string {
+	if db == nil {
+		return ""
+	}
 	var v string
 	row := db.QueryRow("SELECT value FROM gafam_settings WHERE key = ?", key)
 	if err := row.Scan(&v); err != nil {
@@ -223,7 +226,7 @@ func chatWithEngine(ctx context.Context, scope, system, prompt string, maxTokens
 func callOneEngine(ctx context.Context, engine, system, prompt string, maxTokens int) (*chatResult, error) {
 	switch {
 	case engine == "vpc":
-		return chatVPC(ctx, prompt, maxTokens)
+		return chatVPC(ctx, system, prompt, maxTokens)
 	case engine == "phone":
 		return nil, fmt.Errorf("phone engine is not wired for orchestrator chat yet — use /api/web/edge/infer directly")
 	case strings.HasPrefix(engine, "provider:"):
@@ -317,47 +320,95 @@ func chatProvider(ctx context.Context, p LLMProvider, system, prompt string, max
 	}, nil
 }
 
-// chatVPC talks to the local Qwen sidecar (llama.cpp /completion).
+// chatVPC talks to the local Qwen sidecar (llama.cpp). It prefers the
+// OpenAI-compatible /v1/chat/completions endpoint so the system prompt
+// survives (the planner's instructions live there); falls back to the raw
+// /completion endpoint with system+prompt concatenated for older servers.
 // The container is woken on demand by Suparna analysis; if it's asleep we
 // fail fast with a clear message instead of blocking for minutes.
-func chatVPC(ctx context.Context, prompt string, maxTokens int) (*chatResult, error) {
+func chatVPC(ctx context.Context, system, prompt string, maxTokens int) (*chatResult, error) {
+	start := time.Now()
+
+	// Attempt 1: chat completions (system prompt preserved).
+	messages := []map[string]string{}
+	if system != "" {
+		messages = append(messages, map[string]string{"role": "system", "content": system})
+	}
+	messages = append(messages, map[string]string{"role": "user", "content": prompt})
+	chatPayload, _ := json.Marshal(map[string]interface{}{
+		"messages":    messages,
+		"max_tokens":  maxTokens,
+		"temperature": 0.4,
+		"top_p":       0.9,
+		"stream":      false,
+	})
+	client := &http.Client{Timeout: 120 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, qwenURL()+"/v1/chat/completions", bytes.NewReader(chatPayload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("vpc engine: qwen sidecar not running — run a Suparna reading first or pick another engine")
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	resp.Body.Close()
+	if resp.StatusCode < 400 {
+		var out struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal(raw, &out); err == nil && len(out.Choices) > 0 {
+			return &chatResult{
+				Content:   strings.TrimSpace(out.Choices[0].Message.Content),
+				Engine:    "vpc",
+				Model:     "qwen-gguf",
+				LatencyMs: time.Since(start).Milliseconds(),
+			}, nil
+		}
+	}
+
+	// Attempt 2 (fallback): raw /completion with system prepended.
+	full := prompt
+	if system != "" {
+		full = system + "\n\n" + prompt
+	}
 	payload, _ := json.Marshal(map[string]interface{}{
-		"prompt":      prompt,
+		"prompt":      full,
 		"n_predict":   maxTokens,
 		"temperature": 0.4,
 		"top_p":       0.9,
 		"stream":      false,
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, qwenURL()+"/completion", bytes.NewReader(payload))
+	req2, err := http.NewRequestWithContext(ctx, http.MethodPost, qwenURL()+"/completion", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 120 * time.Second}
-	start := time.Now()
-	resp, err := client.Do(req)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2, err := client.Do(req2)
 	if err != nil {
 		return nil, fmt.Errorf("vpc engine: qwen sidecar not running — run a Suparna reading first or pick another engine")
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	latency := time.Since(start).Milliseconds()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("vpc engine: qwen HTTP %d (model still loading?)", resp.StatusCode)
+	defer resp2.Body.Close()
+	raw2, _ := io.ReadAll(io.LimitReader(resp2.Body, 1<<20))
+	if resp2.StatusCode >= 400 {
+		return nil, fmt.Errorf("vpc engine: qwen HTTP %d (model still loading?)", resp2.StatusCode)
 	}
-	var out struct {
+	var out2 struct {
 		Content string `json:"content"`
 	}
-	if err := json.Unmarshal(raw, &out); err != nil {
+	if err := json.Unmarshal(raw2, &out2); err != nil {
 		return nil, fmt.Errorf("vpc engine: bad response: %w", err)
 	}
 	return &chatResult{
-		Content:   strings.TrimSpace(out.Content),
+		Content:   strings.TrimSpace(out2.Content),
 		Engine:    "vpc",
 		Model:     "qwen-gguf",
-		LatencyMs: latency,
+		LatencyMs: time.Since(start).Milliseconds(),
 	}, nil
 }
 

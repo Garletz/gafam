@@ -62,10 +62,13 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("You are Saṃyojaka, orchestrator of a sovereign VPC node.\n")
 	b.WriteString("You have 3 Organic Tools + CDP browser control.\n\n")
 
-	// Inject vault memory
+	// Inject vault memory (recent notes + FTS-relevant past missions)
 	vaultCtx := getVaultContext()
 	if vaultCtx != "" {
 		b.WriteString(vaultCtx)
+	}
+	if memCtx := getMissionMemoryContext(instruction); memCtx != "" {
+		b.WriteString(memCtx)
 	}
 
 	b.WriteString("🌐 Vātāyana — live web (Firefox + Chromium CDP)\n")
@@ -85,7 +88,32 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("   browser.cdp_text   → get text content of element\n")
 	b.WriteString("   browser.cdp_eval   → execute arbitrary JavaScript\n")
 	b.WriteString("📚 Vault — stored notes (research.search, notes)\n")
-	b.WriteString("💬 llm.chat  → ask the LLM directly\n\n")
+	b.WriteString("   vault.remember → persist a long-term memory (findings, decisions, preferences)\n")
+	b.WriteString("📱 SMS & Contacts — the node's voice:\n")
+	b.WriteString("   sms.send(to, body)   → send an SMS via the relay phone\n")
+	b.WriteString("   sms.history(phone?)  → read recent SMS for context\n")
+	b.WriteString("   contacts.search(q)   → find a phone number by name\n")
+	b.WriteString("   feed.publish(content)→ publish to the federated feed\n")
+	b.WriteString("💬 llm.chat  → ask the LLM directly\n")
+	b.WriteString("🤖 karaka.delegate → spawn a sub-agent for a self-contained subtask\n\n")
+
+	// Agent-written tools (custom.*) — discovered from the sandbox, so the
+	// planner always sees the node's latest self-made capabilities.
+	customTools := []karaka.Tool{}
+	for _, t := range karaka.ListTools() {
+		if t.Category == "custom" {
+			customTools = append(customTools, t)
+		}
+	}
+	if len(customTools) > 0 {
+		b.WriteString("🧰 Custom tools (built by previous missions — reusable):\n")
+		for _, t := range customTools {
+			fmt.Fprintf(&b, "   %s → %s\n", t.ID, t.Description)
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("If a recurring sub-task has no tool, CREATE one: sandbox.file_write a .sh or .py\n")
+	b.WriteString("script into /files/tools/ (with a '# desc: ...' header), then call it as custom.<name>.\n\n")
 	b.WriteString("KEY STRATEGY: the sandbox IS your code editor.\n")
 	b.WriteString("Need to parse a page? Write a Python script that uses the fetched text.\n")
 	b.WriteString("Need to filter/transform data? Write a jq one-liner or Python.\n")
@@ -139,6 +167,10 @@ func extractJSON(s string) string {
 }
 
 func planQuests(ctx context.Context, instruction string, maxQuests int) (*planResult, string, error) {
+	// Refresh agent-written tools (sandbox /files/tools/) so a tool created
+	// during a previous quest or replan round is immediately plannable.
+	rescanCustomTools()
+
 	system, user := buildPlannerPrompt(instruction, maxQuests)
 	res, err := chatWithEngine(ctx, "orchestrator", system, user, 4096)
 	if err != nil {
@@ -263,20 +295,27 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 		}
 
 		// ── EXECUTE ──
-		if !orchestratorApproval {
-			_ = executeQuestLevels(ctx, missionID, karakaID)
-		} else {
-			// Approval mode: quests stay pending, wait for human to Claim/Run
+		// Approval mode is per-tool (OpenCode-style): quests whose tool is
+		// "ask" for this kāraka pause as waiting_approval; "allow" quests run.
+		_ = executeQuestLevels(ctx, missionID, karakaID, orchestratorApproval)
+
+		// ── OBSERVE: check if all done, waiting on human, or need replanning ──
+		m, _ = moksa.GetMission(missionID)
+		if m == nil {
+			return
+		}
+		waiting := 0
+		for _, q := range m.Quests {
+			if q.Status == "waiting_approval" {
+				waiting++
+			}
+		}
+		if waiting > 0 {
 			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
 				miss.Status = "waiting_approval"
 				return nil
 			})
-			log.Printf("orchestrator: approval mode — %d quests waiting for human approval", len(m.Quests))
-		}
-
-		// ── OBSERVE: check if all done or need replanning ──
-		m, _ = moksa.GetMission(missionID)
-		if m == nil || orchestratorApproval {
+			log.Printf("orchestrator: %d quest(s) waiting for human approval — pausing mission %s", waiting, missionID)
 			return
 		}
 		pending := 0
@@ -381,6 +420,63 @@ func summarizeResult(r interface{}) string {
 	return truncateStr(s, 120)
 }
 
+// ─── Agentic repair (ReAct at quest level) ───
+
+// repairQuestParams asks the LLM to fix a failed quest's parameters given the
+// observed error, then writes the corrected params back to the board.
+// Returns nil on success (quest ready to re-run), error if unrepairable.
+func repairQuestParams(ctx context.Context, missionID, questID, lastErr string) error {
+	m, ok := moksa.GetMission(missionID)
+	if !ok {
+		return fmt.Errorf("mission vanished")
+	}
+	q := m.FindQuest(questID)
+	if q == nil {
+		return fmt.Errorf("quest vanished")
+	}
+	tool, ok := karaka.GetTool(q.Tool)
+	if !ok {
+		return fmt.Errorf("unknown tool %s", q.Tool)
+	}
+
+	spec, _ := json.Marshal(tool.Params)
+	current, _ := json.Marshal(q.Params)
+	system := "You repair failed tool calls. Output STRICT JSON: only the corrected params object, no markdown, no commentary."
+	user := fmt.Sprintf(
+		"Tool: %s — %s\nParam schema: %s\nParams that failed: %s\nObserved error: %s\n\nMission instruction: %s\nQuest goal: %s\n\nOutput the corrected params JSON object.",
+		tool.ID, tool.Description, spec, current, truncateStr(lastErr, 400),
+		truncateStr(m.Instruction, 200), truncateStr(q.Title, 120),
+	)
+	repairCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	res, err := chatWithEngine(repairCtx, "light_task", system, user, 1024)
+	if err != nil {
+		return err
+	}
+	raw := extractJSON(res.Content)
+	if raw == "" {
+		return fmt.Errorf("repair: no JSON in LLM reply")
+	}
+	var fixed map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &fixed); err != nil {
+		return fmt.Errorf("repair: bad JSON: %w", err)
+	}
+	if err := karaka.ValidateParams(tool, fixed); err != nil {
+		return fmt.Errorf("repair: %w", err)
+	}
+	_, err = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+		if qq := miss.FindQuest(questID); qq != nil {
+			qq.Params = fixed
+			qq.Error = ""
+		}
+		return nil
+	})
+	if err == nil {
+		log.Printf("orchestrator: quest %s params repaired by LLM", questID)
+	}
+	return err
+}
+
 // executeQuestLevels runs pending quests level by level: all quests whose
 // dependencies are satisfied run in parallel (bounded). A quest whose
 // dependency failed is cancelled; a dependency cycle cancels the rest.
@@ -447,7 +543,7 @@ func interpolateParams(params map[string]interface{}, mission *moksa.Mission) ma
 	return out
 }
 
-func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[string]bool {
+func executeQuestLevels(ctx context.Context, missionID, karakaID string, approvalMode bool) map[string]bool {
 	const maxParallel = 4
 
 	m, _ := moksa.GetMission(missionID)
@@ -460,11 +556,13 @@ func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[str
 	failed := map[string]bool{}
 	for _, q := range m.Quests {
 		switch q.Status {
-		case "pending":
+		case "pending", "failed":
+			// "failed" quests get one fresh chance on a re-run (human may have
+			// edited params, or a sidecar was simply asleep).
 			pending[q.ID] = q
 		case "done":
 			done[q.ID] = true
-		case "failed", "cancelled":
+		case "cancelled":
 			failed[q.ID] = true
 		}
 	}
@@ -484,10 +582,42 @@ func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[str
 	}
 
 	runOne := func(q moksa.Quest) {
+		// Permission gate (Manifest 25): in approval mode, an "ask" tool
+		// pauses the quest until a human approves it from the dashboard.
+		if perm := karaka.CheckPermission(karakaID, q.Tool); perm == "deny" {
+			cancelQuest(q.ID, fmt.Sprintf("permission deny: %s cannot use %s", karakaID, q.Tool))
+			return
+		} else if perm == "ask" && approvalMode {
+			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+				if qq := miss.FindQuest(q.ID); qq != nil {
+					qq.Status = "waiting_approval"
+				}
+				return nil
+			})
+			log.Printf("orchestrator: quest %s (%s) parked — permission ask", q.ID, q.Tool)
+			return
+		}
+
 		// Interpolate {{qN.field}} references from previous quest results
 		m, _ := moksa.GetMission(missionID)
 		if m != nil {
 			q.Params = interpolateParams(q.Params, m)
+			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+				if qq := miss.FindQuest(q.ID); qq != nil {
+					qq.Params = q.Params
+				}
+				return nil
+			})
+		}
+		if q.Status == "failed" {
+			// Fresh chance for a previously failed quest: reset before claiming.
+			_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+				if qq := miss.FindQuest(q.ID); qq != nil && qq.Status == "failed" {
+					qq.Status = "pending"
+					qq.Error = ""
+				}
+				return nil
+			})
 		}
 		if _, err := moksa.ClaimQuest(missionID, q.ID, karakaID); err != nil {
 			log.Printf("orchestrator: claim %s failed: %v", q.ID, err)
@@ -497,20 +627,44 @@ func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[str
 			return
 		}
 		log.Printf("orchestrator: running quest %s (%s)", q.ID, q.Tool)
-		updated, err := moksa.RunQuest(missionID, q.ID)
+
+		// Agentic core: run → observe → on failure, ask the LLM to repair
+		// the parameters and retry (max 2 repairs). This is the ReAct loop
+		// at quest level from Manifest 26.
+		const maxRepairs = 2
+		var lastErr string
+		for attempt := 0; attempt <= maxRepairs; attempt++ {
+			updated, err := moksa.RunQuest(missionID, q.ID)
+			if err == nil {
+				if rq := updated.FindQuest(q.ID); rq != nil && rq.Status == "done" {
+					// Auto-reward: trajectory filter (Mokṣa) — cheap, no LLM judge.
+					_, _ = moksa.ApplyReward(missionID, q.ID, "done", 1.0, "auto: tool executed", false)
+					stateMu.Lock()
+					done[q.ID] = true
+					stateMu.Unlock()
+					return
+				}
+			}
+			// Observe the failure
+			lastErr = "unknown error"
+			if err != nil {
+				lastErr = err.Error()
+			} else if rq := updated.FindQuest(q.ID); rq != nil && rq.Error != "" {
+				lastErr = rq.Error
+			}
+			log.Printf("orchestrator: quest %s attempt %d failed: %s", q.ID, attempt+1, lastErr)
+			if attempt == maxRepairs {
+				break
+			}
+			// Repair: LLM proposes corrected params given the error
+			if repairQuestParams(ctx, missionID, q.ID, lastErr) != nil {
+				break // cannot repair — stop wasting attempts
+			}
+		}
+		_, _ = moksa.ApplyReward(missionID, q.ID, "failed", 0, "auto: "+truncateStr(lastErr, 120), false)
 		stateMu.Lock()
-		defer stateMu.Unlock()
-		if err != nil {
-			log.Printf("orchestrator: run %s failed: %v", q.ID, err)
-			failed[q.ID] = true
-			return
-		}
-		if rq := updated.FindQuest(q.ID); rq != nil && rq.Status == "failed" {
-			log.Printf("orchestrator: quest %s failed: %s", q.ID, rq.Error)
-			failed[q.ID] = true
-			return
-		}
-		done[q.ID] = true
+		failed[q.ID] = true
+		stateMu.Unlock()
 	}
 
 	for len(pending) > 0 {
@@ -546,7 +700,22 @@ func executeQuestLevels(ctx context.Context, missionID, karakaID string) map[str
 		}
 
 		if len(level) == 0 {
-			// Nothing runnable but quests remain: dependency cycle.
+			// Nothing runnable but quests remain. Either a dependency cycle,
+			// or quests blocked behind a parked (waiting_approval) ancestor —
+			// in that case they must survive until the human decides.
+			if cur, ok := moksa.GetMission(missionID); ok {
+				hasWaiting := false
+				for _, q := range cur.Quests {
+					if q.Status == "waiting_approval" {
+						hasWaiting = true
+						break
+					}
+				}
+				if hasWaiting {
+					log.Printf("orchestrator: %d quest(s) blocked behind human approval — pausing levels", len(pending))
+					break
+				}
+			}
 			for id := range pending {
 				cancelQuest(id, "dependency cycle — unsatisfiable")
 				delete(pending, id)
@@ -657,15 +826,15 @@ func launchOrchestration(missionID, karakaID string, maxQuests int, mode string,
 		return false
 	}
 	setOrchestratorState(true, missionID)
+	orchestratorStateMu.Lock()
+	orchestratorApproval = requireApproval
 	if publishFeed {
-		orchestratorStateMu.Lock()
 		orchestratorPublishTo = recipientPhone
 		if orchestratorPublishTo == "" {
 			orchestratorPublishTo = "*"
 		}
-		orchestratorApproval = requireApproval
-		orchestratorStateMu.Unlock()
 	}
+	orchestratorStateMu.Unlock()
 	go func() {
 		defer orchestratorMu.Unlock()
 		defer setOrchestratorState(false, "")
@@ -871,9 +1040,46 @@ func countDoneQuests(m *moksa.Mission) int {
 	return n
 }
 
+// getMissionMemoryContext searches the vault (FTS5) for past missions and
+// research notes relevant to the instruction — episodic memory for the planner.
+func getMissionMemoryContext(instruction string) string {
+	// Keep only meaningful words (>= 4 chars) to avoid a trivial MATCH.
+	words := strings.Fields(instruction)
+	keep := make([]string, 0, len(words))
+	for _, w := range words {
+		w = strings.Trim(w, ".,;:!?\"'()[]{}")
+		if len([]rune(w)) >= 4 {
+			keep = append(keep, w)
+		}
+		if len(keep) >= 6 {
+			break
+		}
+	}
+	if len(keep) == 0 {
+		return ""
+	}
+	hits, err := vaultSearch(strings.Join(keep, " "), 3)
+	if err != nil || len(hits) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("🧠 Relevant past memory (vault FTS):\n")
+	for _, h := range hits {
+		title, _ := h["title"].(string)
+		snip, _ := h["snippet"].(string)
+		snip = strings.ReplaceAll(snip, "<b>", "")
+		snip = strings.ReplaceAll(snip, "</b>", "")
+		if title == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "  - %s: %s\n", truncateStr(title, 70), truncateStr(snip, 160))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
 // getVaultContext returns a summary of recent vault notes for the planner prompt.
-func getVaultContext() string {
-	notes, err := vaultList(5)
+func getVaultContext() string {	notes, err := vaultList(5)
 	if err != nil || len(notes) == 0 {
 		return ""
 	}

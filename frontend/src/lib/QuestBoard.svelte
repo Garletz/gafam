@@ -139,6 +139,7 @@
 
   // ─── Saṃyojaka: autonomous kāraka run (plan → execute → synthesize) ───
   let autoRunning = $state(false);
+  let requireApproval = $state(false);
 
   async function autoRun(mode: 'action' | 'research' = 'action') {
     if (!instruction.trim() || busy || autoRunning) return;
@@ -150,7 +151,12 @@
       const res = await fetch(`/api/proxy/mission?${q({ action: 'orchestrate' })}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: instruction.trim(), karaka_id: 'suparna_vpc', mode })
+        body: JSON.stringify({
+          instruction: instruction.trim(),
+          karaka_id: 'suparna_vpc',
+          mode,
+          require_approval: requireApproval
+        })
       });
       const data: any = await res.json();
       if (!res.ok) {
@@ -168,6 +174,143 @@
     } finally {
       autoRunning = false;
     }
+  }
+
+  // Resume a paused mission (e.g. after approving parked quests).
+  async function resumeMission(id: string) {
+    if (busy) return;
+    busy = true;
+    errorMsg = '';
+    try {
+      const res = await fetch(`/api/proxy/mission?${q({ action: 'orchestrate' })}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mission_id: id, karaka_id: 'suparna_vpc' })
+      });
+      const data: any = await res.json();
+      if (!res.ok) {
+        errorMsg = data.error || 'Resume failed';
+        return;
+      }
+      startPoll(id);
+    } catch (e: any) {
+      errorMsg = e.message || 'Network error';
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Human decision on a parked quest (permission "ask").
+  async function approveQuest(qid: string, approve: boolean) {
+    if (!mission || busy) return;
+    busy = true;
+    errorMsg = '';
+    try {
+      const res = await fetch(
+        `/api/proxy/mission?${q({ action: 'approve', id: mission.id, qid })}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ approve, reason: rewardReason[qid] || '' })
+        }
+      );
+      const data: any = await res.json();
+      if (!res.ok) {
+        errorMsg = data.error || 'Approve failed';
+        return;
+      }
+      mission = data;
+      // If quests remain pending after the decision and nothing is running
+      // server-side, resume the mission so approved work executes.
+      if (approve && data.status === 'active') {
+        await resumeMission(data.id);
+      }
+    } catch (e: any) {
+      errorMsg = e.message || 'Network error';
+    } finally {
+      busy = false;
+    }
+  }
+
+  // ─── Cron: scheduled missions ───
+  type CronJob = {
+    id: string;
+    name: string;
+    instruction: string;
+    mode: string;
+    every_minutes: number;
+    enabled: boolean;
+    notify_phone?: string;
+    last_run?: number;
+  };
+  let cronJobs = $state<CronJob[]>([]);
+  let cronInstruction = $state('');
+  let cronEvery = $state(1440);
+  let cronMode = $state<'action' | 'research'>('action');
+  let cronNotify = $state(false);
+
+  async function loadCron() {
+    if (!vpcUrl || !sessionToken) return;
+    try {
+      const res = await fetch(`/api/proxy/cron?${q({})}`);
+      if (res.ok) {
+        const data: any = await res.json();
+        cronJobs = data.jobs || [];
+      }
+    } catch {}
+  }
+
+  async function addCron() {
+    if (!cronInstruction.trim() || busy) return;
+    busy = true;
+    errorMsg = '';
+    try {
+      const res = await fetch(`/api/proxy/cron?${q({})}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instruction: cronInstruction.trim(),
+          mode: cronMode,
+          every_minutes: cronEvery,
+          enabled: true,
+          notify_phone: cronNotify ? 'self' : ''
+        })
+      });
+      const data: any = await res.json();
+      if (!res.ok) errorMsg = data.error || 'Cron create failed';
+      else {
+        cronInstruction = '';
+        await loadCron();
+      }
+    } catch (e: any) {
+      errorMsg = e.message || 'Network error';
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function deleteCron(id: string) {
+    try {
+      await fetch(`/api/proxy/cron?${q({ id })}`, { method: 'DELETE' });
+      await loadCron();
+    } catch {}
+  }
+
+  async function toggleCron(job: CronJob) {
+    try {
+      await fetch(`/api/proxy/cron?${q({})}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...job, enabled: !job.enabled })
+      });
+      await loadCron();
+    } catch {}
+  }
+
+  function cronEveryLabel(min: number): string {
+    if (min < 60) return `${min} min`;
+    if (min < 1440) return `${Math.round(min / 60)} h`;
+    return `${Math.round(min / 1440)} j`;
   }
 
   async function claimQuest(qid: string, karakaId?: string) {
@@ -310,6 +453,7 @@
       loadKarakas();
       loadWorldCard();
       loadMissionList();
+      loadCron();
       if (listPoll) clearInterval(listPoll);
       listPoll = setInterval(loadMissionList, 2000);
     }
@@ -355,6 +499,10 @@
       <button type="button" class="qb-btn ghost" onclick={() => (showWorld = !showWorld)}>
         World card
       </button>
+      <label class="qb-approval-toggle" title="Permission 'ask' tools (sms.send, feed.publish, sandbox.exec…) pause for your approval">
+        <input type="checkbox" bind:checked={requireApproval} />
+        Human approval
+      </label>
       {#if mission}
         <button type="button" class="qb-btn ghost" onclick={synthesize} disabled={busy}>Synthesize</button>
         <button type="button" class="qb-btn ghost danger" onclick={cancelMission}>Clear</button>
@@ -390,7 +538,7 @@
           onclick={() => { mission = m; if (m.status !== 'done' && m.status !== 'cancelled') startPoll(m.id); }}
         >
           <span class="am-status">
-            {#if m.status === 'done'}✅{:else if m.status === 'cancelled'}❌{:else if m.status === 'planning'}🧠{:else if m.status === 'synthesizing'}📝{:else}⚡{/if}
+            {#if m.status === 'done'}✅{:else if m.status === 'cancelled'}❌{:else if m.status === 'planning'}🧠{:else if m.status === 'synthesizing'}📝{:else if m.status === 'waiting_approval'}🖐{:else}⚡{/if}
           </span>
           <span class="am-id mono">{m.id}</span>
           <span class="am-instr">{m.instruction}</span>
@@ -406,7 +554,7 @@
           <div class="qb-activity-detail">
             {#each m.quests as q}
               <div class="qb-activity-quest">
-                <span class="aq-dot" class:aq-running={q.status === 'running'} class:aq-done={q.status === 'done'} class:aq-failed={q.status === 'failed'} class:aq-pending={q.status === 'pending'}></span>
+                <span class="aq-dot" class:aq-running={q.status === 'running'} class:aq-done={q.status === 'done'} class:aq-failed={q.status === 'failed'} class:aq-pending={q.status === 'pending'} class:aq-waiting={q.status === 'waiting_approval'}></span>
                 <span class="aq-id mono">{q.id}</span>
                 <span class="aq-tool mono">{q.tool}</span>
                 <span class="aq-status">{q.status}</span>
@@ -465,7 +613,7 @@
             <div class="qb-cell mono">{quest.claim || quest.organ_hint || '—'}</div>
             <div class="qb-cell mono">{quest.tool || '(judge)'}</div>
             <div class="qb-cell">{quest.eta}s</div>
-            <div class="qb-cell"><span class="pill">{quest.status}</span></div>
+            <div class="qb-cell"><span class="pill" class:pill-waiting={quest.status === 'waiting_approval'}>{quest.status}</span></div>
             <div class="qb-cell reward">
               {#if quest.reward}
                 <span class="pill verdict-{quest.reward.verdict}">{quest.reward.verdict}</span>
@@ -476,6 +624,11 @@
               {/if}
             </div>
             <div class="qb-cell actions">
+              {#if quest.status === 'waiting_approval'}
+                <span class="qb-ask-label" title={quest.tool}>⚠️ {quest.tool}</span>
+                <button type="button" class="qb-mini ok" onclick={() => approveQuest(quest.id, true)} disabled={busy}>Approve</button>
+                <button type="button" class="qb-mini bad" onclick={() => approveQuest(quest.id, false)} disabled={busy}>Reject</button>
+              {/if}
               {#if quest.status === 'pending'}
                 <button type="button" class="qb-mini" onclick={() => claimQuest(quest.id)} disabled={busy}>Claim</button>
               {/if}
@@ -542,6 +695,60 @@
       <pre class="qb-summary">{mission.summary}</pre>
     {/if}
   {/if}
+
+  <div class="cron">
+    <div class="cron-head">
+      <span class="cron-title">⏰ Scheduled missions</span>
+      <span class="qb-activity-count">{cronJobs.length} jobs</span>
+    </div>
+    {#if cronJobs.length > 0}
+      <div class="cron-list">
+        {#each cronJobs as job (job.id)}
+          <div class="cron-row" class:cron-off={!job.enabled}>
+            <button
+              type="button"
+              class="qb-mini"
+              class:ok={job.enabled}
+              onclick={() => toggleCron(job)}
+              title={job.enabled ? 'Disable' : 'Enable'}
+            >{job.enabled ? 'on' : 'off'}</button>
+            <span class="cron-name">{job.name}</span>
+            <span class="cron-every mono">every {cronEveryLabel(job.every_minutes)}</span>
+            {#if job.mode}<span class="pill pill-research">{job.mode}</span>{/if}
+            {#if job.notify_phone}<span class="cron-notify" title="SMS report enabled">📱</span>{/if}
+            {#if job.last_run}
+              <span class="cron-last muted">{new Date(job.last_run * 1000).toLocaleString()}</span>
+            {/if}
+            <button type="button" class="qb-mini bad" onclick={() => deleteCron(job.id)}>✕</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    <div class="cron-add">
+      <input
+        class="qb-add-input"
+        placeholder="Recurring instruction — e.g. every morning: sweep the vault, summarize important SMS"
+        bind:value={cronInstruction}
+      />
+      <select bind:value={cronEvery}>
+        <option value={30}>30 min</option>
+        <option value={60}>1 h</option>
+        <option value={360}>6 h</option>
+        <option value={720}>12 h</option>
+        <option value={1440}>24 h</option>
+        <option value={10080}>7 j</option>
+      </select>
+      <select bind:value={cronMode}>
+        <option value="action">action</option>
+        <option value="research">research</option>
+      </select>
+      <label class="qb-approval-toggle" title="Text me the result on my self phone">
+        <input type="checkbox" bind:checked={cronNotify} />
+        SMS
+      </label>
+      <button type="button" class="qb-btn" onclick={addCron} disabled={busy || !cronInstruction.trim()}>Add</button>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -923,6 +1130,101 @@
     color: #80868b;
     font-size: 14px;
     padding: 24px 0;
+  }
+  .qb-approval-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #5f6368;
+    cursor: pointer;
+    padding: 6px 4px;
+  }
+  .pill.pill-waiting {
+    background: #fef7e0;
+    color: #b06000;
+    animation: samyojakapulse 1.4s ease-in-out infinite;
+  }
+  .aq-waiting {
+    background: #b06000;
+    animation: toolPulse 1.5s ease-in-out infinite;
+  }
+  .qb-ask-label {
+    font-size: 10px;
+    color: #b06000;
+    font-weight: 600;
+  }
+
+  /* Cron panel */
+  .cron {
+    margin-top: 8px;
+    border: 1px solid #e8eaed;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .cron-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e8eaed;
+  }
+  .cron-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #202124;
+  }
+  .cron-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .cron-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    border-bottom: 1px solid #f1f3f4;
+  }
+  .cron-row:last-child {
+    border-bottom: none;
+  }
+  .cron-row.cron-off {
+    opacity: 0.5;
+  }
+  .cron-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #202124;
+  }
+  .cron-every {
+    font-size: 10px;
+    color: #80868b;
+  }
+  .cron-notify {
+    font-size: 11px;
+  }
+  .cron-last {
+    font-size: 10px;
+  }
+  .cron-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid #f1f3f4;
+    background: #f8f9fa;
+  }
+  .cron-add select {
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 12px;
+    background: #fff;
   }
   @media (max-width: 900px) {
     .qb-row {

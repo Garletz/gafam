@@ -128,6 +128,10 @@ export const POST: RequestHandler = async ({ url, request }) => {
 			if (!id || !qid) return json({ error: 'Missing id/qid' }, { status: 400 });
 			path = `/api/web/mission/${encodeURIComponent(id)}/quest/${encodeURIComponent(qid)}/reward?${tok(token)}`;
 			break;
+		case 'approve':
+			if (!id || !qid) return json({ error: 'Missing id/qid' }, { status: 400 });
+			path = `/api/web/mission/${encodeURIComponent(id)}/quest/${encodeURIComponent(qid)}/approve?${tok(token)}`;
+			break;
 		case 'add-quest':
 			if (!id) return json({ error: 'Missing id' }, { status: 400 });
 			path = `/api/web/mission/${encodeURIComponent(id)}/quest?${tok(token)}`;

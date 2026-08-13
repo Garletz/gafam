@@ -104,10 +104,27 @@ func ListKarakas() []Karaka {
 	return out
 }
 
+// SetPermissions fusionne des permissions dans la map d'un kāraka existant.
+// Permet d'étendre les permissions par défaut depuis d'autres packages.
+func SetPermissions(karakaID string, perms map[string]string) {
+	mu.Lock()
+	defer mu.Unlock()
+	k, ok := karakaList[karakaID]
+	if !ok {
+		return
+	}
+	if k.Tools == nil {
+		k.Tools = map[string]string{}
+	}
+	for toolID, perm := range perms {
+		k.Tools[toolID] = perm
+	}
+	karakaList[karakaID] = k
+}
+
 // CheckPermission vérifie si un kāraka peut utiliser un outil.
 // Retourne: "allow", "ask", "deny".
-func CheckPermission(karakaID, toolID string) string {
-	mu.RLock()
+func CheckPermission(karakaID, toolID string) string {	mu.RLock()
 	defer mu.RUnlock()
 	k, ok := karakaList[karakaID]
 	if !ok {

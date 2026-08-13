@@ -36,7 +36,10 @@ func delegateSubAgent(karakaID, instruction string) (string, error) {
 
 	// Create mini mission
 	m := moksa.CreateEmptyMission(instruction)
-	m.Mode = "subagent"
+	_, _ = moksa.UpdateMission(m.ID, func(miss *moksa.Mission) error {
+		miss.Mode = "subagent"
+		return nil
+	})
 
 	log.Printf("subagent: %s spawned for: %s", karakaID, truncateStr(instruction, 80))
 
@@ -98,8 +101,9 @@ func delegateSubAgent(karakaID, instruction string) (string, error) {
 			}
 		}
 
-		// Execute
-		_ = executeQuestLevels(ctx, m.ID, karakaID)
+		// Execute (sub-agents never wait for approval: they only get
+		// "allow" tools in their planner prompt — denied ones are filtered)
+		_ = executeQuestLevels(ctx, m.ID, karakaID, false)
 
 		// Collect results
 		m, _ = moksa.GetMission(m.ID)
@@ -123,11 +127,6 @@ func delegateSubAgent(karakaID, instruction string) (string, error) {
 		return "Sub-agent completed but produced no results.", nil
 	}
 	return strings.Join(allResults, "\n\n"), nil
-}
-
-func parseJSON(raw string, v interface{}) error {
-	// Use encoding/json here since we're in package main
-	return nil // placeholder — will use standard json.Unmarshal in the build
 }
 
 // buildSubAgentPlannerPrompt creates a plan prompt for a sub-agent with tool constraints.

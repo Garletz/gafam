@@ -161,6 +161,61 @@ func AddQuestHandler(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, m)
 }
 
+// ApproveHandler — POST /api/web/mission/{id}/quest/{qid}/approve
+// Human decision on a parked quest (waiting_approval, permission "ask").
+// Body: {"approve": true} → back to pending (next orchestrator run executes it)
+//       {"approve": false, "reason": "..."} → cancelled.
+func ApproveHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Approve bool   `json:"approve"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	m, err := UpdateMission(r.PathValue("id"), func(miss *Mission) error {
+		q := miss.FindQuest(r.PathValue("qid"))
+		if q == nil {
+			return errQuestNotFound
+		}
+		if q.Status != "waiting_approval" {
+			return errNotWaiting
+		}
+		if req.Approve {
+			q.Status = "pending"
+			// Wake the mission so it can be re-run
+			if miss.Status == "waiting_approval" {
+				miss.Status = "active"
+			}
+		} else {
+			q.Status = "cancelled"
+			if req.Reason != "" {
+				q.Error = "rejected by human: " + req.Reason
+			} else {
+				q.Error = "rejected by human"
+			}
+		}
+		return nil
+	})
+	if err == errNotWaiting {
+		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "quest is not waiting for approval"})
+		return
+	}
+	if err != nil {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "quest or mission not found"})
+		return
+	}
+	sendJSON(w, http.StatusOK, m)
+}
+
+var errNotWaiting = &missionError{"quest is not waiting for approval"}
+var errQuestNotFound = &missionError{"quest not found"}
+
+type missionError struct{ s string }
+
+func (e *missionError) Error() string { return e.s }
+
 // SynthesizeHandler — POST /api/web/mission/{id}/synthesize
 func SynthesizeHandler(w http.ResponseWriter, r *http.Request) {
 	m, err := Synthesize(r.PathValue("id"))

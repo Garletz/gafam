@@ -23,7 +23,9 @@ GAFAM/
 │   ├── api.go         ← Crypto, handlers, sessionMiddleware
 │   ├── feed.go        ← VPC↔VPC federation (links, envelopes, inbox, circles)
 │   ├── llm.go         ← LLM provider router (OpenAI-compat, Qwen local)
-│   ├── orchestrator.go← Saṃyojaka agent loop (plan → execute → synthesize)
+│   ├── orchestrator.go← Saṃyojaka agent loop (plan → execute → repair → synthesize)
+│   ├── action_tools.go← Organic action tools (sms.send, feed.publish, vault.remember…)
+│   ├── cron.go        ← Scheduled missions (SQLite table + 60s ticker)
 │   ├── scrcpy_hub.go  ← Remote phone control (H.264 + ADB shell)
 │   ├── research.go    ← The Vault (markdown notes + FTS5 search)
 │   ├── browser/       ← Vātāyana: Firefox sidecar control
@@ -107,6 +109,8 @@ GAFAM/
 | **Web** | `GET /api/web/llm/providers` | LLM provider CRUD |
 | **Web** | `POST /api/web/llm/chat` | Single LLM entry point |
 | **Web** | `POST /api/web/orchestrator/run` | Saṃyojaka mission runner |
+| **Web** | `GET/POST/DELETE /api/web/cron` | Scheduled missions (≥5 min interval) |
+| **Web** | `POST …/quest/{qid}/approve` | Human approve/reject of `ask` quests |
 | **Web** | `GET/POST /api/web/links` | Federation: link CRUD + scan |
 | **Web** | `GET /api/web/inbox` | Federation: inbox |
 | **Web** | `GET/POST /api/web/feed/publish` | Federation: publish |
@@ -118,7 +122,7 @@ GAFAM/
 | Container | RAM | Purpose |
 |---|---|---|
 | `gafam-browser` (Vātāyana) | 600 MB | Firefox ESR + Xvfb + MJPEG/noVNC |
-| `gafam-sandbox` (Yantraśālā) | 128 MB | Terminal + file API + bash sessions |
+| `gafam-sandbox` (Yantraśālā) | 128 MB | Terminal + file API + bash sessions + Python (fpdf2, matplotlib, markdown → PDF reports) |
 | `gafam-qwen` | 520 MB | llama.cpp server (Qwen3-0.6B GGUF) |
 
 **LLM engine tiers:**
@@ -128,6 +132,16 @@ GAFAM/
 | L1 | Qwen3-0.6B GGUF | VPC (Suparna analyst) |
 | L2 | Qwen3-0.6B ONNX INT4 | Phone (EdgeInferenceService) |
 | L3 | DeepSeek V4 / Kimi K3 | Cloud provider (orchestration) |
+
+**Agent layer behavior (Saṃyojaka, Manifests 25/26):**
+- Loop: PLAN (LLM → quest DAG) → EXECUTE (parallel levels, `{{qN.result.field}}` interpolation) → OBSERVE → REPLAN (max 3) → SYNTHESIZE (report → sandbox + vault FTS5).
+- **Agentic repair:** a failed quest is retried up to 2× with LLM-corrected params (error fed back to `light_task` scope) — the quest-level agent↔tool↔observation loop.
+- **Permissions are real:** `deny` blocks; with `require_approval`, `ask` tools park the quest as `waiting_approval` (dependents wait, no false "cycle" cancel) until `POST …/quest/{qid}/approve`. Auto-rewards (`done`/`failed`) are written to Mokṣa for trajectory filtering.
+- **Action tools:** `sms.send` (ask), `sms.history`, `contacts.search`, `feed.publish` (ask), `vault.remember` — agents can speak, read context and persist long-term memories.
+- **Self-made tools:** agents write `.sh`/`.py` scripts into the sandbox `/files/tools/` (with a `# desc:` header) → auto-registered as `custom.*` tools, re-scanned before every planning round. JSON in on stdin, JSON out on stdout. This is the safe self-improvement level: capabilities grow, the Go binary is never touched.
+- **Memory:** planner prompt injects recent vault notes + FTS5 search of past missions/research relevant to the instruction.
+- **Cron:** `gafam_cron` jobs fire missions on interval (≥5 min), optional SMS report to the self phone (`notify_phone: "self"`). Managed from the Quests tab.
+- Triggers: dashboard, SMS `/q` `/r` from the self phone, cron, sub-agents (`karaka.delegate`).
 
 ---
 

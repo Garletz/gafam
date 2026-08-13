@@ -87,7 +87,7 @@ func TestParallelLevels(t *testing.T) {
 	_ = addLevelQuest(t, m.ID, "q4", "test.sleep", "q4", []string{q3})
 
 	started := time.Now()
-	failed := executeQuestLevels(context.Background(), m.ID, "test_karaka")
+	failed := executeQuestLevels(context.Background(), m.ID, "test_karaka", false)
 	elapsed := time.Since(started)
 
 	if len(failed) != 0 {
@@ -130,7 +130,7 @@ func TestDepFailureCancels(t *testing.T) {
 	q2 := addLevelQuest(t, m.ID, "q2", "test.sleep", "q2", []string{q1})
 	q3 := addLevelQuest(t, m.ID, "q3", "test.sleep", "q3", nil)
 
-	failed := executeQuestLevels(context.Background(), m.ID, "test_karaka")
+	failed := executeQuestLevels(context.Background(), m.ID, "test_karaka", false)
 
 	if !failed[q1] || !failed[q2] {
 		t.Errorf("q1 and q2 should be failed/cancelled: %v", failed)
@@ -151,6 +151,46 @@ func TestDepFailureCancels(t *testing.T) {
 	}
 }
 
+func TestApprovalModeParksAskQuests(t *testing.T) {
+	setupLevelTest(t)
+	// test_karaka: test.sleep becomes "ask" for this test.
+	karaka.SetPermissions("test_karaka", map[string]string{"test.sleep": "ask", "test.fail": "allow"})
+	t.Cleanup(func() {
+		karaka.SetPermissions("test_karaka", map[string]string{"test.sleep": "allow"})
+	})
+
+	m := moksa.CreateEmptyMission("approval test")
+	defer moksa.DeleteMission(m.ID)
+
+	askQ := addLevelQuest(t, m.ID, "needs-human", "test.sleep", "ask1", nil)
+	depQ := addLevelQuest(t, m.ID, "blocked-behind-approval", "test.fail", "dep1", []string{askQ})
+
+	failed := executeQuestLevels(context.Background(), m.ID, "test_karaka", true)
+
+	final, _ := moksa.GetMission(m.ID)
+	st := map[string]string{}
+	for _, q := range final.Quests {
+		st[q.ID] = q.Status
+	}
+	if st[askQ] != "waiting_approval" {
+		t.Errorf("ask quest status = %s, want waiting_approval", st[askQ])
+	}
+	// The dependent quest must NOT be cancelled as a "cycle" — it waits.
+	if st[depQ] == "cancelled" {
+		t.Errorf("dependent quest was wrongly cancelled (cycle detection behind approval)")
+	}
+	if failed[askQ] {
+		t.Errorf("ask quest should not be marked failed: %v", failed)
+	}
+	// The parked quest must never have run.
+	timingMu.Lock()
+	_, ran := timings["ask1"]
+	timingMu.Unlock()
+	if ran {
+		t.Errorf("ask quest executed despite approval mode")
+	}
+}
+
 func TestDepCycleCancels(t *testing.T) {
 	setupLevelTest(t)
 	m := moksa.CreateEmptyMission("cycle test")
@@ -166,7 +206,7 @@ func TestDepCycleCancels(t *testing.T) {
 		return nil
 	})
 
-	executeQuestLevels(context.Background(), m.ID, "test_karaka")
+	executeQuestLevels(context.Background(), m.ID, "test_karaka", false)
 
 	final, _ := moksa.GetMission(m.ID)
 	for _, q := range final.Quests {

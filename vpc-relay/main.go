@@ -282,6 +282,7 @@ func main() {
 	initEmailTables()
 	initVault()
 	initMissionStore()
+	initCron()
 	initComposeSnippets()
 	initGeo()
 	registerVaultTools()
@@ -292,6 +293,8 @@ func main() {
 	registerDelegationTool()
 	registerSandboxTools()
 	registerCDPTools()
+	registerActionTools()
+	registerActionToolPermissions()
 	// llm.chat routes through the active orchestration engine (Suparna → Provider tab).
 	// Registered here because it lives in package main (chatWithActiveEngine).
 	karaka.RegisterTool(karaka.Tool{
@@ -517,6 +520,9 @@ func main() {
 	// Saṃyojaka — autonomous orchestrator loop (Manifest 25)
 	mux.HandleFunc("POST /api/web/orchestrator/run", sessionMiddleware(orchestratorRunHandler))
 	mux.HandleFunc("GET /api/web/orchestrator/status", sessionMiddleware(orchestratorStatusHandler))
+	mux.HandleFunc("GET /api/web/cron", sessionMiddleware(cronHandler))
+	mux.HandleFunc("POST /api/web/cron", sessionMiddleware(cronHandler))
+	mux.HandleFunc("DELETE /api/web/cron", sessionMiddleware(cronHandler))
 
 	// VPC↔VPC Federation (Manifest 17 — Poneglyph Part 3)
 	mux.HandleFunc("GET /api/web/links", sessionMiddleware(linksHandler))
@@ -553,6 +559,7 @@ func main() {
 	mux.HandleFunc("POST /api/web/mission/{id}/quest/{qid}/claim", sessionMiddleware(moksa.ClaimHandler))
 	mux.HandleFunc("POST /api/web/mission/{id}/quest/{qid}/run", sessionMiddleware(moksa.RunHandler))
 	mux.HandleFunc("POST /api/web/mission/{id}/quest/{qid}/reward", sessionMiddleware(moksa.RewardHandler))
+	mux.HandleFunc("POST /api/web/mission/{id}/quest/{qid}/approve", sessionMiddleware(moksa.ApproveHandler))
 	mux.HandleFunc("POST /api/web/mission/{id}/quest", sessionMiddleware(moksa.AddQuestHandler))
 	mux.HandleFunc("POST /api/web/mission/{id}/synthesize", sessionMiddleware(moksa.SynthesizeHandler))
 
