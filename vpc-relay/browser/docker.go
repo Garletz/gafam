@@ -259,6 +259,29 @@ func removeContainer() error {
 	return nil
 }
 
+// EnsureReady wakes the browser sidecar the reliable way — the same path the
+// dashboard Wake button uses: recreate (pull + rm + create on gafam-net) if
+// it's stale/off-network, start, then wait for /status. Agent tools
+// (browser.sense, browser.fetch, …) MUST call this instead of a bare GET —
+// a bare GET hits a sleeping or off-network container and fails DNS.
+func EnsureReady(ctx context.Context) error {
+	if !mu.TryLock() {
+		return fmt.Errorf("browser_busy: another wake in progress")
+	}
+	defer mu.Unlock()
+
+	running, err := containerState()
+	if err == nil && running {
+		if streamBackendReady() {
+			return nil
+		}
+	}
+	if err := startContainer(); err != nil {
+		return err
+	}
+	return waitBrowserReady(ctx)
+}
+
 // recreateContainer pulls :browser and replaces the container so tag updates apply.
 func recreateContainer() error {
 	img := browserImage()

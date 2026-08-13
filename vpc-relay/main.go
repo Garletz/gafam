@@ -359,6 +359,13 @@ func main() {
 			if err := karaka.GuardPublicURL(url); err != nil {
 				return nil, fmt.Errorf("blocked: %w", err)
 			}
+			// Wake the sidecar properly (recreate/start/wait-ready) — a bare
+			// GET against a sleeping container fails with a DNS error.
+			wakeCtx, cancel2 := context.WithTimeout(context.Background(), 8*time.Minute)
+			defer cancel2()
+			if err := browser.EnsureReady(wakeCtx); err != nil {
+				return nil, fmt.Errorf("browser wake: %w", err)
+			}
 			// Fetch the page via browser sidecar
 			browserBase := "http://gafam-browser:6080"
 			if u := os.Getenv("BROWSER_URL"); u != "" {

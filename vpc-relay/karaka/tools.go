@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"os"
 	"time"
+
+	"github.com/Garletz/gafam/vpc-relay/browser"
 )
 
 var internalClient = &http.Client{Timeout: 30 * time.Second}
@@ -69,26 +71,36 @@ func browserInputHandler(params map[string]interface{}) (interface{}, error) {
 
 // browserFetchHandler — Khadyota: read any page as markdown-ish text + links.
 func browserFetchHandler(params map[string]interface{}) (interface{}, error) {
-	ensureContainer("gafam-browser")
 	u, _ := params["url"].(string)
 	if u == "" {
 		return nil, fmt.Errorf("missing 'url'")
 	}
 	if err := GuardPublicURL(u); err != nil {
 		return nil, fmt.Errorf("blocked: %w", err)
+	}
+	// Proper wake (recreate/start/wait-ready) — a bare docker start won't fix
+	// a container that's off-network or stale.
+	wakeCtx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	if err := browser.EnsureReady(wakeCtx); err != nil {
+		return nil, fmt.Errorf("browser wake: %w", err)
 	}
 	return getJSON(browserURL() + "/fetch?url=" + url.QueryEscape(u))
 }
 
 // browserNavigateHandler — drive the visible Firefox to a URL.
 func browserNavigateHandler(params map[string]interface{}) (interface{}, error) {
-	ensureContainer("gafam-browser")
 	u, _ := params["url"].(string)
 	if u == "" {
 		return nil, fmt.Errorf("missing 'url'")
 	}
 	if err := GuardPublicURL(u); err != nil {
 		return nil, fmt.Errorf("blocked: %w", err)
+	}
+	wakeCtx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	if err := browser.EnsureReady(wakeCtx); err != nil {
+		return nil, fmt.Errorf("browser wake: %w", err)
 	}
 	return postJSON(browserURL()+"/navigate", map[string]interface{}{"url": u})
 }
