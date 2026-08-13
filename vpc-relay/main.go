@@ -306,7 +306,7 @@ func main() {
 			"prompt":     {Type: "string", Required: true, Description: "User prompt"},
 			"system":     {Type: "string", Required: false, Description: "System prompt"},
 			"scope":      {Type: "string", Required: false, Description: "Scope: orchestrator (heavy reasoning), light_task (fast), read_only (search/classify)", Default: "light_task"},
-			"max_tokens": {Type: "int", Required: false, Description: "Max completion tokens", Default: 512},
+			"max_tokens": {Type: "int", Required: false, Description: "Max completion tokens", Default: 2048},
 		},
 		Returns: "{ content: string, engine: string, model: string, latency_ms: int }",
 		Handler: func(params map[string]interface{}) (interface{}, error) {
@@ -319,7 +319,7 @@ func main() {
 			if scope == "" {
 				scope = "light_task"
 			}
-			maxTokens := 512
+			maxTokens := 2048
 			if mt, ok := params["max_tokens"].(float64); ok && mt > 0 {
 				maxTokens = int(mt)
 			}

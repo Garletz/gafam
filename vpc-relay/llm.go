@@ -256,7 +256,23 @@ func chatWithActiveEngine(ctx context.Context, system, prompt, engineOverride st
 }
 
 // chatProvider calls an OpenAI-compatible /chat/completions endpoint.
+// Reasoning models (kimi-k3, deepseek-v4-*) can spend the whole token budget
+// on reasoning_content and return empty content: in that case we retry ONCE
+// with a quadrupled budget (capped) — transparent for every caller.
 func chatProvider(ctx context.Context, p LLMProvider, system, prompt string, maxTokens int) (*chatResult, error) {
+	res, err := chatProviderOnce(ctx, p, system, prompt, maxTokens)
+	if err != nil && strings.Contains(err.Error(), "empty content (reasoning model consumed the token budget") {
+		bigger := maxTokens * 4
+		if bigger > 32768 {
+			bigger = 32768
+		}
+		log.Printf("llm: %s empty content at %d tokens — retrying with %d", p.Name, maxTokens, bigger)
+		return chatProviderOnce(ctx, p, system, prompt, bigger)
+	}
+	return res, err
+}
+
+func chatProviderOnce(ctx context.Context, p LLMProvider, system, prompt string, maxTokens int) (*chatResult, error) {
 	messages := []map[string]string{}
 	if system != "" {
 		messages = append(messages, map[string]string{"role": "system", "content": system})
