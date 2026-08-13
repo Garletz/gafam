@@ -26,4 +26,4 @@ Ce dossier contient l'ensemble des concepts architecturaux et philosophiques du 
 
 ## Version 2 — au-delà du sceau
 
-30. **[VERSION 2 · TRÈS IMPORTANT]** [Vipaṇa — विपण · le bazar souverain des quêtes](file:///Users/gary/CATEGORIE-SECRETPOWER/GAFAM/manifest/30_vipana_public_quest_board.md) : le panneau de quêtes public et fédéré. Quand Saṃyojaka ne peut pas résoudre une demande (physique, humain, légal), il l'épingle ; un humain la décroche, un escrow garantit la transaction. À finaliser **avant** le record custom (Ghost), la fédération et la boîte messages-dans-le-temps.
+30. **[VERSION 2 · TRÈS IMPORTANT]** [Phalaka — फलक · le panneau des missions de secours](file:///Users/gary/CATEGORIE-SECRETPOWER/GAFAM/manifest/30_phalaka_public_quest_board.md) : le panneau de quêtes public et fédéré, inspiré du panneau d'affichage de Pokémon Donjon Mystère. Quand Saṃyojaka ne peut pas résoudre une demande (physique, humain, légal), il l'épingle ; une « équipe de secours » (un autre humain) la décroche, une banque-escrow garantit la transaction, le rang monte. À finaliser **avant** le record custom (Ghost), la fédération et la boîte messages-dans-le-temps.
