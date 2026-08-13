@@ -10,6 +10,7 @@
   } = $props();
 
   type Reward = { verdict: string; score: number; reason: string };
+  type Judge = { verdict: string; score: number; rubric?: string; reason: string };
   type Quest = {
     id: string;
     title: string;
@@ -32,6 +33,7 @@
     mode?: string;
     world_card: string;
     summary?: string;
+    judge?: Judge | null;
     created_at?: string;
     updated_at?: string;
   };
@@ -538,7 +540,7 @@
           onclick={() => { mission = m; if (m.status !== 'done' && m.status !== 'cancelled') startPoll(m.id); }}
         >
           <span class="am-status">
-            {#if m.status === 'done'}✅{:else if m.status === 'cancelled'}❌{:else if m.status === 'planning'}🧠{:else if m.status === 'synthesizing'}📝{:else if m.status === 'waiting_approval'}🖐{:else}⚡{/if}
+            {#if m.status === 'done'}✅{:else if m.status === 'cancelled'}❌{:else if m.status === 'planning'}🧠{:else if m.status === 'synthesizing'}📝{:else if m.status === 'waiting_approval'}🖐{:else if m.status === 'interrupted'}⏸️{:else}⚡{/if}
           </span>
           <span class="am-id mono">{m.id}</span>
           <span class="am-instr">{m.instruction}</span>
@@ -573,6 +575,19 @@
       {#if mission}
         <span class="mono">· {mission.id}</span>
         <span class="pill" class:pill-pulse={mission.status === 'planning' || mission.status === 'synthesizing'}>{mission.status}</span>
+        {#if mission.judge}
+          <span
+            class="pill"
+            class:verdict-done={mission.judge.verdict === 'success'}
+            class:verdict-needs_more={mission.judge.verdict === 'partial'}
+            class:verdict-failed={mission.judge.verdict === 'failed'}
+            title={mission.judge.reason}
+          >⚖️ {mission.judge.verdict} · {Math.round(mission.judge.score * 100)}%</span>
+        {/if}
+        {#if mission.status === 'interrupted'}
+          {@const mid = mission.id}
+          <button type="button" class="qb-mini ok" onclick={() => resumeMission(mid)} disabled={busy}>▶ Resume</button>
+        {/if}
         {#if mission.mode === 'research'}
           <span class="pill pill-research">research</span>
         {/if}

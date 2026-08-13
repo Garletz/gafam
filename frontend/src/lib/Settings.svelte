@@ -341,10 +341,49 @@
     }
   }
 
+  // ─── Agent SMS kill switch (dev phase) ───
+  let killSms = $state(false);
+  let killSmsSaving = $state(false);
+
+  async function loadKillSms() {
+    if (!vpcUrl || !sessionToken) return;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const res = await fetch(`/api/proxy/settings?${params.toString()}`);
+      if (!res.ok) return;
+      const payload: any = await res.json();
+      if (payload.encrypted_data && payload.iv) {
+        const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
+        const obj = JSON.parse(plaintext);
+        killSms = obj.agent_kill_sms === '1';
+      }
+    } catch {}
+  }
+
+  async function toggleKillSms() {
+    if (killSmsSaving) return;
+    killSmsSaving = true;
+    const next = !killSms;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const plaintext = JSON.stringify({ key: 'agent_kill_sms', value: next ? '1' : '0' });
+      const encrypted = await encryptAESGCM(plaintext, sessionToken);
+      const res = await fetch(`/api/proxy/settings?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(encrypted)
+      });
+      if (res.ok) killSms = next;
+    } catch {} finally {
+      killSmsSaving = false;
+    }
+  }
+
   onMount(() => {
     fetchGuardians();
     fetchVpcStatus();
     loadSelfPhone();
+    loadKillSms();
   });
 
   $effect(() => {
@@ -508,6 +547,31 @@
             {/if}
           </div>
 
+          <div class="subpanel subpanel--kill" class:subpanel--kill-on={killSms}>
+            <div class="subpanel__head">
+              <h3>Agent controls</h3>
+              <span class="kill-badge" class:kill-badge--on={killSms}>
+                {killSms ? 'SMS blocked' : 'SMS free'}
+              </span>
+            </div>
+            <p class="kill-hint">
+              <strong>Kill switch (dev phase).</strong> While ON, agents cannot send any SMS
+              (<code>sms.send</code> fails) — missions, cron and sub-agents keep working,
+              only outbound texting is blocked. Mission reports to your self phone still arrive.
+            </p>
+            <div class="subpanel__actions">
+              <button
+                type="button"
+                class="btn-primary"
+                class:btn-primary--danger={!killSms}
+                onclick={toggleKillSms}
+                disabled={killSmsSaving}
+              >
+                {killSmsSaving ? 'Saving…' : killSms ? '🔓 Disable kill switch' : '🔒 Enable kill switch'}
+              </button>
+            </div>
+          </div>
+
           <details class="help-block">
             <summary>Recreate a deleted VPS</summary>
             <ol>
@@ -609,6 +673,38 @@
 </div>
 
 <style>
+  .kill-hint {
+    font-size: 13px;
+    color: #5f6368;
+    line-height: 1.5;
+    margin: 8px 0 12px;
+  }
+  .kill-hint code {
+    background: #f1f3f4;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .kill-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #e6f4ea;
+    color: #137333;
+  }
+  .kill-badge--on {
+    background: #fce8e6;
+    color: #c5221f;
+  }
+  .subpanel--kill-on {
+    border-color: #f6c1c0;
+    background: #fffafa;
+  }
+  .btn-primary--danger {
+    background: #c5221f;
+    border-color: #c5221f;
+  }
   .settings {
     display: flex;
     flex-direction: column;

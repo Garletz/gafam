@@ -9,6 +9,16 @@ type Reward struct {
 	Reason  string  `json:"reason"`
 }
 
+// Judge is the post-mission verifier verdict (AET pattern: the reward is
+// grounded in an independent evaluation of the outcome against the
+// instruction, not in the agent's self-reported completion).
+type Judge struct {
+	Verdict string  `json:"verdict"` // success | partial | failed
+	Score   float64 `json:"score"`   // 0..1
+	Rubric  string  `json:"rubric,omitempty"`
+	Reason  string  `json:"reason"`
+}
+
 // Quest is one cell on the mission board (method4).
 type Quest struct {
 	ID        string                 `json:"id"`
@@ -30,10 +40,11 @@ type Mission struct {
 	ID          string    `json:"id"`
 	Instruction string    `json:"instruction"`
 	Quests      []Quest   `json:"quests"`
-	Status      string    `json:"status"` // planning | active | synthesizing | done | cancelled
+	Status      string    `json:"status"` // planning | active | waiting_approval | interrupted | synthesizing | done | cancelled
 	Mode        string    `json:"mode,omitempty"` // "" (action) | research
 	WorldCard   string    `json:"world_card"`
 	Summary     string    `json:"summary,omitempty"`
+	Judge       *Judge    `json:"judge,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

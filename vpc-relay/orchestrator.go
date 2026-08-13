@@ -355,6 +355,12 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 	if _, err := moksa.Synthesize(missionID); err != nil {
 		log.Printf("orchestrator: synthesize %s failed: %v", missionID, err)
 	}
+
+	// ── JUDGE (AET/GRM pattern): independent verification of the outcome
+	// against the instruction — reward grounded in the result, not in the
+	// agent's self-reported completion.
+	judgeMission(ctx, missionID)
+
 	if m, ok := moksa.GetMission(missionID); ok && m.Summary != "" {
 		saveMissionToVault(m)
 	}
@@ -370,6 +376,85 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 		}
 	}
 	log.Printf("orchestrator: run finished for mission %s (%d/%d quests failed)", missionID, failedN, totalN)
+}
+
+// ─── Judge (verify-in-the-loop) ───
+
+// judgeMission evaluates the finished mission against its own instruction,
+// following the generative-reward-model protocol: read the outcome → write a
+// rubric → score against the rubric → record the verdict on the board.
+func judgeMission(ctx context.Context, missionID string) {
+	m, ok := moksa.GetMission(missionID)
+	if !ok || m == nil {
+		return
+	}
+	if m.Status == "cancelled" || len(m.Quests) == 0 {
+		return
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Original instruction: %s\n\n", m.Instruction)
+	b.WriteString("Quest outcomes:\n")
+	for _, q := range m.Quests {
+		fmt.Fprintf(&b, "  [%s] %s (%s)", q.Status, q.Title, q.Tool)
+		if q.Status == "done" {
+			fmt.Fprintf(&b, " → %s", summarizeResult(q.Result))
+		} else if q.Error != "" {
+			fmt.Fprintf(&b, " — %s", truncateStr(q.Error, 120))
+		}
+		b.WriteString("\n")
+	}
+	if m.Summary != "" {
+		fmt.Fprintf(&b, "\nFinal report (excerpt):\n%s\n", truncateStr(m.Summary, 1500))
+	}
+
+	system := `You are an independent verifier. You did NOT execute the mission — you judge it.
+Protocol: (1) read the outcome, (2) write a short rubric of what the instruction required,
+(3) score the outcome against your rubric, (4) record the verdict.
+Be strict: a quest that merely ran is not a goal achieved. Penalize verbosity without substance.
+Output STRICT JSON: {"rubric": "...", "verdict": "success|partial|failed", "score": 0.0, "reason": "one sentence"}`
+
+	judgeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	res, err := chatWithEngine(judgeCtx, "orchestrator", system, b.String(), 1500)
+	if err != nil {
+		log.Printf("orchestrator: judge %s failed: %v", missionID, err)
+		return
+	}
+	raw := extractJSON(res.Content)
+	if raw == "" {
+		return
+	}
+	var v struct {
+		Rubric  string  `json:"rubric"`
+		Verdict string  `json:"verdict"`
+		Score   float64 `json:"score"`
+		Reason  string  `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		return
+	}
+	switch v.Verdict {
+	case "success", "partial", "failed":
+	default:
+		v.Verdict = "partial"
+	}
+	if v.Score < 0 {
+		v.Score = 0
+	}
+	if v.Score > 1 {
+		v.Score = 1
+	}
+	_, _ = moksa.UpdateMission(missionID, func(miss *moksa.Mission) error {
+		miss.Judge = &moksa.Judge{
+			Verdict: v.Verdict,
+			Score:   v.Score,
+			Rubric:  truncateStr(v.Rubric, 600),
+			Reason:  truncateStr(v.Reason, 300),
+		}
+		return nil
+	})
+	log.Printf("orchestrator: judge %s → %s (%.2f) — %s", missionID, v.Verdict, v.Score, truncateStr(v.Reason, 100))
 }
 
 // buildReplanInstruction creates a prompt describing what's been done and what's still needed.
@@ -969,6 +1054,9 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 		}
 		// Build SMS with summary + link
 		msg := fmt.Sprintf("GAFAM %s %s: %d/%d quests OK.", status, done.ID, total-failedN, total)
+		if done.Judge != nil {
+			msg += fmt.Sprintf("\n⚖️ Juge: %s (%.0f%%) — %s", done.Judge.Verdict, done.Judge.Score*100, truncateStr(done.Judge.Reason, 120))
+		}
 		if len(summarySentences) > 0 {
 			msg += "\n" + strings.Join(summarySentences, "\n")
 		}

@@ -86,15 +86,15 @@ func TestMissionRecoveryOnRestart(t *testing.T) {
 	if !ok {
 		t.Fatalf("mission lost after reload")
 	}
-	if restored.Status != "cancelled" {
-		t.Errorf("mission status = %s, want cancelled", restored.Status)
+	// New recovery semantics: the mission is parked as "interrupted" (not
+	// cancelled) and its mid-flight quest goes back to pending so Saṃyojaka
+	// can resume it (auto-resume happens in resumeInterruptedMissions).
+	if restored.Status != "interrupted" {
+		t.Errorf("mission status = %s, want interrupted", restored.Status)
 	}
 	q := restored.FindQuest(qid)
-	if q == nil || q.Status != "failed" {
-		t.Fatalf("quest status = %+v, want failed", q)
-	}
-	if !strings.Contains(q.Error, "restarted") {
-		t.Errorf("quest error = %q", q.Error)
+	if q == nil || q.Status != "pending" {
+		t.Fatalf("quest status = %+v, want pending (resumable)", q)
 	}
 	if !strings.Contains(restored.Summary, "Interrupted") {
 		t.Errorf("summary missing interruption note")

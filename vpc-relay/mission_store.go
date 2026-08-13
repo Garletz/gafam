@@ -58,9 +58,11 @@ func initMissionStore() {
 	loadMissionsFromDB()
 }
 
-// loadMissionsFromDB hydrates the RAM store at boot and marks missions that
-// were mid-run when the relay stopped (restart / watchtower update) as
-// interrupted — no phantom "running" quests left behind.
+// loadMissionsFromDB hydrates the RAM store at boot and recovers missions that
+// were mid-run when the relay stopped (restart / watchtower update): their
+// running/claimed quests go back to pending, the most recent one is resumed
+// automatically by Saṃyojaka, older ones are parked as "interrupted" and can
+// be resumed manually (orchestrator/run with mission_id).
 func loadMissionsFromDB() {
 	rows, err := db.Query(`SELECT data FROM moksa_missions`)
 	if err != nil {
@@ -82,26 +84,51 @@ func loadMissionsFromDB() {
 		list = append(list, m)
 	}
 
-	interrupted := 0
+	resumable := 0
 	for i := range list {
 		m := &list[i]
 		if m.Status != "planning" && m.Status != "active" && m.Status != "synthesizing" {
 			continue
 		}
+		// Mid-flight quests become pending again — tools are re-runnable.
 		for j := range m.Quests {
 			if m.Quests[j].Status == "running" || m.Quests[j].Status == "claimed" {
-				m.Quests[j].Status = "failed"
-				m.Quests[j].Error = "relay restarted mid-run"
+				m.Quests[j].Status = "pending"
+				m.Quests[j].Error = ""
 			}
 		}
-		m.Status = "cancelled"
-		m.Summary += "\n\n_Interrupted by relay restart — pose again or re-run._"
-		interrupted++
+		m.Status = "interrupted"
+		m.Summary += "\n\n_Interrupted by relay restart._"
+		resumable++
 		if moksa.PersistHook != nil {
 			moksa.PersistHook(m)
 		}
 	}
 
 	moksa.LoadIntoStore(list)
-	log.Printf("moksa: %d missions restored from DB (%d interrupted)", len(list), interrupted)
+	log.Printf("moksa: %d missions restored from DB (%d interrupted)", len(list), resumable)
+}
+
+// resumeInterruptedMissions auto-resumes the most recent interrupted mission.
+// MUST be called after the kāraka tool registry is populated (tools would be
+// unknown otherwise). Older interrupted missions stay parked — resumable
+// manually via orchestrator/run with mission_id.
+func resumeInterruptedMissions() {
+	var newest *moksa.Mission
+	for _, m := range moksa.ListMissions() {
+		m := m // copy from list
+		if m.Status != "interrupted" {
+			continue
+		}
+		if newest == nil || m.UpdatedAt.After(newest.UpdatedAt) {
+			newest = &m
+		}
+	}
+	if newest == nil {
+		return
+	}
+	log.Printf("moksa: auto-resuming mission %s after restart", newest.ID)
+	if !launchOrchestration(newest.ID, "suparna_vpc", 6, "", nil, false, "", false) {
+		log.Printf("moksa: auto-resume of %s deferred (orchestrator busy)", newest.ID)
+	}
 }

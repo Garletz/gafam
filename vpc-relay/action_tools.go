@@ -29,6 +29,12 @@ func registerActionTools() {
 		},
 		Returns: "{ queued: bool, to: string }",
 		Handler: func(params map[string]interface{}) (interface{}, error) {
+			// Dev-phase kill switch (Settings → Agent controls): agents cannot
+			// send SMS at all while it is ON. Replies to the self phone
+			// (mission reports) are not affected — they are not agent-initiated.
+			if getSetting("agent_kill_sms") == "1" {
+				return nil, fmt.Errorf("sms.send blocked: agent SMS kill switch is ON (Settings → Agent controls)")
+			}
 			to, _ := params["to"].(string)
 			body, _ := params["body"].(string)
 			if to == "" || body == "" {
