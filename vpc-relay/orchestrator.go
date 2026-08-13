@@ -1102,6 +1102,7 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 		if done.Summary != "" {
 			msg += "\n" + truncateStr(done.Summary, 300)
 		}
+		msg += "\n📄 Rapport: onglet Vault, note mission-" + done.ID
 		queueSmsReply(selfPhone, msg)
 	}, false, "", false)
 	if !ok {

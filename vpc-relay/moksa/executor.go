@@ -1,6 +1,7 @@
 package moksa
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -169,11 +170,33 @@ func Synthesize(missionID string) (*Mission, error) {
 		return nil, fmt.Errorf("mission not found: %s", missionID)
 	}
 
+	// The deliverable: the most substantial text a quest actually produced
+	// (llm.chat content, browser.sense answer). It leads the report — the
+	// quest table becomes a technical appendix, not the main read.
+	deliverable := ""
+	for _, q := range m.Quests {
+		if q.Status != "done" || q.Result == nil {
+			continue
+		}
+		if rm, ok := q.Result.(map[string]interface{}); ok {
+			for _, key := range []string{"content", "answer"} {
+				if s, ok := rm[key].(string); ok && len(s) > len(deliverable) {
+					deliverable = s
+				}
+			}
+		}
+	}
+
 	var b strings.Builder
-	b.WriteString("# Mission report\n\n")
+	b.WriteString("# " + m.Instruction + "\n\n")
+	if deliverable != "" {
+		b.WriteString(deliverable + "\n\n---\n\n")
+	}
+	if m.Judge != nil {
+		b.WriteString(fmt.Sprintf("**⚖️ Verdict:** %s (%.0f%%) — %s\n\n", m.Judge.Verdict, m.Judge.Score*100, m.Judge.Reason))
+	}
+	b.WriteString("## Appendix — quest log\n\n")
 	b.WriteString("**ID:** " + m.ID + "\n\n")
-	b.WriteString("**Instruction:** " + m.Instruction + "\n\n")
-	b.WriteString("## Quests\n\n")
 	for _, q := range m.Quests {
 		b.WriteString("### " + q.ID + " — " + q.Title + "\n")
 		b.WriteString("- status: " + q.Status + "\n")
@@ -187,7 +210,14 @@ func Synthesize(missionID string) (*Mission, error) {
 			b.WriteString("- error: " + q.Error + "\n")
 		}
 		if q.Result != nil {
-			b.WriteString(fmt.Sprintf("- result: %v\n", q.Result))
+			// JSON, pas du %v Go — lisible par un humain.
+			if raw, err := json.Marshal(q.Result); err == nil {
+				rs := string(raw)
+				if len(rs) > 1500 {
+					rs = rs[:1497] + "…"
+				}
+				b.WriteString("- result: `" + rs + "`\n")
+			}
 		}
 		b.WriteString("\n")
 	}
