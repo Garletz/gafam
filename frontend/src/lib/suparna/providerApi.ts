@@ -13,6 +13,45 @@ export type LLMEngineInfo = {
 	available: Array<{ engine: string; label: string }>;
 };
 
+export type ScopeRouting = {
+	primary: string;
+	fallbacks: string[];
+};
+
+export async function fetchScopes(
+	vpcUrl: string,
+	sessionToken: string
+): Promise<Record<string, ScopeRouting>> {
+	try {
+		const res = await fetch(`/api/proxy/llm?${qs(vpcUrl, sessionToken, { action: 'scopes' })}`);
+		if (!res.ok) return {};
+		const data: any = await res.json();
+		return data.scopes || {};
+	} catch {
+		return {};
+	}
+}
+
+export async function saveScope(
+	vpcUrl: string,
+	sessionToken: string,
+	scope: string,
+	primary: string,
+	fallbacks: string[]
+): Promise<{ ok: boolean; error?: string }> {
+	try {
+		const res = await fetch(`/api/proxy/llm?${qs(vpcUrl, sessionToken, { action: 'scopes' })}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ scope, primary, fallbacks })
+		});
+		const data: any = await res.json();
+		return res.ok ? { ok: true } : { ok: false, error: data.error || 'save scope failed' };
+	} catch (e: any) {
+		return { ok: false, error: e.message };
+	}
+}
+
 export type LLMChatResult = {
 	content?: string;
 	engine?: string;

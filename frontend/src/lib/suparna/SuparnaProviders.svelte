@@ -8,9 +8,12 @@
     setEngine,
     testProvider,
     orchestratorChat,
+    fetchScopes,
+    saveScope,
     type LLMProvider,
     type LLMEngineInfo,
-    type LLMChatResult
+    type LLMChatResult,
+    type ScopeRouting
   } from './providerApi';
 
   let { vpcUrl, sessionToken }: { vpcUrl: string; sessionToken: string } = $props();
@@ -24,9 +27,21 @@
 
   let providers: LLMProvider[] = $state([]);
   let engineInfo: LLMEngineInfo | null = $state(null);
+  let scopes: Record<string, ScopeRouting> = $state({});
+  let scopeDraft: Record<string, { primary: string; fallback: string }> = $state({
+    orchestrator: { primary: 'vpc', fallback: '' },
+    light_task: { primary: 'vpc', fallback: '' },
+    read_only: { primary: 'vpc', fallback: '' }
+  });
   let busy = $state(false);
   let msg = $state('');
   let msgError = $state(false);
+
+  const SCOPE_META: Array<{ id: string; label: string; hint: string }> = [
+    { id: 'orchestrator', label: 'Orchestrateur', hint: 'Le cerveau — planner Saṃyojaka, juge vérificateur' },
+    { id: 'light_task', hint: 'Réparations de quêtes, sous-agents, browser.sense', label: 'Tâches légères' },
+    { id: 'read_only', label: 'Lecture seule', hint: 'Classification, recherche — local par défaut' }
+  ];
 
   // Add-provider form
   let preset = $state(PRESETS[0].label);
@@ -51,12 +66,44 @@
   }
 
   async function refresh() {
-    const [p, e] = await Promise.all([
+    const [p, e, s] = await Promise.all([
       fetchProviders(vpcUrl, sessionToken),
-      fetchEngine(vpcUrl, sessionToken)
+      fetchEngine(vpcUrl, sessionToken),
+      fetchScopes(vpcUrl, sessionToken)
     ]);
     providers = p;
     engineInfo = e;
+    scopes = s;
+    const draft: Record<string, { primary: string; fallback: string }> = {};
+    for (const meta of SCOPE_META) {
+      const cur = s[meta.id];
+      draft[meta.id] = {
+        primary: cur?.primary || 'vpc',
+        fallback: cur?.fallbacks?.[0] || ''
+      };
+    }
+    scopeDraft = draft;
+  }
+
+  function engineLabel(engine: string): string {
+    if (!engine) return '—';
+    const opt = engineInfo?.available.find((o) => o.engine === engine);
+    return opt?.label || engine;
+  }
+
+  async function applyScope(scopeId: string) {
+    const d = scopeDraft[scopeId];
+    if (!d || !d.primary) return;
+    const r = await saveScope(
+      vpcUrl,
+      sessionToken,
+      scopeId,
+      d.primary,
+      d.fallback ? [d.fallback] : []
+    );
+    if (!r.ok) { flash(r.error || 'Save scope failed', true); return; }
+    flash(`Scope ${scopeId} → ${engineLabel(d.primary)}`);
+    await refresh();
   }
 
   function applyPreset(label: string) {
@@ -141,7 +188,7 @@
   </div>
 
   <!-- ─── Engine selector ─── -->
-  <h3 class="section-title">Orchestration engine</h3>
+  <h3 class="section-title">Default engine (global fallback)</h3>
   <div class="engine-grid">
     {#each engineInfo?.available ?? [{ engine: 'vpc', label: 'VPC Qwen (L1)' }, { engine: 'phone', label: 'Phone Edge (L2)' }] as opt}
       <button
@@ -153,9 +200,47 @@
         <span class="engine-card__radio">{engineInfo?.engine === opt.engine ? '●' : '○'}</span>
         <span class="engine-card__label">{opt.label}</span>
         {#if engineInfo?.engine === opt.engine}
-          <span class="engine-card__tag">orchestrator</span>
+          <span class="engine-card__tag">default</span>
         {/if}
       </button>
+    {/each}
+  </div>
+
+  <!-- ─── Scope routing: who thinks for what ─── -->
+  <h3 class="section-title">Scope routing — who thinks for what</h3>
+  <p class="scope-intro">
+    This is what <strong>actually</strong> drives Saṃyojaka: each scope has its own engine + fallback.
+    Out of tokens at a provider? Switch the scope here — no restart.
+  </p>
+  <div class="scope-list">
+    {#each SCOPE_META as meta}
+      {@const cur = scopes[meta.id]}
+      <div class="scope-card">
+        <div class="scope-card__head">
+          <span class="scope-card__name">{meta.label}</span>
+          <span class="scope-card__current mono">{cur ? engineLabel(cur.primary) : '—'}</span>
+        </div>
+        <p class="scope-card__hint">{meta.hint}</p>
+        <div class="scope-card__selects">
+          <label>
+            <span>Engine</span>
+            <select bind:value={scopeDraft[meta.id].primary} onchange={() => applyScope(meta.id)}>
+              {#each engineInfo?.available ?? [] as opt}
+                <option value={opt.engine}>{opt.label}</option>
+              {/each}
+            </select>
+          </label>
+          <label>
+            <span>Fallback</span>
+            <select bind:value={scopeDraft[meta.id].fallback} onchange={() => applyScope(meta.id)}>
+              <option value="">none</option>
+              {#each engineInfo?.available ?? [] as opt}
+                <option value={opt.engine}>{opt.label}</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+      </div>
     {/each}
   </div>
 
@@ -309,8 +394,39 @@
     border-radius: 4px;
   }
 
-  .chat-tester { display: flex; gap: 8px; margin-bottom: 10px; }
-  .chat-tester input {
+  .scope-intro { margin: 0 0 10px; font-size: 12px; color: #5f6368; line-height: 1.5; }
+  .scope-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .scope-card {
+    padding: 10px 14px;
+    border: 1px solid #dfe1e5;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .scope-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .scope-card__name { font-size: 13px; font-weight: 600; color: #202124; }
+  .scope-card__current { font-size: 11px; color: #188038; }
+  .scope-card__hint { margin: 2px 0 8px; font-size: 11px; color: #9aa0a6; }
+  .scope-card__selects { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .scope-card__selects label span {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #80868b;
+    margin-bottom: 4px;
+  }
+  .scope-card__selects select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 12px;
+    background: #fff;
+  }
+
+  .chat-tester { display: flex; gap: 8px; margin-bottom: 10px; }  .chat-tester input {
     flex: 1;
     min-width: 0;
     padding: 8px 12px;
