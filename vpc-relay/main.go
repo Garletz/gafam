@@ -325,7 +325,19 @@ func main() {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 			defer cancel()
-			return chatWithEngine(ctx, scope, system, prompt, maxTokens)
+			res, err := chatWithEngine(ctx, scope, system, prompt, maxTokens)
+			if err != nil {
+				return nil, err
+			}
+			// Normalize to a plain map: downstream consumers (synthesis
+			// deliverable detection, replan summaries) read map fields, and a
+			// *chatResult pointer would be invisible to them in-process.
+			return map[string]interface{}{
+				"content":    res.Content,
+				"engine":     res.Engine,
+				"model":      res.Model,
+				"latency_ms": res.LatencyMs,
+			}, nil
 		},
 	})
 	karaka.RegisterTool(karaka.Tool{

@@ -1249,9 +1249,9 @@ func saveMissionToVault(m *moksa.Mission) {
 	id := "mission-" + m.ID
 	tags := "mission saṃyojaka"
 
-	// Write markdown to sandbox
+	// Write markdown to sandbox (body already starts with "# instruction")
 	path := "/files/research/notes/" + id + ".md"
-	md := fmt.Sprintf("---\nid: %s\ntitle: %q\ntags: [%s]\n---\n# %s\n\n%s\n", id, title, tags, title, body)
+	md := fmt.Sprintf("---\nid: %s\ntitle: %q\ntags: [%s]\n---\n%s\n", id, title, tags, body)
 	_, writeErr := karaka.ExecuteTool("sandbox.file_write", map[string]interface{}{
 		"path":    path,
 		"content": md,
