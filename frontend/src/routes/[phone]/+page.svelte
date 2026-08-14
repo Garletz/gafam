@@ -15,6 +15,7 @@
   import SmsComposeAids from '$lib/SmsComposeAids.svelte';
   import SmsManagerView from '$lib/SmsManagerView.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
+  import { blurContacts } from '$lib/privacy';
 
   let { data }: { data: PageData } = $props();
 
@@ -1053,7 +1054,7 @@
                 {#if chatActionPeer === sender}
                   <div class="chat-item chat-item--armed" role="group" aria-label="Delete conversation">
                     <div class="chat-item__arm-meta">
-                      <span class="chat-item__arm-name">{getContactName(sender)}</span>
+                      <span class="chat-item__arm-name" class:blurred={$blurContacts}>{getContactName(sender)}</span>
                       <span class="chat-item__arm-hint">Delete this chat?</span>
                     </div>
                     <button
@@ -1086,9 +1087,9 @@
                       openChatActions(sender);
                     }}
                   >
-                    <div class="chat-item__avatar">{ getContactName(sender).charAt(0).toUpperCase() }</div>
+                    <div class="chat-item__avatar" class:blurred={$blurContacts}>{ getContactName(sender).charAt(0).toUpperCase() }</div>
                     <div class="chat-item__info">
-                      <div class="chat-item__name">{getContactName(sender)}</div>
+                      <div class="chat-item__name" class:blurred={$blurContacts}>{getContactName(sender)}</div>
                       <div class="chat-item__preview">
                         {#if conversations()[sender]?.length > 0}
                           {conversations()[sender][conversations()[sender].length - 1].body.substring(0, 30)}...
@@ -1113,9 +1114,9 @@
                     class="chat-item__open"
                     onclick={() => { selectedSender = cPhone; showContactsInChat = false; }}
                   >
-                    <div class="chat-item__avatar">{ cName.charAt(0).toUpperCase() }</div>
+                    <div class="chat-item__avatar" class:blurred={$blurContacts}>{ cName.charAt(0).toUpperCase() }</div>
                     <div class="chat-item__info">
-                      <div class="chat-item__name">{cName}</div>
+                      <div class="chat-item__name" class:blurred={$blurContacts}>{cName}</div>
                       <div class="chat-item__preview contact-phone">{cPhone}</div>
                     </div>
                   </button>
@@ -2099,6 +2100,7 @@
   }
   .chat-item__info { flex: 1; overflow: hidden; }
   .chat-item__name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .blurred { filter: blur(6px); user-select: none; }
   .chat-item__preview { font-size: 13px; color: #5f6368; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .settings-nav__icon {

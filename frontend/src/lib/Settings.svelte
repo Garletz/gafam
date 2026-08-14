@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { encryptAESGCM, decryptAESGCM } from '$lib/crypto';
+  import { blurContacts, setBlurContacts } from '$lib/privacy';
 
   let {
     vpcUrl,
@@ -568,6 +569,30 @@
                 disabled={killSmsSaving}
               >
                 {killSmsSaving ? 'Saving…' : killSms ? '🔓 Disable kill switch' : '🔒 Enable kill switch'}
+              </button>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <div class="subpanel__head">
+              <h3>Privacy</h3>
+              <span class="kill-badge" class:kill-badge--on={$blurContacts}>
+                {$blurContacts ? 'Names hidden' : 'Names visible'}
+              </span>
+            </div>
+            <p class="kill-hint">
+              <strong>Blur contact names.</strong> When ON, the names in the chat list are
+              blurred so a shoulder-surfer can't read who you're talking to. Local to this
+              device only — nothing is sent to the VPC.
+            </p>
+            <div class="subpanel__actions">
+              <button
+                type="button"
+                class="btn-primary"
+                class:btn-primary--danger={!$blurContacts}
+                onclick={() => setBlurContacts(!$blurContacts)}
+              >
+                {$blurContacts ? '👁 Show names' : '🙈 Blur names'}
               </button>
             </div>
           </div>
