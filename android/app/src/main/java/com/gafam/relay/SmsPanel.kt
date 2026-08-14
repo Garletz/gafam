@@ -141,7 +141,7 @@ object SmsPanel {
 
         val (compBar, bodyEdit) = buildComposeBar(ctx, conv.address, composeIsNew) { recipient, body ->
             sendSms(ctx, recipient, body) {
-                loadMessages(conv.address, refs.msgContainer)
+                loadMessages(conv.address, refs.msgContainer, animateLast = true)
                 if (composeIsNew) {
                     composeIsNew = false
                     rebuildComposeBar(ctx, conv.address, refs, currentBodyEdit)
@@ -231,7 +231,7 @@ object SmsPanel {
     private fun rebuildComposeBar(ctx: Context, address: String, refs: ChatRefs, oldBodyEdit: EditText?) {
         val (compBar, newBodyEdit) = buildComposeBar(ctx, address, false) { recipient, body ->
             sendSms(ctx, recipient, body) {
-                loadMessages(address, refs.msgContainer)
+                loadMessages(address, refs.msgContainer, animateLast = true)
             }
         }
         currentBodyEdit = newBodyEdit
@@ -467,13 +467,13 @@ object SmsPanel {
         }
     }
 
-    private fun loadMessages(address: String, container: LinearLayout) {
+    private fun loadMessages(address: String, container: LinearLayout, animateLast: Boolean = false) {
         val ctx = ctxRef ?: return; container.removeAllViews()
         container.addView(centerLabel(ctx, "Loading..."))
         thread(name = "gafam-load-msgs", isDaemon = true) {
             val msgs = readMessages(ctx, address)
             (ctx as? android.app.Activity)?.runOnUiThread {
-                renderMessages(ctx, msgs, container)
+                renderMessages(ctx, msgs, container, animateLast)
                 container.post { (container.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
             }
         }
@@ -504,7 +504,7 @@ object SmsPanel {
         return a.equals(b, ignoreCase = true)
     }
 
-    private fun renderMessages(ctx: Context, msgs: List<SmsMsg>, container: LinearLayout) {
+    private fun renderMessages(ctx: Context, msgs: List<SmsMsg>, container: LinearLayout, animateLast: Boolean = false) {
         val dp = { v: Int -> (v * ctx.resources.displayMetrics.density).toInt() }
         container.removeAllViews()
         if (msgs.isEmpty()) {
@@ -585,6 +585,18 @@ object SmsPanel {
             row.addView(bubble)
             container.addView(row)
         }
+
+        // Subtle entrance for the newest message (after a send / refresh).
+        if (animateLast && container.childCount > 0) {
+            val last = container.getChildAt(container.childCount - 1)
+            last.alpha = 0f
+            last.translationY = dp(12).toFloat()
+            last.animate()
+                .alpha(1f).translationY(0f)
+                .setDuration(180)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        }
     }
 
     private fun buildComposeBar(
@@ -663,9 +675,18 @@ object SmsPanel {
             val b = bodyInput.text.toString().trim()
             val r = if (isNew) recipientInput?.text?.toString()?.trim() ?: recipient else recipient
             if (r.isNotEmpty() && b.isNotEmpty()) {
-                sendBtn.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80).withEndAction {
-                    sendBtn.animate().scaleX(1f).scaleY(1f).setDuration(80)
-                }
+                val decel = android.view.animation.DecelerateInterpolator()
+                val overshoot = android.view.animation.OvershootInterpolator(1.6f)
+                sendBtn.animate()
+                    .scaleX(0.88f).scaleY(0.88f).alpha(0.7f)
+                    .setDuration(70).setInterpolator(decel)
+                    .withEndAction {
+                        sendBtn.animate()
+                            .scaleX(1f).scaleY(1f).alpha(1f)
+                            .setDuration(160).setInterpolator(overshoot)
+                            .start()
+                    }
+                    .start()
                 onSend(r, b); bodyInput.text.clear()
             }
         }
@@ -699,24 +720,28 @@ object SmsPanel {
         try {
             val mgr = SmsManager.getDefault()
             val parts = mgr.divideMessage(body)
-            val beforeMsgs = readMessages(ctx, recipient)
-            val beforeCount = beforeMsgs.size
+            val beforeCount = readMessages(ctx, recipient).size
             if (parts.size > 1) mgr.sendMultipartTextMessage(recipient, null, parts, null, null)
             else mgr.sendTextMessage(recipient, null, body, null, null)
-            android.widget.Toast.makeText(ctx, "Sent", android.widget.Toast.LENGTH_SHORT).show()
+            // sendTextMessage is async: the SMS lands in the provider a moment
+            // later. Wait for it, THEN push to the VPC — syncing immediately
+            // would miss it (the web UI would not see the message until the
+            // next 10-min history sync).
             thread(name = "gafam-sms-reload", isDaemon = true) {
+                var pushed = false
                 for (attempt in 0 until 8) {
                     Thread.sleep(400)
-                    val msgs = readMessages(ctx, recipient)
-                    if (msgs.size > beforeCount) {
+                    if (readMessages(ctx, recipient).size > beforeCount) {
+                        SmsHistorySync.syncAsync(ctx, force = true)
+                        pushed = true
                         (ctx as? android.app.Activity)?.runOnUiThread { reload() }
                         return@thread
                     }
                 }
-                // Fallback: reload anyway after timeout
+                // Fallback: push anyway and refresh after timeout.
+                if (!pushed) SmsHistorySync.syncAsync(ctx, force = true)
                 (ctx as? android.app.Activity)?.runOnUiThread { reload() }
             }
-            SmsHistorySync.syncAsync(ctx, force = true)
         } catch (e: Exception) {
             android.widget.Toast.makeText(ctx, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
         }
