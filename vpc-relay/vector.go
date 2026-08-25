@@ -42,6 +42,7 @@ type VectorHit struct {
 	EntityID   string  `json:"entity_id"`
 	Score      float32 `json:"score"`
 	Model      string  `json:"model,omitempty"`
+	Label      string  `json:"label,omitempty"`
 }
 
 // vectorIndex keeps embeddings in RAM for fast cosine ranking. Loaded from
@@ -206,9 +207,50 @@ func SemanticSearch(ctx context.Context, entityType, query string, k int) ([]Vec
 	}
 	out := make([]VectorHit, 0, len(hits))
 	for _, h := range hits {
-		out = append(out, VectorHit{EntityType: h.etype, EntityID: h.eid, Score: h.score})
+		out = append(out, VectorHit{
+			EntityType: h.etype,
+			EntityID:   h.eid,
+			Score:      h.score,
+			Label:      entityLabel(h.etype, h.eid),
+		})
 	}
 	return out, nil
+}
+
+// contactNameCache memoizes phone → name lookups for labelling results.
+var (
+	contactNameCacheMu sync.RWMutex
+	contactNameCache   map[string]string
+)
+
+func entityLabel(etype, eid string) string {
+	if etype != "contact" {
+		return eid
+	}
+	contactNameCacheMu.RLock()
+	if contactNameCache == nil {
+		contactNameCacheMu.RUnlock()
+		contactNameCacheMu.Lock()
+		contactNameCache = map[string]string{}
+		rows, err := db.Query(`SELECT phone, name FROM gafam_contacts`)
+		if err == nil {
+			for rows.Next() {
+				var p, n string
+				if rows.Scan(&p, &n) == nil {
+					contactNameCache[p] = n
+				}
+			}
+			rows.Close()
+		}
+		contactNameCacheMu.Unlock()
+		contactNameCacheMu.RLock()
+	}
+	name, ok := contactNameCache[eid]
+	contactNameCacheMu.RUnlock()
+	if ok && name != "" {
+		return name
+	}
+	return eid
 }
 
 // ─── Embedding backend (pluggable) ───
