@@ -222,6 +222,7 @@ func registerActionToolPermissions() {
 		"vault.remember":  "allow",
 		"custom.*":        "allow", // agent-written scripts stay inside the sandbox
 		"memory.*":        "allow", // semantic search + embeddings (read-only over own data)
+		"contacts.auto_analyze": "allow",
 	})
 	karaka.SetPermissions("edge_l2_phone", map[string]string{
 		"sms.*":      "ask",

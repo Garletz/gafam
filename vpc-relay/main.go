@@ -299,6 +299,8 @@ func main() {
 	registerActionTools()
 	registerActionToolPermissions()
 	registerVectorTools()
+	registerContactsAutoTool()
+	startAutoAnalyzeTicker()
 	resumeInterruptedMissions()
 	// llm.chat routes through the active orchestration engine (Suparna → Provider tab).
 	// Registered here because it lives in package main (chatWithActiveEngine).

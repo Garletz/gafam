@@ -42,6 +42,7 @@ func initContactsSchema() {
 		`ALTER TABLE gafam_contacts ADD COLUMN auto_languages TEXT DEFAULT '[]'`,
 		`ALTER TABLE gafam_contacts ADD COLUMN auto_profession TEXT DEFAULT ''`,
 		`ALTER TABLE gafam_contacts ADD COLUMN last_analyzed_at DATETIME`,
+		`ALTER TABLE gafam_contacts ADD COLUMN last_analysis_ts INTEGER DEFAULT 0`,
 	}
 	for _, m := range migrations {
 		db.Exec(m) // Ignore error if column already exists
@@ -338,9 +339,9 @@ SMS :
 
 	_, _ = db.Exec(`
 		UPDATE gafam_contacts
-		SET auto_profile = ?, auto_skills = ?, auto_languages = ?, auto_profession = ?, last_analyzed_at = datetime('now'), updated_at = datetime('now')
+		SET auto_profile = ?, auto_skills = ?, auto_languages = ?, auto_profession = ?, last_analyzed_at = datetime('now'), last_analysis_ts = ?, updated_at = datetime('now')
 		WHERE phone = ?
-	`, c.AutoProfile, string(autoSkillsJSON), string(autoLangsJSON), c.AutoProfession, c.Phone)
+	`, c.AutoProfile, string(autoSkillsJSON), string(autoLangsJSON), c.AutoProfession, time.Now().UnixMilli(), c.Phone)
 
 	// Update vector embedding
 	fullDoc := fmt.Sprintf("Contact %s (%s). Métier: %s (Déduit: %s). Compétences: %s (Déduites: %s). Langues: %s. Résumé: %s",
