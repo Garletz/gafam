@@ -14,6 +14,7 @@
   import FederationView from '$lib/FederationView.svelte';
   import SmsComposeAids from '$lib/SmsComposeAids.svelte';
   import SmsManagerView from '$lib/SmsManagerView.svelte';
+  import ContactProfileModal, { type ContactFull } from '$lib/ContactProfileModal.svelte';
   import { detectSmsCodes } from '$lib/smsCodes';
   import { blurContacts } from '$lib/privacy';
 
@@ -21,6 +22,9 @@
 
   // The phone number from the URL
   let phone = $derived(page.params.phone);
+
+  let contactsFullList: ContactFull[] = $state([]);
+  let selectedContactForProfile: ContactFull | null = $state(null);
 
   // Connection state
   let appState: 'setup' | 'waiting' | 'challenge' | 'connected' | 'error' = $state('setup');
@@ -607,7 +611,8 @@
         if (payload.encrypted_data && payload.iv) {
           try {
             const plaintext = await decryptAESGCM(payload.encrypted_data, payload.iv, sessionToken);
-            const list = JSON.parse(plaintext);
+            const list: ContactFull[] = JSON.parse(plaintext);
+            contactsFullList = list;
             const map: Record<string, string> = {};
             for (const c of list) {
               map[c.phone_number] = c.display_name;
@@ -618,6 +623,7 @@
           }
         } else if (Array.isArray(payload)) {
           // Fallback if not yet encrypted (e.g. before VPC restart)
+          contactsFullList = payload;
           const map: Record<string, string> = {};
           for (const c of payload) {
             map[c.phone_number] = c.display_name;
@@ -626,6 +632,53 @@
         }
       }
     } catch(e) {}
+  }
+
+  function openContactProfileByPhone(targetPhone: string) {
+    const found = contactsFullList.find(c => c.phone_number === targetPhone);
+    if (found) {
+      selectedContactForProfile = { ...found };
+    } else {
+      selectedContactForProfile = {
+        phone_number: targetPhone,
+        display_name: contacts[targetPhone] || targetPhone,
+        skills: [],
+        languages: ['fr']
+      };
+    }
+  }
+
+  function handleContactSaved(updated: ContactFull) {
+    const idx = contactsFullList.findIndex(c => c.phone_number === updated.phone_number);
+    if (idx >= 0) {
+      contactsFullList[idx] = updated;
+    } else {
+      contactsFullList.push(updated);
+    }
+    contacts[updated.phone_number] = updated.display_name;
+    contacts = { ...contacts };
+    selectedContactForProfile = updated;
+  }
+
+  function exportContactsCSV() {
+    const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken });
+    window.open(`/api/proxy/contacts/csv?${proxyParams.toString()}`, '_blank');
+  }
+
+  async function handleCSVUpload(e: Event) {
+    const target = e.target as HTMLInputElement;
+    if (!target.files || target.files.length === 0) return;
+    const file = target.files[0];
+    const text = await file.text();
+    const proxyParams = new URLSearchParams({ vpcUrl, token: sessionToken });
+    const res = await fetch(`/api/proxy/contacts/csv?${proxyParams.toString()}`, {
+      method: 'POST',
+      body: text
+    });
+    if (res.ok) {
+      await loadContacts();
+    }
+    target.value = '';
   }
 
   function openChatActions(peer: string) {
@@ -1022,6 +1075,15 @@
                 <div class="contact-search">
                   <input type="search" placeholder="Search contacts..." bind:value={contactSearchQuery} />
                 </div>
+                <div class="contact-csv-actions">
+                  <button type="button" class="btn-csv-tool" onclick={exportContactsCSV} title="Exporter les contacts en CSV">
+                    ↓ CSV
+                  </button>
+                  <label class="btn-csv-tool" title="Importer des contacts depuis un CSV">
+                    ↑ CSV
+                    <input type="file" accept=".csv" class="hidden-file-input" onchange={handleCSVUpload} />
+                  </label>
+                </div>
               {/if}
               {#if sidebarTab === 'chats'}
               <div class="chat-sub-actions">
@@ -1112,7 +1174,8 @@
                   <button
                     type="button"
                     class="chat-item__open"
-                    onclick={() => { selectedSender = cPhone; showContactsInChat = false; }}
+                    onclick={() => openContactProfileByPhone(cPhone)}
+                    title="Voir et éditer le profil"
                   >
                     <div class="chat-item__avatar" class:blurred={$blurContacts}>{ cName.charAt(0).toUpperCase() }</div>
                     <div class="chat-item__info">
@@ -1120,15 +1183,28 @@
                       <div class="chat-item__preview contact-phone">{cPhone}</div>
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    class="btn-copy {copiedPhone === cPhone ? 'is-copied' : ''}"
-                    title="Copy number"
-                    aria-label="Copy {cPhone}"
-                    onclick={(e) => copyPhone(cPhone, e)}
-                  >
-                    {copiedPhone === cPhone ? 'Copied' : 'Copy'}
-                  </button>
+                  <div class="chat-item__actions-group">
+                    <button
+                      type="button"
+                      class="btn-contact-chat"
+                      title="Ouvrir la conversation"
+                      aria-label="Discuter avec {cName}"
+                      onclick={() => { selectedSender = cPhone; showContactsInChat = false; }}
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-copy {copiedPhone === cPhone ? 'is-copied' : ''}"
+                      title="Copy number"
+                      aria-label="Copy {cPhone}"
+                      onclick={(e) => copyPhone(cPhone, e)}
+                    >
+                      {copiedPhone === cPhone ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
                 </div>
               {/each}
             {:else if isToolTab}
@@ -1440,6 +1516,20 @@
   {/if}
 
 </div>
+
+{#if selectedContactForProfile}
+  <ContactProfileModal
+    contact={selectedContactForProfile}
+    {vpcUrl}
+    {sessionToken}
+    onClose={() => (selectedContactForProfile = null)}
+    onOpenChat={(p) => {
+      selectedSender = p;
+      showContactsInChat = false;
+    }}
+    onSaved={handleContactSaved}
+  />
+{/if}
 
 <style>
   :global(html, body) {
@@ -2088,9 +2178,60 @@
     cursor: pointer;
     color: inherit;
   }
+  .chat-item__actions-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 12px;
+    flex-shrink: 0;
+  }
+  .btn-contact-chat {
+    background: transparent;
+    border: 1px solid #dfe1e5;
+    color: #202124;
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-contact-chat:hover {
+    background: #202124;
+    color: #ffffff;
+    border-color: #202124;
+  }
+  .contact-csv-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .btn-csv-tool {
+    background: #ffffff;
+    border: 1px solid #dfe1e5;
+    color: #5f6368;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-csv-tool:hover {
+    background: #f1f3f4;
+    color: #202124;
+    border-color: #bdc1c6;
+  }
+  .hidden-file-input {
+    display: none;
+  }
   .chat-item--contact .btn-copy {
     flex-shrink: 0;
-    margin-right: 12px;
+    margin-right: 0;
   }
   button.chat-item {
     padding: 15px 20px;

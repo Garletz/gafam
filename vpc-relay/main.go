@@ -172,6 +172,7 @@ func initDB() {
 	if _, err := db.Exec(createContactsTable); err != nil {
 		log.Fatal("Failed to create gafam_contacts table:", err)
 	}
+	initContactsSchema()
 
 	createGuardiansTable := `
 	CREATE TABLE IF NOT EXISTS trusted_guardians (
@@ -476,8 +477,12 @@ func main() {
 	mux.HandleFunc("GET /api/web/edge/model", sessionMiddleware(edgeWebModelStatusHandler))
 	mux.HandleFunc("POST /api/web/edge/model", sessionMiddleware(edgeWebModelInstallHandler))
 
-	mux.HandleFunc("GET /api/proxy/contacts", sessionMiddleware(getContactsHandler))
+	mux.HandleFunc("GET /api/proxy/contacts", sessionMiddleware(getContactsExtended))
 	mux.HandleFunc("POST /api/proxy/contacts", sessionMiddleware(syncContactsHandler))
+	mux.HandleFunc("POST /api/proxy/contacts/save", sessionMiddleware(saveContactHandler))
+	mux.HandleFunc("POST /api/proxy/contacts/analyze", sessionMiddleware(analyzeContactHandler))
+	mux.HandleFunc("GET /api/proxy/contacts/csv", sessionMiddleware(exportContactsCSVHandler))
+	mux.HandleFunc("POST /api/proxy/contacts/csv", sessionMiddleware(importContactsCSVHandler))
 
 	mux.HandleFunc("GET /api/settings/guardians", sessionMiddleware(getGuardiansHandler))
 	mux.HandleFunc("POST /api/settings/guardians", sessionMiddleware(addGuardianHandler))
