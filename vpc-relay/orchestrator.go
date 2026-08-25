@@ -29,7 +29,7 @@ var (
 	orchestratorMission   = ""
 	orchestratorSince     time.Time
 	orchestratorPublishTo string // recipient phone for feed publish ("*" = broadcast)
-	orchestratorApproval bool   // require human approval before quests run
+	orchestratorApproval  bool   // require human approval before quests run
 )
 
 func setOrchestratorState(running bool, missionID string) {
@@ -142,6 +142,10 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("  OR browser: q1: browser.sense(url=\"https://lemonde.fr\", question=\"main headlines today\")\n")
 	b.WriteString("  RULE: any quest whose params use {{qN...}} MUST declare \"depends_on\": [N] — otherwise it runs BEFORE qN.\n")
 	b.WriteString("  If the instruction asks for analysis/summary/report, plan a quest that PRODUCES it (llm.chat on gathered data).\n")
+	b.WriteString("  CRITICAL: if the instruction is a QUESTION or asks for an answer/recommendation, ALWAYS\n")
+	b.WriteString("  plan a FINAL quest llm.chat whose prompt includes the previous results ({{qN.result...}})\n")
+	b.WriteString("  and which ANSWERS the question in natural language. Never end a mission with raw tool\n")
+	b.WriteString("  output and no answer — the judge will fail it.\n")
 	b.WriteString("  Use /files/ (not /tmp/) for sandbox file paths.\n\n")
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "Plan %d quests max. STRICT JSON:\n", maxQuests)
@@ -887,17 +891,18 @@ func executeQuestLevels(ctx context.Context, missionID, karakaID string, approva
 
 // orchestratorRunHandler — POST /api/web/orchestrator/run
 // Body: { "instruction": "...", "karaka_id"?: "suparna_vpc", "max_quests"?: 6 }
-//    or: { "mission_id": "m…", "karaka_id"?: … } to execute an existing board.
+//
+//	or: { "mission_id": "m…", "karaka_id"?: … } to execute an existing board.
 func orchestratorRunHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Instruction    string `json:"instruction"`
-		MissionID      string `json:"mission_id"`
-		KarakaID       string `json:"karaka_id"`
-		MaxQuests      int    `json:"max_quests"`
-		Mode           string `json:"mode"`           // "" | action | research
-		PublishFeed    bool   `json:"publish_feed"`   // publish synthesis to /feed when done
-		RecipientPhone string `json:"recipient_phone"` // target for feed publish (default: *)
-		RequireApproval bool  `json:"require_approval"` // pause before each quest for human approval
+		Instruction     string `json:"instruction"`
+		MissionID       string `json:"mission_id"`
+		KarakaID        string `json:"karaka_id"`
+		MaxQuests       int    `json:"max_quests"`
+		Mode            string `json:"mode"`             // "" | action | research
+		PublishFeed     bool   `json:"publish_feed"`     // publish synthesis to /feed when done
+		RecipientPhone  string `json:"recipient_phone"`  // target for feed publish (default: *)
+		RequireApproval bool   `json:"require_approval"` // pause before each quest for human approval
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -950,11 +955,11 @@ func orchestratorStatusHandler(w http.ResponseWriter, r *http.Request) {
 	orchestratorStateMu.RLock()
 	defer orchestratorStateMu.RUnlock()
 	sendJSON(w, http.StatusOK, map[string]interface{}{
-		"running":      orchestratorRunning,
-		"mission_id":   orchestratorMission,
-		"since":        orchestratorSince,
-		"publish_to":   orchestratorPublishTo,
-		"approval":     orchestratorApproval,
+		"running":    orchestratorRunning,
+		"mission_id": orchestratorMission,
+		"since":      orchestratorSince,
+		"publish_to": orchestratorPublishTo,
+		"approval":   orchestratorApproval,
 	})
 }
 
@@ -1091,8 +1096,8 @@ func triggerSelfQuest(selfPhone, instruction, mode string) {
 						}
 					}
 				}
+			}
 		}
-	}
 		status := "✅"
 		if failedN > 0 {
 			status = "⚠️"
@@ -1229,7 +1234,8 @@ func getMissionMemoryContext(instruction string) string {
 }
 
 // getVaultContext returns a summary of recent vault notes for the planner prompt.
-func getVaultContext() string {	notes, err := vaultList(5)
+func getVaultContext() string {
+	notes, err := vaultList(5)
 	if err != nil || len(notes) == 0 {
 		return ""
 	}
