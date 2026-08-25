@@ -283,6 +283,7 @@ func main() {
 	initEmailTables()
 	initVault()
 	initMissionStore()
+	initVectorStore()
 	initCron()
 	initComposeSnippets()
 	initGeo()
@@ -296,6 +297,7 @@ func main() {
 	registerCDPTools()
 	registerActionTools()
 	registerActionToolPermissions()
+	registerVectorTools()
 	resumeInterruptedMissions()
 	// llm.chat routes through the active orchestration engine (Suparna → Provider tab).
 	// Registered here because it lives in package main (chatWithActiveEngine).
