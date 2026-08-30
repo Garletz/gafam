@@ -1,0 +1,14 @@
+{
+  "MetricsReportingEnabled": false,
+  "GoogleServicesEnabled": false,
+  "BackgroundModeEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "ChromeVariations": 2,
+  "ComponentUpdatesEnabled": false,
+  "ChromeCleanupEnabled": false,
+  "SearchSuggestEnabled": false,
+  "ChromeCleanupReportingEnabled": false,
+  "TranslateEnabled": false,
+  "SafeBrowsingEnabled": false,
+  "AlternateErrorPagesEnabled": false
+}

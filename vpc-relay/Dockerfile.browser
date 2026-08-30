@@ -4,33 +4,66 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV DISPLAY=:99
 ENV HOME=/home/browser
 
+# Chrome for Testing — pinned stable (no auto-update, official automation build).
+ARG CHROME_VERSION=152.0.7977.64
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    firefox-esr \
     xvfb \
     openbox \
     pulseaudio \
     xdotool \
     ffmpeg \
     python3 \
-    procps \
+    curl \
+    unzip \
     ca-certificates \
     fonts-dejavu-core \
     fonts-liberation \
+    procps \
+    libnss3 \
+    libnspr4 \
+    libdbus-1-3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxext6 \
+    libx11-6 \
+    libglib2.0-0 \
+    libexpat1 \
+    libatspi2.0-0 \
+    libxss1 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -s /bin/bash browser && \
-    mkdir -p /home/browser/.mozilla/firefox/profile_main && \
-    mkdir -p /home/browser/.mozilla/firefox/profile_agent && \
-    chown -R browser:browser /home/browser
+RUN curl -fsSL "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip" -o /tmp/chrome.zip \
+    && unzip -q /tmp/chrome.zip -d /opt \
+    && mv /opt/chrome-linux64 /opt/chrome \
+    && rm /tmp/chrome.zip
 
-COPY firefox-profiles/ /home/browser/.mozilla/firefox/
-RUN chown -R browser:browser /home/browser/.mozilla
+# Enterprise policies: kill telemetry / Google services (CfT policy dir).
+COPY policies.json /etc/opt/chrome_for_testing/policies/managed/policies.json
+
+RUN useradd -m -s /bin/bash browser \
+    && mkdir -p /home/browser/data \
+    && chown -R browser:browser /home/browser
 
 COPY stream.py /stream.py
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh /stream.py
 
-EXPOSE 6080
+# 6080 = MJPEG stream (human view), 9222 = CDP (agent attach, internal network only)
+EXPOSE 6080 9222
 
 USER browser
 WORKDIR /home/browser

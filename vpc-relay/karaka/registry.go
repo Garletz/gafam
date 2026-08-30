@@ -3,6 +3,7 @@ package karaka
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -123,6 +124,7 @@ func SetPermissions(karakaID string, perms map[string]string) {
 }
 
 // CheckPermission vérifie si un kāraka peut utiliser un outil.
+// Résolution : ID exact → joker préfixe ("browser.mcp_*") → catégorie ("browser.*").
 // Retourne: "allow", "ask", "deny".
 func CheckPermission(karakaID, toolID string) string {	mu.RLock()
 	defer mu.RUnlock()
@@ -130,16 +132,21 @@ func CheckPermission(karakaID, toolID string) string {	mu.RLock()
 	if !ok {
 		return "deny"
 	}
-	perm, ok := k.Tools[toolID]
+	if perm, ok := k.Tools[toolID]; ok {
+		return perm
+	}
+	for key, perm := range k.Tools {
+		if strings.HasSuffix(key, "*") && strings.HasPrefix(toolID, strings.TrimSuffix(key, "*")) {
+			return perm
+		}
+	}
+	category := ""
+	if t, ok := tools[toolID]; ok {
+		category = t.Category
+	}
+	perm, ok := k.Tools[category+".*"]
 	if !ok {
-		category := ""
-		if t, ok := tools[toolID]; ok {
-			category = t.Category
-		}
-		perm, ok = k.Tools[category+".*"]
-		if !ok {
-			return "deny"
-		}
+		return "deny"
 	}
 	return perm
 }

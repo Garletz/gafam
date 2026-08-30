@@ -176,6 +176,7 @@ install_browser_sidecar() {
     local BROWSER_IMAGE="${BROWSER_IMAGE:-ghcr.io/garletz/gafam:browser}"
 
     mkdir -p /root/gafam_data/browser
+    mkdir -p /root/gafam_data/browser-mcp
 
     echo "[*] Pulling browser image $BROWSER_IMAGE..."
     if ! docker pull "$BROWSER_IMAGE"; then

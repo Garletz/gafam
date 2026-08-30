@@ -55,16 +55,8 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mode := r.URL.Query().Get("mode")     // "" = main (GUI), "agent" = headless
-	engine := r.URL.Query().Get("engine") // "" = firefox, "chromium" = chromium
-	if mode == "agent" {
-		os.Setenv("BROWSER_PROFILE", "agent")
-		defer os.Unsetenv("BROWSER_PROFILE")
-	}
-	if engine == "chromium" {
-		os.Setenv("BROWSER_ENGINE", "chromium")
-		defer os.Unsetenv("BROWSER_ENGINE")
-	}
+	// Legacy mode/engine parameters are accepted but ignored: the single
+	// browser is Chrome for Testing, shared by human and agent.
 
 	if !mu.TryLock() {
 		sendJSON(w, http.StatusConflict, map[string]string{"error": "browser_busy: another operation in progress"})
@@ -78,7 +70,8 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Old noVNC containers report Running but have no /status — force recreate.
+	// A running container with a live /status is reused as-is — the profile
+	// (cookies, logins) must survive wake cycles.
 	if running {
 		if streamBackendReady() {
 			sendJSON(w, http.StatusOK, map[string]string{"status": "already_running"})
@@ -94,7 +87,7 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// First pull of Firefox image can take several minutes on a small VPS.
+	// First pull of the Chrome image can take several minutes on a small VPS.
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	if err := waitBrowserReady(ctx); err != nil {
@@ -104,6 +97,49 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("vatayana: browser ready")
 	sendJSON(w, http.StatusOK, map[string]string{"status": "started"})
+}
+
+// ResetHandler wipes the persistent browser profile (cookies, logins,
+// localStorage) and starts fresh. Stop → wipe volume → recreate → start.
+func ResetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !mu.TryLock() {
+		sendJSON(w, http.StatusConflict, map[string]string{"error": "browser_busy: another operation in progress"})
+		return
+	}
+	defer mu.Unlock()
+
+	log.Println("vatayana: reset requested — wiping persistent browser profile")
+	if err := stopContainer(); err != nil {
+		sendJSON(w, http.StatusBadGateway, map[string]string{"error": "stop: " + err.Error()})
+		return
+	}
+	if err := removeContainer(); err != nil {
+		sendJSON(w, http.StatusBadGateway, map[string]string{"error": "rm: " + err.Error()})
+		return
+	}
+	if err := os.RemoveAll(browserProfileHost); err != nil {
+		log.Println("vatayana: warning: profile wipe failed:", err)
+	}
+
+	if err := startContainer(); err != nil {
+		sendJSON(w, http.StatusBadGateway, map[string]string{"error": "start: " + err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	if err := waitBrowserReady(ctx); err != nil {
+		sendJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "ready: " + err.Error()})
+		return
+	}
+
+	log.Println("vatayana: browser reset done")
+	sendJSON(w, http.StatusOK, map[string]string{"status": "reset"})
 }
 
 func streamBackendReady() bool {

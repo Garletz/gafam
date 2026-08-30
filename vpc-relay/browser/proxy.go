@@ -83,6 +83,8 @@ func InputHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"browser_not_running"}`, http.StatusServiceUnavailable)
 		return
 	}
+	// The human is driving: agent browser tools briefly yield (handoff).
+	TouchHuman()
 	r.URL.Path = "/input"
 	getProxy().ServeHTTP(w, r)
 }

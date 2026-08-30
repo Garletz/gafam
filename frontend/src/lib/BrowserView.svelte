@@ -17,8 +17,6 @@
   let connected = $state(false);
   let streamWidth = $state(1280);
   let streamHeight = $state(720);
-  let browserEngine = $state<'firefox' | 'chromium'>('firefox');
-  let browserMode = $state<'main' | 'agent'>('main');
 
   let streamAbort: AbortController | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -60,11 +58,9 @@
     if (!vpcUrl || !sessionToken) return;
     isLoading = true;
     errorMsg = '';
-    statusMsg = `Starting ${browserEngine === 'chromium' ? 'Chromium' : 'Firefox'} ${browserMode}...`;
+    statusMsg = 'Starting Chrome...';
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'wake' });
-      if (browserMode !== 'main') params.set('mode', browserMode);
-      if (browserEngine !== 'firefox') params.set('engine', browserEngine);
       const res = await fetch(`/api/proxy/browser?${params.toString()}`, { method: 'POST' });
       const data: any = await res.json();
       if (res.ok) {
@@ -73,6 +69,33 @@
         setTimeout(() => connectToStream(), 500);
       } else {
         errorMsg = data.error || 'Failed to start browser';
+        statusMsg = '';
+      }
+    } catch (err: any) {
+      errorMsg = err.message || 'Network error';
+      statusMsg = '';
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function resetBrowser() {
+    if (!vpcUrl || !sessionToken) return;
+    if (!confirm('Reset the browser session? All cookies, logins and history will be wiped from the VPC browser.')) return;
+    disconnect();
+    isLoading = true;
+    errorMsg = '';
+    statusMsg = 'Resetting browser session...';
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'reset' });
+      const res = await fetch(`/api/proxy/browser?${params.toString()}`, { method: 'POST' });
+      const data: any = await res.json();
+      if (res.ok) {
+        browserRunning = true;
+        statusMsg = 'Session reset — browser ready';
+        setTimeout(() => connectToStream(), 500);
+      } else {
+        errorMsg = data.error || 'Failed to reset browser';
         statusMsg = '';
       }
     } catch (err: any) {
@@ -357,7 +380,7 @@
     sendInput({ type: 'key', key });
   }
 
-  // ─── Khadyota console (read the web as text, drive Firefox) ───
+  // ─── Khadyota console (read the web as text, drive the shared browser) ───
   let khadyotaOpen = $state(false);
   let khadyotaUrl = $state('');
   let khadyotaBusy = $state(false);
@@ -430,16 +453,7 @@
 
   <div class="browser-view__controls">
     {#if !browserRunning}
-      <div class="browser-selects">
-        <select bind:value={browserEngine}>
-          <option value="firefox">Firefox</option>
-          <option value="chromium">Chromium</option>
-        </select>
-        <select bind:value={browserMode}>
-          <option value="main">GUI (main)</option>
-          <option value="agent">Headless (agent)</option>
-        </select>
-      </div>
+      <span class="browser-view__note">Chrome — one persistent session shared by you and the agent</span>
       <button
         type="button"
         class="btn btn--primary"
@@ -456,6 +470,14 @@
         disabled={isLoading}
       >
         {isLoading ? 'Stopping...' : 'Stop Browser'}
+      </button>
+      <button
+        type="button"
+        class="btn btn--ghost btn--danger"
+        onclick={resetBrowser}
+        disabled={isLoading}
+      >
+        {isLoading ? 'Resetting...' : 'Reset session'}
       </button>
     {/if}
   </div>
@@ -483,7 +505,7 @@
       ></canvas>
     {:else}
       <div class="browser-view__placeholder">
-        <p>Firefox ESR on VPC</p>
+        <p>Chrome on VPC — persistent, shared with the agent</p>
         <span>Click "Wake Browser" to start</span>
       </div>
     {/if}
@@ -511,7 +533,7 @@
               placeholder="https://example.com"
               disabled={khadyotaBusy}
             />
-            <button class="btn btn--ghost btn--sm" onclick={khadyotaNavigate} disabled={khadyotaBusy || !khadyotaUrl.trim()} title="Drive the visible Firefox to this URL">
+            <button class="btn btn--ghost btn--sm" onclick={khadyotaNavigate} disabled={khadyotaBusy || !khadyotaUrl.trim()} title="Drive the visible browser to this URL">
               Navigate
             </button>
             <button class="btn btn--primary btn--sm" onclick={khadyotaFetch} disabled={khadyotaBusy || !khadyotaUrl.trim()} title="Fetch the page and read it as text">
@@ -645,21 +667,6 @@
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
-  }
-
-  .browser-selects {
-    display: flex;
-    gap: 6px;
-  }
-
-  .browser-selects select {
-    padding: 6px 8px;
-    border: 1px solid #dadce0;
-    border-radius: 4px;
-    font-size: 12px;
-    background: #fff;
-    color: #202124;
-    cursor: pointer;
   }
 
   .btn {
@@ -823,6 +830,22 @@
   .khadyota__url:focus { border-color: #202124; }
 
   .btn--sm { padding: 5px 12px; font-size: 12px; }
+
+  .btn--danger {
+    border-color: #f6c1c0;
+    color: #c5221f;
+  }
+  .btn--danger:hover:not(:disabled) {
+    background: #fce8e6;
+  }
+
+  .browser-view__note {
+    font-size: 12.5px;
+    color: #5f6368;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 
   .khadyota__error {
     padding: 6px 16px;

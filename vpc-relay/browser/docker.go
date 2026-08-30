@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -15,51 +16,33 @@ import (
 )
 
 const (
-	dockerSock         = "/var/run/docker.sock"
-	browserContainer   = "gafam-browser"
-	chromiumContainer  = "gafam-chromium"
-	dockerAPIBase      = "http://localhost"
-	defaultImage       = "ghcr.io/garletz/gafam:browser"
-	defaultChromiumImg = "ghcr.io/garletz/gafam:chromium"
+	dockerSock        = "/var/run/docker.sock"
+	browserContainer  = "gafam-browser"
+	mcpContainer      = "gafam-mcp"
+	dockerAPIBase     = "http://localhost"
+	defaultImage      = "ghcr.io/garletz/gafam:browser"
+	defaultMcpImage   = "ghcr.io/garletz/gafam:mcp"
+	// The API container mounts /root/gafam_data at /app/data, so the browser
+	// profile volume (/root/gafam_data/browser) is directly reachable here.
+	browserProfileHost = "/app/data/browser"
 )
 
-func browserEngine() string {
-	if e := os.Getenv("BROWSER_ENGINE"); e == "chromium" {
-		return "chromium"
-	}
-	return "firefox"
-}
+// The single browser engine is Chrome for Testing, headed on Xvfb, shared by
+// the human (MJPEG stream) and the agent (CDP attach via the Playwright MCP
+// sidecar). Legacy engine/profile parameters are accepted but ignored.
+func browserEngine() string { return "chrome" }
 
-func activeContainer() string {
-	if browserEngine() == "chromium" {
-		return chromiumContainer
-	}
-	return browserContainer
-}
+func activeContainer() string { return browserContainer }
 
 func browserImage() string {
 	if u := os.Getenv("BROWSER_IMAGE"); u != "" {
 		return u
 	}
-	if browserEngine() == "chromium" {
-		return defaultChromiumImg
-	}
 	return defaultImage
 }
 
 func browserBaseURL() string {
-	port := "6080"
-	if browserEngine() == "chromium" {
-		port = "6081"
-	}
-	return "http://" + activeContainer() + ":" + port
-}
-
-func browserMemoryLimit() int64 {
-	if browserEngine() == "chromium" {
-		return int64(400) * 1024 * 1024
-	}
-	return int64(600) * 1024 * 1024
+	return "http://" + browserContainer + ":6080"
 }
 
 func dockerHTTP() *http.Client {
@@ -184,14 +167,11 @@ func pullImage(image string) error {
 }
 
 func createContainer(image string) error {
-	profile := "main"
-	if p := os.Getenv("BROWSER_PROFILE"); p != "" {
-		profile = p
-	}
 	cfg := map[string]interface{}{
 		"Image": image,
 		"HostConfig": map[string]interface{}{
-			"Memory":     int64(600) * 1024 * 1024,
+			// Chrome with a few tabs needs ~1-1.5 GB; keep swap headroom for the VPS.
+			"Memory":     int64(1500) * 1024 * 1024,
 			"MemorySwap": int64(2) * 1024 * 1024 * 1024,
 			"RestartPolicy": map[string]interface{}{
 				"Name": "no",
@@ -201,12 +181,9 @@ func createContainer(image string) error {
 				"/root/gafam_data/browser:/home/browser/data",
 			},
 			"Tmpfs": map[string]string{
-				"/tmp":     "size=128m",
-				"/dev/shm": "size=128m",
+				"/tmp":     "size=256m",
+				"/dev/shm": "size=256m",
 			},
-		},
-		"Env": []string{
-			"FIREFOX_PROFILE=" + profile,
 		},
 		"NetworkingConfig": map[string]interface{}{
 			"EndpointsConfig": map[string]interface{}{
@@ -288,6 +265,12 @@ func recreateContainer() error {
 	if err := pullImage(img); err != nil {
 		return fmt.Errorf("pull %s: %w", img, err)
 	}
+	return recreateContainerWithImage(img)
+}
+
+// recreateContainerWithImage stops and replaces the container WITHOUT pulling.
+// The profile lives on the host volume, so it survives the replacement.
+func recreateContainerWithImage(img string) error {
 	_ = stopContainer()
 	if err := removeContainer(); err != nil {
 		return fmt.Errorf("rm: %w", err)
@@ -299,11 +282,88 @@ func recreateContainer() error {
 }
 
 func startContainer() error {
-	// Always pull+recreate on start so JPEG image replaces a leftover noVNC container.
-	if err := recreateContainer(); err != nil {
+	img := browserImage()
+	if err := pullImage(img); err != nil {
+		return fmt.Errorf("pull %s: %w", img, err)
+	}
+	exists, err := containerExists()
+	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+activeContainer()+"/start", nil)
+	if exists {
+		// Persistence first: only replace the container when a newer image tag
+		// was pulled. Plain start/stop keeps the profile (cookies, logins,
+		// localStorage) — recreating on every wake wiped the session.
+		stale, err := containerImageOutdated(img)
+		if err == nil && stale {
+			log.Println("browser: new image available — recreating container (profile kept on volume)")
+			if err := recreateContainerWithImage(img); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := createContainer(img); err != nil {
+			return fmt.Errorf("create: %w", err)
+		}
+	}
+	return dockerStart(browserContainer)
+}
+
+// containerImageOutdated reports whether the existing container runs an older
+// image than the locally pulled tag (CI publishes new tags; wake applies them).
+func containerImageOutdated(image string) (bool, error) {
+	localID, err := imageID(image)
+	if err != nil {
+		return false, err
+	}
+	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/containers/"+browserContainer+"/json", nil)
+	if err != nil {
+		return false, err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return false, fmt.Errorf("inspect: %s", strings.TrimSpace(string(body)))
+	}
+	var info struct {
+		Image string `json:"Image"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return false, err
+	}
+	return strings.TrimPrefix(localID, "sha256:") != strings.TrimPrefix(info.Image, "sha256:"), nil
+}
+
+// imageID returns the local image ID for a name:tag reference.
+func imageID(image string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/images/"+image+"/json", nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("image %s: %s", image, strings.TrimSpace(string(body)))
+	}
+	var info struct {
+		ID string `json:"Id"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return "", err
+	}
+	return info.ID, nil
+}
+
+func dockerStart(name string) error {
+	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+name+"/start", nil)
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,13 @@
+FROM node:22-slim
+
+# Playwright MCP server — agent-side control channel. In this deployment it
+# attaches via CDP to the shared Chrome instance (gafam-browser:9222) so the
+# agent works in the SAME session as the human. No browser is bundled here.
+ARG MCP_VERSION=0.0.79
+
+RUN npm install -g @playwright/mcp@${MCP_VERSION}
+
+USER node
+EXPOSE 8931
+
+ENTRYPOINT ["playwright-mcp"]

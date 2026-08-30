@@ -330,6 +330,12 @@ export const POST: RequestHandler = async ({ url, request }) => {
 		return json(result.data, { status: result.status });
 	}
 
+	if (action === 'reset') {
+		const vpcPath = `/api/web/browser/reset?token=${encodeURIComponent(token)}`;
+		const result = await vpcRequest(vpcUrl, token, 'POST', vpcPath, '{}');
+		return json(result.data, { status: result.status });
+	}
+
 	if (action === 'input') {
 		return proxyInput(url, request);
 	}

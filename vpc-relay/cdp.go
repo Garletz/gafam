@@ -25,7 +25,7 @@ func chromiumCDPURL() string {
 	if u := os.Getenv("CHROMIUM_CDP_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
-	return "http://gafam-chromium:9222"
+	return "http://gafam-browser:9222"
 }
 
 // cdpCommand sends a CDP command and returns the result.
