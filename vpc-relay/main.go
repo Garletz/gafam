@@ -290,6 +290,7 @@ func main() {
 	initGeo()
 	registerVaultTools()
 	sandbox.EnsureDirs()
+	browser.EnsureDataDirs()
 
 	karaka.RegisterAllTools()
 	karaka.RegisterDefaultKarakas()

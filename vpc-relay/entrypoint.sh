@@ -52,6 +52,13 @@ echo "[vatayana] Starting Chrome for Testing (persistent profile, CDP on 9222)..
 CHROME_PID=$!
 sleep 3
 
+# Chrome 136+ binds the DevTools port to 127.0.0.1 only (hardened). Bridge it
+# onto the container's 0.0.0.0 so the MCP sidecar can attach via gafam-net.
+# The port is never published to the host — internal docker network only.
+echo "[vatayana] Bridging CDP 9222 (loopback → container network)..."
+socat TCP-LISTEN:9222,bind=0.0.0.0,fork,reuseaddr TCP:127.0.0.1:9222 &
+SOCAT_PID=$!
+
 echo "[vatayana] Starting stream server (JPEG over HTTP on port ${STREAM_PORT})..."
 python3 /stream.py &
 STREAM_PID=$!

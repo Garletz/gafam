@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -158,6 +159,29 @@ func dockerStartIfStopped(name string) error {
 // MCPURL is the streamable-HTTP endpoint of the MCP sidecar.
 func MCPURL() string {
 	return "http://" + mcpContainer + ":8931/mcp"
+}
+
+// EnsureDataDirs prepares the host volumes for the browser and MCP sidecar:
+// both containers run as uid 1000 (browser / node) and must be able to write
+// their profile/output dirs. The API runs as root, so it can fix ownership.
+func EnsureDataDirs() {
+	dirs := []string{browserProfileHost, "/app/data/browser-mcp"}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			log.Println("browser: mkdir", d, ":", err)
+			continue
+		}
+		if err := os.Chown(d, 1000, 1000); err != nil {
+			log.Println("browser: chown", d, ":", err)
+			continue
+		}
+		// Fix ownership of existing contents (previously root-created files).
+		if entries, err := os.ReadDir(d); err == nil {
+			for _, e := range entries {
+				_ = os.Chown(d+"/"+e.Name(), 1000, 1000)
+			}
+		}
+	}
 }
 
 // ─── Human / agent handoff ────────────────────────────────────────────────
