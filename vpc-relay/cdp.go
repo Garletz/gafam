@@ -25,7 +25,10 @@ func chromiumCDPURL() string {
 	if u := os.Getenv("CHROMIUM_CDP_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
-	return "http://gafam-browser:9222"
+	// Chrome 136+ binds DevTools to loopback and only accepts IP-shaped Host
+	// headers — go through the container's socat bridge on 9223 (see
+	// entrypoint.sh) and the browser's static IP on gafam-net.
+	return "http://172.18.0.10:9223"
 }
 
 // cdpCommand sends a CDP command and returns the result.

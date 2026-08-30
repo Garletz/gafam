@@ -22,6 +22,11 @@ const (
 	dockerAPIBase     = "http://localhost"
 	defaultImage      = "ghcr.io/garletz/gafam:browser"
 	defaultMcpImage   = "ghcr.io/garletz/gafam:mcp"
+	// Static IPs on gafam-net: Chrome's DevTools server only accepts Host
+	// headers that are IP addresses (DNS-rebinding protection), so the MCP
+	// sidecar must address the browser by IP, not by docker name.
+	browserStaticIP = "172.18.0.10"
+	mcpStaticIP     = "172.18.0.11"
 	// The API container mounts /root/gafam_data at /app/data, so the browser
 	// profile volume (/root/gafam_data/browser) is directly reachable here.
 	browserProfileHost = "/app/data/browser"
@@ -187,7 +192,11 @@ func createContainer(image string) error {
 		},
 		"NetworkingConfig": map[string]interface{}{
 			"EndpointsConfig": map[string]interface{}{
-				"gafam-net": map[string]interface{}{},
+				"gafam-net": map[string]interface{}{
+					"IPAMConfig": map[string]interface{}{
+						"IPv4Address": browserStaticIP,
+					},
+				},
 			},
 		},
 	}
@@ -292,11 +301,17 @@ func startContainer() error {
 	}
 	if exists {
 		// Persistence first: only replace the container when a newer image tag
-		// was pulled. Plain start/stop keeps the profile (cookies, logins,
-		// localStorage) — recreating on every wake wiped the session.
+		// was pulled, or its static IP drifted (Chrome's DevTools server only
+		// accepts IP-shaped Host headers, so the IP must stay deterministic).
+		// Plain start/stop keeps the profile (cookies, logins, localStorage).
 		stale, err := containerImageOutdated(img)
 		if err == nil && stale {
 			log.Println("browser: new image available — recreating container (profile kept on volume)")
+			if err := recreateContainerWithImage(img); err != nil {
+				return err
+			}
+		} else if ipErr := browserIPCurrent(); ipErr != nil {
+			log.Println("browser: static IP drifted — recreating container")
 			if err := recreateContainerWithImage(img); err != nil {
 				return err
 			}
@@ -360,6 +375,39 @@ func imageID(image string) (string, error) {
 		return "", err
 	}
 	return info.ID, nil
+}
+
+// browserIPCurrent returns an error when the browser container's IP on
+// gafam-net is not the expected static IP (Chrome's DevTools server requires
+// IP-shaped Host headers, and the MCP sidecar addresses it by that IP).
+func browserIPCurrent() error {
+	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/containers/"+browserContainer+"/json", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("inspect: %s", strings.TrimSpace(string(body)))
+	}
+	var info struct {
+		NetworkSettings struct {
+			Networks map[string]struct {
+				IPAddress string `json:"IPAddress"`
+			} `json:"Networks"`
+		} `json:"NetworkSettings"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return err
+	}
+	if netw, ok := info.NetworkSettings.Networks["gafam-net"]; ok && netw.IPAddress == browserStaticIP {
+		return nil
+	}
+	return fmt.Errorf("browser container IP is not %s", browserStaticIP)
 }
 
 func dockerStart(name string) error {

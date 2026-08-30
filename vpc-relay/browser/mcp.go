@@ -23,7 +23,9 @@ import (
 // session — cookies, logins and tabs included. No navigator.webdriver flag:
 // no automation switches are ever passed to Chrome.
 
-// EnsureMcpContainer starts the MCP sidecar, creating it from GHCR if missing.
+// EnsureMcpContainer starts the MCP sidecar, creating it from GHCR if
+// missing, and recreates it when its config drifted from the desired state
+// (e.g. the CDP endpoint changed between releases).
 func EnsureMcpContainer(ctx context.Context) error {
 	if !dockerSockPresent() {
 		return fmt.Errorf("docker.sock unavailable — mount /var/run/docker.sock on gafam-api")
@@ -33,6 +35,9 @@ func EnsureMcpContainer(ctx context.Context) error {
 		return err
 	}
 	if exists {
+		if err := reconcileMcpContainer(); err != nil {
+			return err
+		}
 		return dockerStartIfStopped(mcpContainer)
 	}
 	if err := pullImage(defaultMcpImage); err != nil {
@@ -44,18 +49,104 @@ func EnsureMcpContainer(ctx context.Context) error {
 	return dockerStartIfStopped(mcpContainer)
 }
 
+// reconcileMcpContainer replaces the sidecar when its Cmd drifted from the
+// desired config (keep the /data output volume: it holds agent screenshots).
+func reconcileMcpContainer() error {
+	req, err := http.NewRequest(http.MethodGet, dockerAPIBase+"/containers/"+mcpContainer+"/json", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("inspect mcp: %s", strings.TrimSpace(string(body)))
+	}
+	var info struct {
+		Config struct {
+			Cmd   []string `json:"Cmd"`
+			Image string   `json:"Image"`
+		} `json:"Config"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return err
+	}
+	if len(info.Config.Cmd) > 0 && strings.Join(info.Config.Cmd, " ") == strings.Join(mcpContainerCmd(), " ") &&
+		info.Config.Image == defaultMcpImage {
+		return nil
+	}
+	log.Println("mcp: config drift detected — recreating sidecar")
+	_ = dockerStartStop(mcpContainer, false)
+	if err := dockerRemoveNamed(mcpContainer); err != nil {
+		return err
+	}
+	return createMcpContainer()
+}
+
+func mcpContainerCmd() []string {
+	return []string{
+		"--port", "8931",
+		"--host", "0.0.0.0",
+		"--allowed-hosts", "*",
+		"--cdp-endpoint", "http://" + browserStaticIP + ":9223",
+		"--image-responses", "omit",
+		"--output-dir", "/data/output",
+	}
+}
+
+// dockerStartStop starts (start=true) or stops (start=false) a named container.
+func dockerStartStop(name string, start bool) error {
+	method := "stop"
+	if start {
+		method = "start"
+	}
+	req, err := http.NewRequest(http.MethodPost, dockerAPIBase+"/containers/"+name+"/"+method+"?t=10", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("docker %s: %s", method, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func dockerRemoveNamed(name string) error {
+	req, err := http.NewRequest(http.MethodDelete, dockerAPIBase+"/containers/"+name+"?force=true", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := dockerHTTP().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("docker rm: %s", strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
 func createMcpContainer() error {
 	cfg := map[string]interface{}{
 		"Image":      defaultMcpImage,
 		"Entrypoint": []string{"playwright-mcp"},
-		"Cmd": []string{
-			"--port", "8931",
-			"--host", "0.0.0.0",
-			"--allowed-hosts", "*",
-			"--cdp-endpoint", "http://gafam-browser:9222",
-			"--image-responses", "omit",
-			"--output-dir", "/data/output",
-		},
+		"Cmd":        mcpContainerCmd(),
 		"HostConfig": map[string]interface{}{
 			"Memory":     int64(512) * 1024 * 1024,
 			"MemorySwap": int64(768) * 1024 * 1024,
@@ -69,7 +160,11 @@ func createMcpContainer() error {
 		},
 		"NetworkingConfig": map[string]interface{}{
 			"EndpointsConfig": map[string]interface{}{
-				"gafam-net": map[string]interface{}{},
+				"gafam-net": map[string]interface{}{
+					"IPAMConfig": map[string]interface{}{
+						"IPv4Address": mcpStaticIP,
+					},
+				},
 			},
 		},
 	}
@@ -158,7 +253,7 @@ func dockerStartIfStopped(name string) error {
 
 // MCPURL is the streamable-HTTP endpoint of the MCP sidecar.
 func MCPURL() string {
-	return "http://" + mcpContainer + ":8931/mcp"
+	return "http://" + mcpStaticIP + ":8931/mcp"
 }
 
 // EnsureDataDirs prepares the host volumes for the browser and MCP sidecar:

@@ -71,13 +71,23 @@ func WakeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A running container with a live /status is reused as-is — the profile
-	// (cookies, logins) must survive wake cycles.
+	// (cookies, logins) must survive wake cycles. Unless its image or static
+	// IP drifted: then migrate (stop → recreate → start) while keeping the
+	// profile on the host volume.
 	if running {
 		if streamBackendReady() {
-			sendJSON(w, http.StatusOK, map[string]string{"status": "already_running"})
-			return
+			stale, imgErr := containerImageOutdated(browserImage())
+			ipErr := browserIPCurrent()
+			if imgErr == nil && stale {
+				log.Println("vatayana: running container is on an old image — migrating")
+			} else if ipErr != nil {
+				log.Println("vatayana: running container IP drifted — migrating")
+			} else {
+				sendJSON(w, http.StatusOK, map[string]string{"status": "already_running"})
+				return
+			}
 		}
-		log.Println("vatayana: running container missing /status (stale image) — recreating from GHCR")
+		log.Println("vatayana: recreating gafam-browser (profile kept on volume)")
 	} else {
 		log.Println("vatayana: ensuring/pulling gafam-browser from GHCR then starting")
 	}
