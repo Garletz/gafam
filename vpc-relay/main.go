@@ -291,6 +291,7 @@ func main() {
 	registerVaultTools()
 	sandbox.EnsureDirs()
 	browser.EnsureDataDirs()
+	browser.StartIdleReaper()
 
 	karaka.RegisterAllTools()
 	karaka.RegisterDefaultKarakas()

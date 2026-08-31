@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -279,6 +280,66 @@ func EnsureDataDirs() {
 	}
 }
 
+// ─── Activity tracking & idle auto-stop ───────────────────────────────────
+// Chrome only lives while needed: the browser container is stopped after
+// GAFAM_BROWSER_IDLE_MIN minutes without activity (human input, active
+// stream, or agent calls), and agent tools wake it back up on demand. The
+// profile stays on the host volume, so logins survive every cycle.
+
+var (
+	lastActivity atomic.Int64
+)
+
+func idleTimeout() time.Duration {
+	if v := os.Getenv("GAFAM_BROWSER_IDLE_MIN"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Minute
+		}
+	}
+	return 20 * time.Minute
+}
+
+// TouchActivity marks browser use (human or agent). Stops the idle reaper
+// from killing Chrome mid-use.
+func TouchActivity() {
+	lastActivity.Store(time.Now().UnixMilli())
+}
+
+// StartIdleReaper stops the browser container after an inactivity window.
+// Safe: stopping preserves the profile; agent tools wake it again on demand.
+func StartIdleReaper() {
+	go func() {
+		time.Sleep(30 * time.Second) // let startup settle
+		for {
+			time.Sleep(60 * time.Second)
+			if !dockerSockPresent() {
+				continue
+			}
+			running, err := containerState()
+			if err != nil || !running {
+				continue
+			}
+			if since := time.Since(time.UnixMilli(lastActivity.Load())); since < idleTimeout() {
+				continue
+			}
+			log.Printf("browser: idle for %s — stopping container (profile kept on volume)", idleTimeout().Round(time.Minute))
+			if err := stopContainer(); err != nil {
+				log.Println("browser: idle stop failed:", err)
+			}
+		}
+	}()
+}
+
+// EnsureRunning wakes the browser when an agent tool needs it, then touches
+// activity so the idle reaper keeps it alive for the task.
+func EnsureRunning(ctx context.Context) error {
+	if err := EnsureReady(ctx); err != nil {
+		return err
+	}
+	TouchActivity()
+	return nil
+}
+
 // ─── Human / agent handoff ────────────────────────────────────────────────
 // When the human sends input through the dashboard (MJPEG view), the agent's
 // browser tools briefly yield so the two don't fight over the same window.
@@ -288,6 +349,7 @@ var humanActiveUntil atomic.Int64
 // TouchHuman records human interaction on the shared browser.
 func TouchHuman() {
 	humanActiveUntil.Store(time.Now().Add(15 * time.Second).UnixMilli())
+	TouchActivity()
 }
 
 // WaitHumanIdle blocks until the human interaction window expires (bounded).

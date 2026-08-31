@@ -175,9 +175,9 @@ func createContainer(image string) error {
 	cfg := map[string]interface{}{
 		"Image": image,
 		"HostConfig": map[string]interface{}{
-			// Chrome with a few tabs needs ~1-1.5 GB; keep swap headroom for the VPS.
+			// Chrome with a few tabs needs ~1-1.5 GB; swap headroom covers peaks.
 			"Memory":     int64(1500) * 1024 * 1024,
-			"MemorySwap": int64(2) * 1024 * 1024 * 1024,
+			"MemorySwap": int64(3) * 1024 * 1024 * 1024,
 			"RestartPolicy": map[string]interface{}{
 				"Name": "no",
 			},

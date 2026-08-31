@@ -91,6 +91,14 @@ func mcpListTools(ctx context.Context) (map[string]*mcp.Tool, error) {
 func mcpCallTool(ctx context.Context, name string, args map[string]interface{}) (string, error) {
 	browser.WaitHumanIdle(ctx)
 
+	// Wake the shared Chrome on demand (idle auto-stop may have stopped it).
+	// The profile survives, so the agent resumes exactly where the human left.
+	wakeCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	if err := browser.EnsureRunning(wakeCtx); err != nil {
+		return "", fmt.Errorf("browser wake: %w", err)
+	}
+
 	res, err := mcpCallOnce(ctx, name, args)
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "session") {
 		// Session lost (404 after heartbeat failure / restart): reconnect and retry once.

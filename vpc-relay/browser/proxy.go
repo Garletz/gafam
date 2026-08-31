@@ -64,6 +64,9 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"browser_not_running"}`, http.StatusServiceUnavailable)
 		return
 	}
+	// An open stream means the human is (or could be) watching — keep the
+	// browser alive against the idle reaper.
+	TouchActivity()
 	r.URL.Path = "/stream"
 	getProxy().ServeHTTP(w, r)
 }
