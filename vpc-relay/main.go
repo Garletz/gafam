@@ -185,7 +185,6 @@ func initDB() {
 	if _, err := db.Exec(createGuardiansTable); err != nil {
 		log.Fatal("Failed to create trusted_guardians table:", err)
 	}
-	initEmergency911Schema()
 
 	createWebClientsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_web_clients (
@@ -491,9 +490,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/settings/guardians", sessionMiddleware(getGuardiansHandler))
 	mux.HandleFunc("POST /api/settings/guardians", sessionMiddleware(addGuardianHandler))
-	mux.HandleFunc("PATCH /api/settings/guardians", sessionMiddleware(updateGuardianHandler))
 	mux.HandleFunc("DELETE /api/settings/guardians", sessionMiddleware(deleteGuardianHandler))
-	mux.HandleFunc("POST /api/web/911/trigger", sessionMiddleware(trigger911WebHandler))
 	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
 	mux.HandleFunc("GET /api/web/settings", sessionMiddleware(handleSettings))
 	
