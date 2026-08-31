@@ -13,18 +13,20 @@
   --accent-light: #27272a;
   --border: #e4e4e7;
   --border-hover: #d4d4d8;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  --success: #27272a;
+  --warning: #52525b;
+  --danger: #09090b;
   --radius: 16px;
   --radius-sm: 10px;
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  accent-color: #000000;
 }
 
-* {
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  accent-color: #000000;
 }
 
 html, body {
@@ -34,10 +36,21 @@ html, body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  accent-color: #000000;
 }
 
 body {
   background: var(--bg-primary);
+}
+
+::selection {
+  background: #000000;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background: #000000;
+  color: #ffffff;
 }
 
 a { color: var(--accent-light); text-decoration: none; }
@@ -50,7 +63,22 @@ button {
   outline: none;
 }
 
-input {
+input, textarea, select {
   font-family: 'Outfit', sans-serif;
   outline: none;
+  accent-color: #000000 !important;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: #000000 !important;
+  cursor: pointer;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 1px solid #000000;
 }

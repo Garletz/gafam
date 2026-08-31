@@ -365,7 +365,7 @@
 								disabled={isAnalyzing}
 								onclick={handleAnalyze}
 							>
-								{isAnalyzing ? 'Analyse en cours…' : '⚡ Ré-analyser'}
+								{isAnalyzing ? 'Analyse en cours…' : 'Ré-analyser'}
 							</button>
 						</div>
 

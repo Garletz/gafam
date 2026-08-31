@@ -415,8 +415,13 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		triggerSelfQuest(senderStr, instr, mode)
 	}
 
+	// 911 Emergency Cascade — continuation relay first: a well-formed
+	// GAFAM911 alert (any sender, semi-public web of trust) is deduplicated
+	// and forwarded to this node's own 911-relay guardians.
+	relayedAlert := relay911Alert(senderStr, bodyStr)
+
 	// Emergency Recovery Check
-	var guardianKeyword string
+	var guardianKeyword, guardian911Code, guardianName string
 	
 	sClean := regexp.MustCompile("[^0-9]").ReplaceAllString(senderStr, "")
 	sMatch := sClean
@@ -424,24 +429,42 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		sMatch = sClean[len(sClean)-9:]
 	}
 
-	rows, errGuard := db.Query("SELECT phone_number, keyword FROM trusted_guardians")
+	rows, errGuard := db.Query("SELECT phone_number, name, keyword, keyword_911 FROM trusted_guardians")
 	if errGuard == nil {
 		defer rows.Close()
 		for rows.Next() {
-			var p, k string
-			if err := rows.Scan(&p, &k); err == nil {
+			var p, n, k, k911 string
+			if err := rows.Scan(&p, &n, &k, &k911); err == nil {
 				pClean := regexp.MustCompile("[^0-9]").ReplaceAllString(p, "")
 				pMatch := pClean
 				if len(pClean) >= 9 { pMatch = pClean[len(pClean)-9:] }
 
 				if pMatch != "" && sMatch != "" && pMatch == sMatch {
 					guardianKeyword = k
+					guardian911Code = k911
+					guardianName = n
 					break
 				}
 			}
 		}
 	}
-	if guardianKeyword != "" && strings.Contains(strings.ToLower(bodyStr), strings.ToLower(guardianKeyword)) {
+
+	// 911 distress trigger (new cascade, not a continuation)
+	if !relayedAlert {
+		// (a) A guardian sends its own 911 code to the relay phone.
+		if guardian911Code != "" && strings.Contains(strings.ToLower(bodyStr), strings.ToLower(guardian911Code)) {
+			log.Printf("911 DISTRESS TRIGGERED by guardian %s", senderStr)
+			trigger911Cascade(senderStr, "", 1, phoneDigits(senderStr), guardianName, messageAfterCode(bodyStr, guardian911Code))
+		}
+		// (b) The owner sends 911 from the self phone (alert my own network).
+		selfPhone := getSetting("self_phone")
+		if selfPhone != "" && phonesMatch(senderStr, selfPhone) && containsCodeWord(bodyStr, default911Code) {
+			log.Printf("911 DISTRESS TRIGGERED by self phone %s", senderStr)
+			trigger911Cascade(senderStr, "", 1, phoneDigits(senderStr), contactNameForPhone(selfPhone), messageAfterCode(bodyStr, default911Code))
+		}
+	}
+
+	if !relayedAlert && guardianKeyword != "" && strings.Contains(strings.ToLower(bodyStr), strings.ToLower(guardianKeyword)) {
 		log.Printf("EMERGENCY RECOVERY TRIGGERED by %s", senderStr)
 		// Assuming 'phone' is the relay phone. Wait, the relay phone number is not strictly available here except from the db?
 		// Actually, the web login needs the relay's phone number.
@@ -1304,7 +1327,7 @@ func syncContactsHandler(w http.ResponseWriter, r *http.Request) {
 // --- Trusted Guardians Handlers ---
 
 func getGuardiansHandler(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, name, phone_number, keyword FROM trusted_guardians ORDER BY created_at DESC")
+	rows, err := db.Query("SELECT id, name, phone_number, keyword, keyword_911, relay_911 FROM trusted_guardians ORDER BY created_at DESC")
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -1314,13 +1337,16 @@ func getGuardiansHandler(w http.ResponseWriter, r *http.Request) {
 	var list []map[string]interface{}
 	for rows.Next() {
 		var id int
-		var name, phone, keyword string
-		if err := rows.Scan(&id, &name, &phone, &keyword); err == nil {
+		var name, phone, keyword, keyword911 string
+		var relay911 int
+		if err := rows.Scan(&id, &name, &phone, &keyword, &keyword911, &relay911); err == nil {
 			list = append(list, map[string]interface{}{
-				"id":      id,
-				"name":    name,
-				"phone":   phone,
-				"keyword": keyword,
+				"id":          id,
+				"name":        name,
+				"phone":       phone,
+				"keyword":     keyword,
+				"keyword_911": keyword911,
+				"relay_911":   relay911 == 1,
 			})
 		}
 	}
@@ -1333,9 +1359,11 @@ func getGuardiansHandler(w http.ResponseWriter, r *http.Request) {
 
 func addGuardianHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name    string `json:"name"`
-		Phone   string `json:"phone"`
-		Keyword string `json:"keyword"`
+		Name       string `json:"name"`
+		Phone      string `json:"phone"`
+		Keyword    string `json:"keyword"`
+		Keyword911 string `json:"keyword_911"`
+		Relay911   *bool  `json:"relay_911"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
@@ -1345,13 +1373,21 @@ func addGuardianHandler(w http.ResponseWriter, r *http.Request) {
 	if req.Keyword == "" {
 		req.Keyword = "URGENCE_GAFAM"
 	}
+	if req.Keyword911 == "" {
+		req.Keyword911 = default911Code
+	}
 
 	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Phone) == "" {
 		sendJSON(w, http.StatusBadRequest, map[string]string{"error": "name and phone required"})
 		return
 	}
 
-	_, err := db.Exec("INSERT INTO trusted_guardians (name, phone_number, keyword) VALUES (?, ?, ?)", req.Name, req.Phone, req.Keyword)
+	relay911 := 1
+	if req.Relay911 != nil && !*req.Relay911 {
+		relay911 = 0
+	}
+
+	_, err := db.Exec("INSERT INTO trusted_guardians (name, phone_number, keyword, keyword_911, relay_911) VALUES (?, ?, ?, ?, ?)", req.Name, req.Phone, req.Keyword, req.Keyword911, relay911)
 	if err != nil {
 		// phone_number is UNIQUE — duplicate is the usual failure mode
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
@@ -1362,6 +1398,62 @@ func addGuardianHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendJSON(w, http.StatusOK, map[string]string{"status": "added"})
+}
+
+// updateGuardianHandler merges editable guardian fields (name, phones,
+// keywords, 911 relay flag) without re-adding the entry.
+func updateGuardianHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID         int    `json:"id"`
+		Name       string `json:"name"`
+		Phone      string `json:"phone"`
+		Keyword    string `json:"keyword"`
+		Keyword911 string `json:"keyword_911"`
+		Relay911   *bool  `json:"relay_911"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID <= 0 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	var name, phone, keyword, keyword911 string
+	var relay911 int
+	err := db.QueryRow("SELECT name, phone_number, keyword, keyword_911, relay_911 FROM trusted_guardians WHERE id = ?", req.ID).Scan(&name, &phone, &keyword, &keyword911, &relay911)
+	if err != nil {
+		sendJSON(w, http.StatusNotFound, map[string]string{"error": "guardian not found"})
+		return
+	}
+
+	if req.Name != "" {
+		name = req.Name
+	}
+	if req.Phone != "" {
+		phone = req.Phone
+	}
+	if req.Keyword != "" {
+		keyword = req.Keyword
+	}
+	if req.Keyword911 != "" {
+		keyword911 = req.Keyword911
+	}
+	if req.Relay911 != nil {
+		if *req.Relay911 {
+			relay911 = 1
+		} else {
+			relay911 = 0
+		}
+	}
+
+	_, err = db.Exec("UPDATE trusted_guardians SET name = ?, phone_number = ?, keyword = ?, keyword_911 = ?, relay_911 = ? WHERE id = ?", name, phone, keyword, keyword911, relay911, req.ID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			sendJSON(w, http.StatusConflict, map[string]string{"error": "phone already registered as guardian"})
+			return
+		}
+		sendJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to update guardian"})
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
 func deleteGuardianHandler(w http.ResponseWriter, r *http.Request) {

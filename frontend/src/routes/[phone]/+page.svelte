@@ -2062,7 +2062,7 @@
     font-weight: 600;
   }
   .toggle-sync input {
-    accent-color: #202124;
+    accent-color: #000000 !important;
     cursor: pointer;
   }
 

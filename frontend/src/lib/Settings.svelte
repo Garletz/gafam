@@ -38,12 +38,54 @@
     available?: boolean;
   };
 
-  let guardians: Array<{ id: number; name: string; phone: string; keyword: string }> = $state([]);
+  type Guardian = {
+    id: number;
+    name: string;
+    phone: string;
+    keyword: string;
+    keyword_911: string;
+    relay_911: boolean;
+  };
+
+  let guardians: Array<Guardian> = $state([]);
   let newName = $state('');
   let newPhone = $state('');
   let newKeyword = $state('URGENCE_GAFAM');
+  let newKeyword911 = $state('911');
+  let newRelay911 = $state(true);
   let isLoading = $state(false);
   let errorMsg = $state('');
+
+  let active911RelayCount = $derived(guardians.filter(g => g.relay_911).length);
+  let isBroadcasting911 = $state(false);
+  let broadcast911Msg = $state('');
+  let custom911Message = $state('');
+  let show911Confirm = $state(false);
+
+  async function trigger911Broadcast() {
+    isBroadcasting911 = true;
+    broadcast911Msg = '';
+    try {
+      const res = await fetch(`/api/proxy/911/trigger?vpcUrl=${encodeURIComponent(vpcUrl)}&token=${encodeURIComponent(sessionToken)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: custom911Message.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        broadcast911Msg = `Alerte 911 diffusée à ${data.relayed || 0} tuteur(s) (Hop 1). ID: ${data.alert_id || ''}`;
+        custom911Message = '';
+        show911Confirm = false;
+        setTimeout(() => (broadcast911Msg = ''), 7000);
+      } else {
+        broadcast911Msg = 'Erreur lors de la diffusion 911';
+      }
+    } catch (e: any) {
+      broadcast911Msg = `Erreur réseau: ${e.message}`;
+    } finally {
+      isBroadcasting911 = false;
+    }
+  }
 
   let vpcInfo: VpcInfo | null = $state(null);
   let registryInfo: RegistryInfo | null = $state(null);
@@ -259,12 +301,20 @@
       const res = await fetch(`/api/proxy/guardians?${params.toString()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, phone: newPhone, keyword: newKeyword })
+        body: JSON.stringify({
+          name: newName,
+          phone: newPhone,
+          keyword: newKeyword,
+          keyword_911: newKeyword911 || '911',
+          relay_911: newRelay911
+        })
       });
       if (res.ok) {
         newName = '';
         newPhone = '';
         newKeyword = 'URGENCE_GAFAM';
+        newKeyword911 = '911';
+        newRelay911 = true;
         await fetchGuardians();
       } else {
         const body = await res.json().catch(() => ({}));
@@ -278,6 +328,20 @@
       errorMsg = 'Network error';
     } finally {
       isLoading = false;
+    }
+  }
+
+  async function updateGuardian(id: number, patch: Partial<Guardian>) {
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken });
+      const res = await fetch(`/api/proxy/guardians?${params.toString()}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...patch })
+      });
+      if (res.ok) await fetchGuardians();
+    } catch (err) {
+      console.error('Failed to update guardian', err);
     }
   }
 
@@ -611,60 +675,132 @@
     {:else if section === 'recovery'}
       <section class="panel">
         <div class="panel__intro">
-          <p>Trusted contacts who can trigger emergency login codes if you lose your device.</p>
+          <p>Tuteurs de confiance et réseau de détresse <strong>Cascade 911</strong>.</p>
+          <p class="panel__intro-sub">
+            L'envoi du code <code>911</code> depuis votre téléphone maître (ou du code dédié d'un tuteur) diffuse une alerte SMS à vos relais, retransmise de proche en proche (3 sauts max).
+          </p>
         </div>
 
-        <!-- Self phone: the only number allowed to trigger a quest by SMS -->
+        <!-- 911 BROADCAST BAR -->
+        <div class="sos-bar">
+          <div class="sos-bar__info">
+            <span class="sos-bar__badge">{active911RelayCount} relais 911 actif{active911RelayCount === 1 ? '' : 's'}</span>
+            <span class="sos-bar__hint">Diffusion d'urgence SMS sans Internet</span>
+          </div>
+          {#if !show911Confirm}
+            <button
+              type="button"
+              class="btn-sos-simple"
+              onclick={() => (show911Confirm = true)}
+            >
+              Diffuser 911 (Web)
+            </button>
+          {:else}
+            <div class="sos-inline-confirm">
+              <input
+                type="text"
+                placeholder="Message optionnel..."
+                bind:value={custom911Message}
+                class="sos-inline-input"
+              />
+              <button
+                type="button"
+                class="btn-sos-confirm"
+                disabled={isBroadcasting911}
+                onclick={trigger911Broadcast}
+              >
+                {isBroadcasting911 ? 'Diffusion…' : 'Confirmer envoi'}
+              </button>
+              <button
+                type="button"
+                class="btn-ghost"
+                disabled={isBroadcasting911}
+                onclick={() => (show911Confirm = false)}
+              >
+                Annuler
+              </button>
+            </div>
+          {/if}
+        </div>
+        {#if broadcast911Msg}
+          <div class="sos-status-line">{broadcast911Msg}</div>
+        {/if}
+
+        <!-- SELF PHONE -->
         <div class="selfphone-card">
           <div class="selfphone-card__head">
-            <h3 class="form-card__title">Self phone</h3>
+            <h3 class="form-card__title">Téléphone maître</h3>
             {#if selfPhoneLoaded}
-              <span class="selfphone-card__badge">active · {selfPhoneLoaded}</span>
+              <span class="selfphone-card__badge">{selfPhoneLoaded}</span>
             {/if}
           </div>
           <p class="selfphone-card__hint">
-            Your own number — the <strong>only one</strong> allowed to trigger a quest remotely.
-            Send <code>/q your instruction</code> by SMS to the relay phone: Saṃyojaka plans it,
-            executes it, and texts you back the result.
+            Numéro unique autorisé à piloter les quêtes à distance par SMS (<code>/q</code> ou <code>/r</code>) et à déclencher la cascade 911.
           </p>
           <div class="form-row">
             <input type="tel" placeholder="+33 6 12 34 56 78" bind:value={selfPhone} />
             <button type="button" class="btn-primary" onclick={saveSelfPhone} disabled={selfPhoneSaving}>
-              {selfPhoneSaving ? 'Saving…' : 'Save'}
+              {selfPhoneSaving ? '…' : 'Enregistrer'}
             </button>
           </div>
           {#if selfPhoneMsg}<p class="selfphone-card__msg">{selfPhoneMsg}</p>{/if}
         </div>
 
+        <!-- GUARDIANS LIST -->
         <div class="guardian-list">
-          <p class="guardian-list__count">{guardians.length} guardian{guardians.length === 1 ? '' : 's'}</p>
+          <p class="guardian-list__count">{guardians.length} tuteur{guardians.length === 1 ? '' : 's'}</p>
           {#each guardians as guardian (guardian.id)}
             <article class="guardian-card">
               <div class="guardian-card__main">
                 <strong class="guardian-card__name">{guardian.name}</strong>
                 <span class="guardian-card__phone">{guardian.phone}</span>
-                <span class="guardian-card__keyword">Keyword <code>{guardian.keyword}</code></span>
+                <span class="guardian-card__keyword">Recovery <code>{guardian.keyword}</code></span>
+                <span class="guardian-card__keyword">911 <code>{guardian.keyword_911}</code></span>
               </div>
-              <button type="button" class="btn-ghost" onclick={() => deleteGuardian(guardian.id)}>
-                Remove
-              </button>
+              <div class="guardian-card__side">
+                <label class="guardian-card__toggle" title="Relayer les alertes 911 à ce tuteur">
+                  <input
+                    type="checkbox"
+                    checked={guardian.relay_911}
+                    onchange={(e) => updateGuardian(guardian.id, { relay_911: e.currentTarget.checked })}
+                  />
+                  <span class="badge-911 {guardian.relay_911 ? 'badge-911--on' : ''}">
+                    {guardian.relay_911 ? '911 RELAIS' : '911 OFF'}
+                  </span>
+                </label>
+                <button type="button" class="btn-ghost" onclick={() => deleteGuardian(guardian.id)}>
+                  Supprimer
+                </button>
+              </div>
             </article>
           {/each}
           {#if guardians.length === 0}
-            <p class="empty">No guardians configured.</p>
+            <p class="empty">Aucun tuteur configuré.</p>
           {/if}
         </div>
 
+        <!-- ADD FORM -->
         <form class="form-card" onsubmit={addGuardian}>
-          <h3 class="form-card__title">Add guardian</h3>
+          <h3 class="form-card__title">Ajouter un tuteur</h3>
           {#if errorMsg}<p class="panel__error">{errorMsg}</p>{/if}
           <div class="form-row">
-            <input type="text" placeholder="Name" bind:value={newName} required />
-            <input type="tel" placeholder="Phone (+33…)" bind:value={newPhone} required />
+            <input type="text" placeholder="Nom" bind:value={newName} required />
+            <input type="tel" placeholder="Téléphone (+33…)" bind:value={newPhone} required />
           </div>
           <div class="form-row">
-            <input type="text" placeholder="Trigger keyword" bind:value={newKeyword} required />
-            <button type="submit" class="btn-primary" disabled={isLoading}>Add</button>
+            <input type="text" placeholder="Mot-clé Recovery" bind:value={newKeyword} required />
+            <input type="text" placeholder="Code 911" bind:value={newKeyword911} />
+          </div>
+          <div class="form-row form-row--911">
+            <label class="guardian-card__toggle">
+              <input type="checkbox" bind:checked={newRelay911} />
+              <span class="badge-911 {newRelay911 ? 'badge-911--on' : ''}">
+                {newRelay911 ? 'Relayer les alertes 911' : '911 inactif'}
+              </span>
+            </label>
+            <button type="submit" class="btn-primary" disabled={isLoading}>
+              {isLoading ? 'Ajout…' : 'Ajouter'}
+            </button>
           </div>
         </form>
       </section>
@@ -1161,6 +1297,149 @@
     color: #202124;
   }
 
+  .guardian-card__side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .guardian-card__toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #5f6368;
+  }
+  .guardian-card__toggle input {
+    accent-color: #000000 !important;
+    cursor: pointer;
+  }
+
+  .sos-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #202124;
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+
+  .sos-bar__info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .sos-bar__badge {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: #ffffff;
+    color: #000000;
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  .sos-bar__hint {
+    font-size: 12px;
+    color: #aaaaaa;
+  }
+
+  .btn-sos-simple {
+    background: #ffffff;
+    color: #000000;
+    border: 1px solid #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn-sos-simple:hover {
+    background: #e0e0e0;
+  }
+
+  .sos-inline-confirm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .sos-inline-input {
+    background: #111111;
+    border: 1px solid #444444;
+    color: #ffffff;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    width: 180px;
+  }
+
+  .btn-sos-confirm {
+    background: #ffffff;
+    color: #000000;
+    border: 1px solid #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .sos-status-line {
+    font-size: 12px;
+    font-family: monospace;
+    padding: 8px 12px;
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #333333;
+    border-radius: 6px;
+    margin-bottom: 16px;
+  }
+
+  .badge-911 {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #f1f3f4;
+    color: #5f6368;
+    border: 1px solid #dfe1e5;
+    white-space: nowrap;
+  }
+
+  .badge-911--on {
+    background: #202124;
+    color: #ffffff;
+    border-color: #202124;
+  }
+
+  .form-row--911 {
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel__intro-sub {
+    margin: 6px 0 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #80868b;
+  }
+
   .empty {
     margin: 0;
     padding: 24px;
@@ -1279,7 +1558,7 @@
 
   .toggle-row input {
     margin-top: 3px;
-    accent-color: #202124;
+    accent-color: #000000 !important;
     cursor: pointer;
   }
 

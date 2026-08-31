@@ -31,6 +31,8 @@
   let queuedMove: { x: number; y: number } | null = null;
   let inputBusy = false;
   let inputQueue: any[] = [];
+  let pointerDown: { x: number; y: number; button: number } | null = null;
+  let pointerDragged = false;
 
   onMount(() => {
     fetchStatus();
@@ -382,19 +384,25 @@
   function handleMouseDown(e: MouseEvent) {
     canvas?.focus();
     const { x, y } = getCanvasCoords(e);
-    sendInput({ type: 'mouse_move', x, y });
-    sendInput({ type: 'mouse_down', button: e.button + 1 });
+    pointerDown = { x, y, button: e.button + 1 };
+    pointerDragged = false;
   }
 
   function handleMouseUp(e: MouseEvent) {
-    sendInput({ type: 'mouse_up', button: e.button + 1 });
+    const btn = e.button + 1;
+    if (pointerDown && !pointerDragged) {
+      sendInput({ type: 'mouse_click', button: btn, x: pointerDown.x, y: pointerDown.y });
+      pointerDown = null;
+      return;
+    }
+    sendInput({ type: 'mouse_up', button: btn });
+    pointerDown = null;
+    pointerDragged = false;
   }
 
   function handleDblClick(e: MouseEvent) {
-    const { x, y } = getCanvasCoords(e);
-    sendInput({ type: 'mouse_move', x, y });
-    sendInput({ type: 'mouse_click', button: 1, x, y });
-    sendInput({ type: 'mouse_click', button: 1, x, y });
+    // Two coalesced mouse_click from mouseup already form a double-click.
+    e.preventDefault();
   }
 
   function handleContextMenu(e: MouseEvent) {
@@ -403,14 +411,21 @@
 
   function handleMouseMove(e: MouseEvent) {
     if (e.buttons === 0) return;
+    const { x, y } = getCanvasCoords(e);
+    if (pointerDown && !pointerDragged) {
+      const dx = x - pointerDown.x;
+      const dy = y - pointerDown.y;
+      if (dx * dx + dy * dy < 64) return;
+      pointerDragged = true;
+      sendInput({ type: 'mouse_move', x: pointerDown.x, y: pointerDown.y });
+      sendInput({ type: 'mouse_down', button: pointerDown.button });
+    }
     const now = performance.now();
     if (now - lastMoveAt < 20) {
-      const { x, y } = getCanvasCoords(e);
       queuedMove = { x, y };
       return;
     }
     lastMoveAt = now;
-    const { x, y } = getCanvasCoords(e);
     sendInput({ type: 'mouse_move', x, y });
   }
 
