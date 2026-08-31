@@ -669,6 +669,14 @@ func interpolateParams(params map[string]interface{}, mission *moksa.Mission) ma
 			if !ok {
 				return match
 			}
+			// Many tools (browser.mcp_*, cdp_*, sandbox.exec, …) return plain
+			// strings — interpolate those directly.
+			if s, ok := result.(string); ok {
+				if fieldPath == "result" {
+					return s
+				}
+				return match
+			}
 			if resultMap, ok := result.(map[string]interface{}); ok {
 				if fieldPath == "result" {
 					// Return whole result as JSON string
