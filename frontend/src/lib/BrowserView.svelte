@@ -10,6 +10,7 @@
   } = $props();
 
   let canvas: HTMLCanvasElement;
+  let frameEl: HTMLDivElement | null = $state(null);
   let browserRunning = $state(false);
   let isLoading = $state(false);
   let errorMsg = $state('');
@@ -20,6 +21,10 @@
 
   let streamAbort: AbortController | null = null;
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastSentW = 0;
+  let lastSentH = 0;
+  let resizeInFlight = false;
   let pendingFrame: Uint8Array | null = null;
   let drawing = false;
   let lastMoveAt = 0;
@@ -35,6 +40,15 @@
   onDestroy(() => {
     disconnect();
     if (pollInterval) clearInterval(pollInterval);
+    if (resizeTimer) clearTimeout(resizeTimer);
+  });
+
+  $effect(() => {
+    const el = frameEl;
+    if (!el) return;
+    const ro = new ResizeObserver(() => scheduleRemoteResize());
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 
   async function fetchStatus() {
@@ -46,7 +60,7 @@
         const data: any = await res.json();
         browserRunning = data.running;
         if (data.docker_error) errorMsg = data.docker_error;
-        if (browserRunning && !connected) {
+        if (browserRunning && !connected && !resizeInFlight) {
           connectToStream();
         }
       }
@@ -66,7 +80,7 @@
       if (res.ok) {
         browserRunning = true;
         statusMsg = 'Browser ready';
-        setTimeout(() => connectToStream(), 500);
+        setTimeout(() => void applyRemoteResize(true), 700);
       } else {
         errorMsg = data.error || 'Failed to start browser';
         statusMsg = '';
@@ -93,7 +107,7 @@
       if (res.ok) {
         browserRunning = true;
         statusMsg = 'Session reset — browser ready';
-        setTimeout(() => connectToStream(), 500);
+        setTimeout(() => void applyRemoteResize(true), 700);
       } else {
         errorMsg = data.error || 'Failed to reset browser';
         statusMsg = '';
@@ -119,6 +133,8 @@
       if (res.ok) {
         browserRunning = false;
         connected = false;
+        lastSentW = 0;
+        lastSentH = 0;
         statusMsg = 'Browser stopped';
       } else {
         errorMsg = data.error || 'Failed to stop browser';
@@ -134,6 +150,7 @@
 
   async function connectToStream() {
     if (!vpcUrl || !sessionToken || !browserRunning) return;
+    if (streamAbort) disconnect();
 
     errorMsg = '';
     streamAbort = new AbortController();
@@ -223,6 +240,53 @@
     pendingFrame = null;
     inputQueue = [];
     queuedMove = null;
+  }
+
+  function frameSize(): { w: number; h: number } {
+    if (!frameEl) return { w: 0, h: 0 };
+    return {
+      w: Math.max(640, Math.round(frameEl.clientWidth) & ~1),
+      h: Math.max(360, Math.round(frameEl.clientHeight) & ~1)
+    };
+  }
+
+  function scheduleRemoteResize() {
+    if (!browserRunning || isLoading) return;
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => void applyRemoteResize(false), 400);
+  }
+
+  async function applyRemoteResize(force: boolean) {
+    if (!vpcUrl || !sessionToken || !browserRunning) return;
+    if (resizeInFlight) {
+      if (force) scheduleRemoteResize();
+      return;
+    }
+    const { w, h } = frameSize();
+    if (!w || !h) {
+      if (!connected) connectToStream();
+      return;
+    }
+    if (!force && Math.abs(w - lastSentW) < 24 && Math.abs(h - lastSentH) < 24) {
+      if (!connected) connectToStream();
+      return;
+    }
+    resizeInFlight = true;
+    lastSentW = w;
+    lastSentH = h;
+    try {
+      const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'resize' });
+      await fetch(`/api/proxy/browser?${params.toString()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ width: w, height: h })
+      });
+    } catch {
+      /* older browser image without /resize still streams */
+    }
+    resizeInFlight = false;
+    disconnect();
+    setTimeout(() => connectToStream(), 250);
   }
 
   async function pumpFrames() {
@@ -489,7 +553,7 @@
     <p class="browser-view__status-msg">{statusMsg}</p>
   {/if}
 
-  <div class="browser-view__frame">
+  <div class="browser-view__frame" bind:this={frameEl}>
     {#if browserRunning}
       <canvas
         bind:this={canvas}
@@ -734,10 +798,9 @@
   }
 
   .browser-canvas {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
     display: block;
     cursor: crosshair;
     outline: none;

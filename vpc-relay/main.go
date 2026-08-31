@@ -185,6 +185,7 @@ func initDB() {
 	if _, err := db.Exec(createGuardiansTable); err != nil {
 		log.Fatal("Failed to create trusted_guardians table:", err)
 	}
+	initEmergency911Schema()
 
 	createWebClientsTable := `
 	CREATE TABLE IF NOT EXISTS gafam_web_clients (
@@ -291,7 +292,6 @@ func main() {
 	registerVaultTools()
 	sandbox.EnsureDirs()
 	browser.EnsureDataDirs()
-	browser.StartIdleReaper()
 
 	karaka.RegisterAllTools()
 	karaka.RegisterDefaultKarakas()
@@ -491,7 +491,9 @@ func main() {
 
 	mux.HandleFunc("GET /api/settings/guardians", sessionMiddleware(getGuardiansHandler))
 	mux.HandleFunc("POST /api/settings/guardians", sessionMiddleware(addGuardianHandler))
+	mux.HandleFunc("PATCH /api/settings/guardians", sessionMiddleware(updateGuardianHandler))
 	mux.HandleFunc("DELETE /api/settings/guardians", sessionMiddleware(deleteGuardianHandler))
+	mux.HandleFunc("POST /api/web/911/trigger", sessionMiddleware(trigger911WebHandler))
 	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
 	mux.HandleFunc("GET /api/web/settings", sessionMiddleware(handleSettings))
 	
@@ -522,6 +524,7 @@ func main() {
 	mux.HandleFunc("GET /api/web/browser/fetch", sessionMiddleware(browser.FetchHandler))
 	mux.HandleFunc("POST /api/web/browser/navigate", sessionMiddleware(browser.NavigateHandler))
 	mux.HandleFunc("GET /api/web/browser/window", sessionMiddleware(browser.WindowHandler))
+	mux.HandleFunc("POST /api/web/browser/resize", sessionMiddleware(browser.ResizeHandler))
 	mux.HandleFunc("/browser/", sessionMiddleware(browser.ProxyHandler))
 
 	// Sandbox (Manifest 24 — Yantraśālā)

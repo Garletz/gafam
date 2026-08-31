@@ -2,11 +2,12 @@
 set -e
 
 DISPLAY_NUM=99
-# Lighter defaults for 1 Go VPS — still readable, much less CPU/bandwidth.
-SCREEN_RES="1024x576x24"
+# Virtual screen is the max Chrome can grow into. The MJPEG stream captures
+# the Chrome window only; the front resizes that window to the dashboard frame.
+SCREEN_RES="1920x1080x24"
 
-export BROWSER_WIDTH=1024
-export BROWSER_HEIGHT=576
+export BROWSER_WIDTH=1920
+export BROWSER_HEIGHT=1080
 export BROWSER_FPS=10
 export BROWSER_JPEG_Q=10
 export STREAM_PORT=6080
@@ -47,7 +48,9 @@ echo "[vatayana] Starting Chrome for Testing (persistent profile, CDP on 9222)..
   --disable-dev-shm-usage \
   --password-store=basic \
   --disable-features=OptimizationHints,Translate,MediaRouter \
-  --window-size=${BROWSER_WIDTH},${BROWSER_HEIGHT} \
+  --hide-crash-restore-bubble \
+  --window-position=0,0 \
+  --window-size=1280,720 \
   "about:blank" &
 CHROME_PID=$!
 sleep 3

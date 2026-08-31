@@ -347,6 +347,13 @@ export const POST: RequestHandler = async ({ url, request }) => {
 		return json(result.data, { status: result.status });
 	}
 
+	if (action === 'resize') {
+		const vpcPath = `/api/web/browser/resize?token=${encodeURIComponent(token)}`;
+		const body = await request.text();
+		const result = await vpcRequest(vpcUrl, token, 'POST', vpcPath, body);
+		return json(result.data, { status: result.status });
+	}
+
 	return json({ error: 'Unknown action' }, { status: 400 });
 };
 

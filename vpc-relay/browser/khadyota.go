@@ -52,3 +52,20 @@ func WindowHandler(w http.ResponseWriter, r *http.Request) {
 	r.URL.RawQuery = ""
 	getProxy().ServeHTTP(w, r)
 }
+
+// ResizeHandler — POST /api/web/browser/resize  { "width": 1400, "height": 800 }
+// Sizes the shared Chrome window to the dashboard frame (stream must reconnect).
+func ResizeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	running, err := containerState()
+	if err != nil || !running {
+		http.Error(w, `{"error":"browser_not_running"}`, http.StatusServiceUnavailable)
+		return
+	}
+	r.URL.Path = "/resize"
+	r.URL.RawQuery = ""
+	getProxy().ServeHTTP(w, r)
+}

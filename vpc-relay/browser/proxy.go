@@ -38,6 +38,9 @@ func getProxy() *httputil.ReverseProxy {
 			case strings.HasSuffix(path, "/screenshot") || path == "/screenshot":
 				req.URL.Path = "/screenshot"
 				req.URL.RawQuery = ""
+			case strings.HasSuffix(path, "/resize") || path == "/resize":
+				req.URL.Path = "/resize"
+				req.URL.RawQuery = ""
 			default:
 				req.URL.Path = strings.TrimPrefix(path, "/browser")
 				if req.URL.Path == "" {

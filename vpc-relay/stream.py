@@ -3,8 +3,9 @@
 
 Agent-facing endpoints (Khadyota spirit — MD + actions over GUI):
   GET  /fetch?url=...  → fetch a page server-side, return title + markdown-ish text + links
-  POST /navigate       → drive the visible Firefox to a URL (xdotool)
-  GET  /window         → current window title ("what am I looking at")
+  POST /navigate       → drive the visible Chrome to a URL (xdotool)
+  POST /resize         → size the Chrome window to the dashboard frame
+  GET  /window         → current window title + capture geometry
 """
 import json
 import os
@@ -21,8 +22,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
 DISPLAY = os.environ.get("DISPLAY", ":99")
-WIDTH = int(os.environ.get("BROWSER_WIDTH", "1280"))
-HEIGHT = int(os.environ.get("BROWSER_HEIGHT", "720"))
+# Xvfb screen — Chrome windows are clamped to this (capture is the window, not the screen).
+WIDTH = int(os.environ.get("BROWSER_WIDTH", "1920"))
+HEIGHT = int(os.environ.get("BROWSER_HEIGHT", "1080"))
 FPS = int(os.environ.get("BROWSER_FPS", "12"))
 PORT = int(os.environ.get("STREAM_PORT", "6080"))
 JPEG_QUALITY = os.environ.get("BROWSER_JPEG_Q", "6")
@@ -249,6 +251,40 @@ def _capture_geometry():
     return WIDTH, HEIGHT, 0, 0
 
 
+def _clamp_window(w, h):
+    w = max(640, min(WIDTH, int(w))) & ~1
+    h = max(360, min(HEIGHT, int(h))) & ~1
+    return w, h
+
+
+def _resize_chrome(w, h):
+    """Move Chrome to (0,0) and size the outer window. Capture follows client area."""
+    w, h = _clamp_window(w, h)
+    wins = _chrome_windows()
+    if not wins:
+        return {"ok": False, "error": "no Chrome window found"}
+    win = wins[0]
+    for step in (
+        ["xdotool", "windowactivate", "--sync", win],
+        ["xdotool", "windowmove", win, "0", "0"],
+        ["xdotool", "windowsize", win, str(w), str(h)],
+    ):
+        r = subprocess.run(step, capture_output=True, text=True, timeout=8)
+        if r.returncode != 0:
+            return {"ok": False, "error": r.stderr.strip() or "xdotool failed", "step": step[1]}
+    time.sleep(0.2)
+    geo = _capture_geometry()
+    return {
+        "ok": True,
+        "requested": {"width": w, "height": h},
+        "width": geo[0],
+        "height": geo[1],
+        "x": geo[2],
+        "y": geo[3],
+        "window": win,
+    }
+
+
 def _navigate(url):
     wins = _chrome_windows()
     if not wins:
@@ -428,6 +464,28 @@ class StreamHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
+
+        if path == "/resize":
+            content_len = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_len) if content_len else b"{}"
+            try:
+                payload = json.loads(body)
+            except Exception:
+                payload = {}
+            try:
+                w = int(payload.get("width") or payload.get("w") or 0)
+                h = int(payload.get("height") or payload.get("h") or 0)
+            except (TypeError, ValueError):
+                self._send_json(400, {"ok": False, "error": "width/height must be integers"})
+                return
+            if w < 1 or h < 1:
+                self._send_json(400, {"ok": False, "error": "missing width/height"})
+                return
+            try:
+                self._send_json(200, _resize_chrome(w, h))
+            except Exception as e:
+                self._send_json(500, {"ok": False, "error": str(e)})
+            return
 
         if path == "/navigate":
             content_len = int(self.headers.get("Content-Length", 0))
