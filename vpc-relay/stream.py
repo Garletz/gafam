@@ -464,8 +464,15 @@ class StreamHandler(BaseHTTPRequestHandler):
 
     def handle_input(self, event):
         etype = event.get("type")
+        # Stream is cropped to the Chrome client area; canvas coords are
+        # relative to that crop. xdotool mousemove is screen-absolute.
+        ox = oy = 0
+        if etype in ("mouse_move", "mouse_click"):
+            geo = _capture_geometry()
+            if geo:
+                ox, oy = geo[2], geo[3]
         if etype == "mouse_move":
-            x, y = int(event.get("x", 0)), int(event.get("y", 0))
+            x, y = int(event.get("x", 0)) + ox, int(event.get("y", 0)) + oy
             subprocess.run(["xdotool", "mousemove", str(x), str(y)], capture_output=True)
         elif etype == "mouse_down":
             subprocess.run(["xdotool", "mousedown", str(event.get("button", 1))], capture_output=True)
@@ -476,7 +483,7 @@ class StreamHandler(BaseHTTPRequestHandler):
             x, y = event.get("x"), event.get("y")
             if x is not None and y is not None:
                 subprocess.run(
-                    ["xdotool", "mousemove", str(int(x)), str(int(y)), "click", btn],
+                    ["xdotool", "mousemove", str(int(x) + ox), str(int(y) + oy), "click", btn],
                     capture_output=True,
                 )
             else:
