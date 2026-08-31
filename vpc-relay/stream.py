@@ -188,10 +188,21 @@ def _fetch_page(url):
     return 200, result
 
 
-def _firefox_windows():
+def _chrome_windows():
+    """Visible Chrome (for Testing) window IDs, best class match first."""
     try:
         out = subprocess.run(
-            ["xdotool", "search", "--onlyvisible", "--class", "firefox"],
+            ["xdotool", "search", "--onlyvisible", "--class", "google"],
+            capture_output=True, text=True, timeout=5,
+        )
+        wins = [w for w in out.stdout.split() if w.strip()]
+        if wins:
+            return wins
+    except Exception:
+        pass
+    try:
+        out = subprocess.run(
+            ["xdotool", "search", "--onlyvisible", "--name", "Chrome"],
             capture_output=True, text=True, timeout=5,
         )
         return [w for w in out.stdout.split() if w.strip()]
@@ -199,10 +210,49 @@ def _firefox_windows():
         return []
 
 
-def _navigate(url):
-    wins = _firefox_windows()
+def _chrome_geometry():
+    """(W, H, X, Y) of the Chrome window client area, or None if invisible."""
+    wins = _chrome_windows()
     if not wins:
-        return {"ok": False, "error": "no firefox window found"}
+        return None
+    try:
+        out = subprocess.run(
+            ["xdotool", "getwindowgeometry", "--shell", wins[0]],
+            capture_output=True, text=True, timeout=5,
+        )
+        vals = {}
+        for line in out.stdout.splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                vals[k.strip()] = int(v.strip())
+        if "WIDTH" in vals and "HEIGHT" in vals and "X" in vals and "Y" in vals:
+            return vals["WIDTH"], vals["HEIGHT"], vals["X"], vals["Y"]
+    except Exception:
+        pass
+    return None
+
+
+def _capture_geometry():
+    """Current capture region: the Chrome window client area when visible
+    (no dead black X11 margins), otherwise the whole screen."""
+    geo = _chrome_geometry()
+    if geo:
+        w, h, x, y = geo
+        # Clamp: ignore off-screen/negative windows, cap at the screen.
+        if w > 0 and h > 0 and x < WIDTH and y < HEIGHT:
+            x = max(0, x)
+            y = max(0, y)
+            w = min(w, WIDTH - x)
+            h = min(h, HEIGHT - y)
+            if w > 0 and h > 0:
+                return w, h, x, y
+    return WIDTH, HEIGHT, 0, 0
+
+
+def _navigate(url):
+    wins = _chrome_windows()
+    if not wins:
+        return {"ok": False, "error": "no Chrome window found"}
     win = wins[0]
     steps = [
         ["xdotool", "windowactivate", "--sync", win],
@@ -228,7 +278,7 @@ def _window_title():
             return title
     except Exception:
         pass
-    wins = _firefox_windows()
+    wins = _chrome_windows()
     if wins:
         try:
             out = subprocess.run(
@@ -270,23 +320,27 @@ class StreamHandler(BaseHTTPRequestHandler):
             status, result = _fetch_page(url)
             self._send_json(status, result)
         elif path == "/window":
+            geo = _capture_geometry()
             self._send_json(200, {
                 "title": _window_title(),
-                "width": WIDTH,
-                "height": HEIGHT,
-                "firefox_windows": len(_firefox_windows()),
+                "width": geo[0],
+                "height": geo[1],
+                "x": geo[2],
+                "y": geo[3],
+                "chrome_windows": len(_chrome_windows()),
             })
         else:
             self.send_response(404)
             self.end_headers()
 
     def _handle_stream(self):
+        w, h, x, y = _capture_geometry()
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
-        self.send_header("X-Browser-Width", str(WIDTH))
-        self.send_header("X-Browser-Height", str(HEIGHT))
+        self.send_header("X-Browser-Width", str(w))
+        self.send_header("X-Browser-Height", str(h))
         self.end_headers()
 
         cmd = [
@@ -296,11 +350,11 @@ class StreamHandler(BaseHTTPRequestHandler):
             "-f",
             "x11grab",
             "-video_size",
-            f"{WIDTH}x{HEIGHT}",
+            f"{w}x{h}",
             "-framerate",
             str(FPS),
             "-i",
-            DISPLAY,
+            f"{DISPLAY}+{x},{y}",
             "-codec:v",
             "mjpeg",
             "-q:v",
@@ -342,6 +396,7 @@ class StreamHandler(BaseHTTPRequestHandler):
                 pass
 
     def _handle_screenshot(self):
+        w, h, x, y = _capture_geometry()
         cmd = [
             "ffmpeg",
             "-loglevel",
@@ -349,9 +404,9 @@ class StreamHandler(BaseHTTPRequestHandler):
             "-f",
             "x11grab",
             "-video_size",
-            f"{WIDTH}x{HEIGHT}",
+            f"{w}x{h}",
             "-i",
-            DISPLAY,
+            f"{DISPLAY}+{x},{y}",
             "-frames:v",
             "1",
             "-codec:v",
