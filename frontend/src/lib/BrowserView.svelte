@@ -274,21 +274,54 @@
       return;
     }
     resizeInFlight = true;
-    lastSentW = w;
-    lastSentH = h;
     try {
       const params = new URLSearchParams({ vpcUrl, token: sessionToken, action: 'resize' });
-      await fetch(`/api/proxy/browser?${params.toString()}`, {
+      const res = await fetch(`/api/proxy/browser?${params.toString()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ width: w, height: h })
       });
+      // Only remember a size the server acknowledged, and only reconnect when
+      // the actual remote viewport changed — otherwise every layout change of
+      // the frame (Khadyota console toggle, sidebar) would bounce the stream.
+      let appliedW = 0;
+      let appliedH = 0;
+      if (res.ok) {
+        try {
+          const d: any = await res.json();
+          if (d && d.width && d.height) {
+            appliedW = d.width;
+            appliedH = d.height;
+          }
+        } catch {
+          /* older CDP/x11 backends may answer non-JSON — keep requested size */
+        }
+      }
+      if (!appliedW || !appliedH) {
+        appliedW = w;
+        appliedH = h;
+      }
+      lastSentW = appliedW;
+      lastSentH = appliedH;
+
+      const sizeChanged =
+        Math.abs(streamWidth - appliedW) > 1 || Math.abs(streamHeight - appliedH) > 1;
+      if (sizeChanged || !connected) {
+        streamWidth = appliedW;
+        streamHeight = appliedH;
+        if (canvas) {
+          canvas.width = appliedW;
+          canvas.height = appliedH;
+        }
+        disconnect();
+        setTimeout(() => connectToStream(), 250);
+      }
     } catch {
-      /* older browser image without /resize still streams */
+      // Older browser image without /resize still streams at its own size.
+      lastSentW = w;
+      lastSentH = h;
     }
     resizeInFlight = false;
-    disconnect();
-    setTimeout(() => connectToStream(), 250);
   }
 
   async function pumpFrames() {
