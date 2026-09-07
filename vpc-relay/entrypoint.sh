@@ -50,7 +50,7 @@ echo "[vatayana] Starting Chrome for Testing (persistent profile, CDP on 9222)..
   --disable-features=OptimizationHints,Translate,MediaRouter \
   --hide-crash-restore-bubble \
   --window-position=0,0 \
-  --window-size=1280,720 \
+  --window-size=1920,1080 \
   "about:blank" &
 CHROME_PID=$!
 sleep 3

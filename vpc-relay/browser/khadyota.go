@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"log"
 	"net/http"
 	"net/url"
 )
@@ -28,12 +29,19 @@ func FetchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // NavigateHandler — POST /api/web/browser/navigate  { "url": "https://..." }
-// Drives the visible Firefox window to the given URL (xdotool).
+// Drives the shared Chrome to the given URL. Prefers a CDP Page.navigate
+// (instant, no address-bar typing); falls back to the container's xdotool
+// navigation on the legacy pipeline.
 func NavigateHandler(w http.ResponseWriter, r *http.Request) {
-	running, err := containerState()
-	if err != nil || !running {
-		http.Error(w, `{"error":"browser_not_running"}`, http.StatusServiceUnavailable)
+	if !browserRunningCheck(w, r) {
 		return
+	}
+	if cdpViewEnabled() {
+		if err := cdpNavigateHandler(w, r); err == nil {
+			return
+		} else {
+			log.Printf("vatayana: cdp navigate unavailable (%v) — using container pipeline", err)
+		}
 	}
 	r.URL.Path = "/navigate"
 	r.URL.RawQuery = ""
@@ -41,12 +49,17 @@ func NavigateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // WindowHandler — GET /api/web/browser/window
-// Returns the current window title — "what am I looking at".
+// Returns the current page title/url — "what am I looking at".
 func WindowHandler(w http.ResponseWriter, r *http.Request) {
-	running, err := containerState()
-	if err != nil || !running {
-		http.Error(w, `{"error":"browser_not_running"}`, http.StatusServiceUnavailable)
+	if !browserRunningCheck(w, r) {
 		return
+	}
+	if cdpViewEnabled() {
+		if err := cdpWindowHandler(w, r); err == nil {
+			return
+		} else {
+			log.Printf("vatayana: cdp window unavailable (%v) — using container pipeline", err)
+		}
 	}
 	r.URL.Path = "/window"
 	r.URL.RawQuery = ""
@@ -54,16 +67,23 @@ func WindowHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ResizeHandler — POST /api/web/browser/resize  { "width": 1400, "height": 800 }
-// Sizes the shared Chrome window to the dashboard frame (stream must reconnect).
+// Sets the remote viewport to the dashboard frame size. On the CDP plane this
+// is an Emulation.setDeviceMetricsOverride (no window wrangling, no drift); on
+// the legacy plane it sizes the shared Chrome window.
 func ResizeHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	running, err := containerState()
-	if err != nil || !running {
-		http.Error(w, `{"error":"browser_not_running"}`, http.StatusServiceUnavailable)
+	if !browserRunningCheck(w, r) {
 		return
+	}
+	if cdpViewEnabled() {
+		if err := cdpResizeHandler(w, r); err == nil {
+			return
+		} else {
+			log.Printf("vatayana: cdp resize unavailable (%v) — using container pipeline", err)
+		}
 	}
 	r.URL.Path = "/resize"
 	r.URL.RawQuery = ""

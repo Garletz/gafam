@@ -301,6 +301,11 @@ func main() {
 	registerSandboxTools()
 	registerCDPTools()
 	initBrowserMCP()
+	// Idle auto-stop: the browser container is stopped after an inactivity
+	// window so it does not hold ~1.5 GB of RAM forever. Streams/inputs/agent
+	// tools keep it alive; stream handlers re-touch activity periodically so a
+	// long passive view is never killed mid-session.
+	browser.StartIdleReaper()
 	registerActionTools()
 	registerActionToolPermissions()
 	registerVectorTools()
