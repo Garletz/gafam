@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -33,13 +35,44 @@ const (
 )
 
 // initEmergency911Schema migrates trusted_guardians and creates the dedup table.
+// It is safe to call on every boot: new databases already get keyword_911 and
+// relay_911 from createGuardiansTable, and the ALTERs below only run when a
+// pre-existing trusted_guardians table is missing those columns (SQLite does
+// not support ADD COLUMN IF NOT EXISTS).
 func initEmergency911Schema() {
-	db.Exec(`ALTER TABLE trusted_guardians ADD COLUMN keyword_911 TEXT DEFAULT '911'`)
-	db.Exec(`ALTER TABLE trusted_guardians ADD COLUMN relay_911 INTEGER DEFAULT 1`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS gafam_911_seen (
 		alert_id TEXT PRIMARY KEY,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
+
+	existing := map[string]bool{}
+	rows, err := db.Query(`PRAGMA table_info(trusted_guardians)`)
+	if err != nil {
+		log.Println("911: cannot inspect trusted_guardians:", err)
+		return
+	}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err == nil {
+			existing[name] = true
+		}
+	}
+	rows.Close()
+
+	columns := map[string]string{
+		"keyword_911": "TEXT DEFAULT '911'",
+		"relay_911":   "INTEGER DEFAULT 1",
+	}
+	for col, def := range columns {
+		if existing[col] {
+			continue
+		}
+		if _, err := db.Exec("ALTER TABLE trusted_guardians ADD COLUMN " + col + " " + def); err != nil {
+			log.Println("911: migrate trusted_guardians:", err)
+		}
+	}
 }
 
 // new911AlertID builds a unique cascade identifier.
@@ -231,7 +264,10 @@ func trigger911WebHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Message string `json:"message"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
 
 	selfPhone := getSetting("self_phone")
 	origPhone := phoneDigits(selfPhone)

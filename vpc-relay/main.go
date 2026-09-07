@@ -180,6 +180,8 @@ func initDB() {
 		name TEXT,
 		phone_number TEXT UNIQUE,
 		keyword TEXT,
+		keyword_911 TEXT DEFAULT '911',
+		relay_911 INTEGER DEFAULT 1,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	if _, err := db.Exec(createGuardiansTable); err != nil {

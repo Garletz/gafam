@@ -452,7 +452,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 	// 911 distress trigger (new cascade, not a continuation)
 	if !relayedAlert {
 		// (a) A guardian sends its own 911 code to the relay phone.
-		if guardian911Code != "" && strings.Contains(strings.ToLower(bodyStr), strings.ToLower(guardian911Code)) {
+		if guardian911Code != "" && containsCodeWord(bodyStr, guardian911Code) {
 			log.Printf("911 DISTRESS TRIGGERED by guardian %s", senderStr)
 			trigger911Cascade(senderStr, "", 1, phoneDigits(senderStr), guardianName, messageAfterCode(bodyStr, guardian911Code))
 		}
