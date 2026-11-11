@@ -270,6 +270,19 @@ func daksinaPickProvider() (LLMProvider, error) {
 			return p, nil
 		}
 	}
+	// Prefer the engine the user actually selected (or the orchestrator scope
+	// primary) so a suspended/empty provider is not picked just because it is
+	// first in the list.
+	candidates := []string{activeEngine(), getScopeRouting("orchestrator").Primary}
+	for _, c := range candidates {
+		if !strings.HasPrefix(c, "provider:") {
+			continue
+		}
+		if p, ok := findProvider(strings.TrimPrefix(c, "provider:")); ok &&
+			p.Enabled && p.APIKey != "" && p.BaseURL != "" {
+			return p, nil
+		}
+	}
 	for _, p := range loadLLMProviders() {
 		if p.Enabled && p.APIKey != "" && p.BaseURL != "" {
 			return p, nil

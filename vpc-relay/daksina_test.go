@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,6 +207,42 @@ func TestDaksinaHistorySnapshot(t *testing.T) {
 		if !bytes.Contains(raw, []byte(want)) {
 			t.Fatalf("history.md missing %q:\n%s", want, raw)
 		}
+	}
+}
+
+func TestDaksinaPickProviderPrefersActiveEngine(t *testing.T) {
+	oldDB := db
+	var err error
+	db, err = sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	defer func() {
+		db.Close()
+		db = oldDB
+	}()
+	if _, err := db.Exec(`CREATE TABLE gafam_settings (key TEXT PRIMARY KEY, value TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	providers, _ := json.Marshal([]LLMProvider{
+		{ID: "p1", Name: "Suspended", BaseURL: "https://kimi.test/v1", APIKey: "k1", Model: "kimi-k3", Enabled: true},
+		{ID: "p2", Name: "Active", BaseURL: "https://deepseek.test/v1", APIKey: "k2", Model: "deepseek-v4-pro", Enabled: true},
+	})
+	for _, kv := range [][2]string{
+		{settingLLMProviders, string(providers)},
+		{settingLLMEngine, "provider:p2"},
+	} {
+		if _, err := db.Exec(`INSERT INTO gafam_settings (key,value) VALUES (?,?)`, kv[0], kv[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, err := daksinaPickProvider()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ID != "p2" {
+		t.Fatalf("picked %q, want the active engine provider p2", p.ID)
 	}
 }
 
