@@ -1146,7 +1146,7 @@ func daksinaFinish(run *daksinaRun, st *daksinaSidecarStatus, notifyPhone string
 func daksinaTitle(instruction string) string {
 	line := strings.TrimSpace(strings.Split(strings.TrimSpace(instruction), "\n")[0])
 	if len(line) > 80 {
-		line = line[:80]
+		line = truncateBytes(line, 80)
 	}
 	if line == "" {
 		line = "self-improvement"

@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -424,7 +425,7 @@ func emailFetchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// IMAP connection
-	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
+	addr := net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		sendJSON(w, http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("cannot connect: %v", err)})
