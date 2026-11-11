@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // ─── Types & storage ───
@@ -439,7 +440,23 @@ func truncateStr(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return truncateBytes(s, n) + "…"
+}
+
+// truncateBytes returns the longest prefix of s that is at most n bytes and
+// ends on a UTF-8 rune boundary, so accented or non-ASCII text is never cut
+// mid-rune (which would produce invalid UTF-8).
+func truncateBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	if n <= 0 {
+		return ""
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // ─── HTTP handlers (session-protected) ───

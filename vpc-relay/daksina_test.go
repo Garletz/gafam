@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Garletz/gafam/vpc-relay/karaka"
 )
@@ -71,6 +72,38 @@ func TestDaksinaTitle(t *testing.T) {
 	}
 }
 
+func TestDaksinaTitleUTF8(t *testing.T) {
+	// 80 bytes: the accented "é" must not be split into invalid UTF-8.
+	in := "améliores " + strings.Repeat("a", 72)
+	if got := daksinaTitle(in); !utf8.ValidString(got) || len(got) > 80 {
+		t.Fatalf("title invalid/too long: len=%d valid=%v %q", len(got), utf8.ValidString(got), got)
+	}
+	// A boundary that lands exactly on a continuation byte.
+	in2 := strings.Repeat("a", 79) + "é"
+	got := daksinaTitle(in2)
+	if !utf8.ValidString(got) {
+		t.Fatalf("title split a rune: %q", got)
+	}
+	if got != strings.Repeat("a", 79) {
+		t.Fatalf("title = %q, want 79 'a's", got)
+	}
+}
+
+func TestTruncateStrUTF8(t *testing.T) {
+	if got := truncateStr("améliores toi", 4); !utf8.ValidString(got) {
+		t.Fatalf("truncateStr split a rune: %q", got)
+	}
+	if got := truncateBytes("améliores", 3); got != "am" || !utf8.ValidString(got) {
+		t.Fatalf("truncateBytes = %q", got)
+	}
+	if got := truncateBytes("abc", 10); got != "abc" {
+		t.Fatalf("truncateBytes short = %q", got)
+	}
+	if got := truncateStr("héllo", 2); got != "h…" {
+		t.Fatalf("truncateStr = %q, want %q", got, "h…")
+	}
+}
+
 func TestDaksinaTokenHint(t *testing.T) {
 	if got := daksinaTokenHint(""); got != "" {
 		t.Fatalf("empty hint = %q", got)
@@ -116,6 +149,10 @@ func TestDaksinaRunIDValidation(t *testing.T) {
 }
 
 func TestFallbackPlanRoutesSelfImprovementToDaksina(t *testing.T) {
+	// The Dakṣiṇā harness always injects GITHUB_TOKEN; make the test hermetic
+	// so the "no token" path is deterministic regardless of the environment.
+	t.Setenv("GITHUB_TOKEN", "")
+
 	oldDB := db
 	var err error
 	db, err = sql.Open("sqlite", ":memory:")
