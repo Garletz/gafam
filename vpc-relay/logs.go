@@ -16,21 +16,21 @@ import (
 )
 
 const (
-	maxLogsBytes     = int64(1 << 30) // 1 GiB ring buffer
-	defaultDayLimit  = 500
-	maxDayLimit      = 2000
-	maxBatchEntries  = 500
+	maxLogsBytes    = int64(1 << 30) // 1 GiB ring buffer
+	defaultDayLimit = 500
+	maxDayLimit     = 2000
+	maxBatchEntries = 500
 )
 
 var (
-	logsDir  string
-	logsMu   sync.Mutex
+	logsDir string
+	logsMu  sync.Mutex
 )
 
 type LogEntry struct {
 	Ts      int64  `json:"ts"`
-	Source  string `json:"source"`  // apk | adb | event
-	Level   string `json:"level"`   // D I W E V
+	Source  string `json:"source"` // apk | adb | event
+	Level   string `json:"level"`  // D I W E V
 	Tag     string `json:"tag"`
 	Message string `json:"message"`
 }
@@ -70,6 +70,9 @@ func initLogsStore() {
 }
 
 func dataDir() string {
+	if d := os.Getenv("GAFAM_DATA_DIR"); d != "" {
+		return d
+	}
 	if os.Getenv("ENV") == "development" {
 		return "."
 	}
@@ -365,8 +368,8 @@ func postLogsHandler(w http.ResponseWriter, r *http.Request) {
 	touchApkRelay()
 
 	sendJSON(w, http.StatusOK, map[string]interface{}{
-		"ok":      true,
-		"stored":  len(entries),
+		"ok":     true,
+		"stored": len(entries),
 	})
 }
 
@@ -381,7 +384,7 @@ func getWebLogsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, http.StatusOK, map[string]interface{}{
-			"days":       days,
+			"days":        days,
 			"total_bytes": total,
 			"quota_bytes": maxLogsBytes,
 		})

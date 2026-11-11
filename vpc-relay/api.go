@@ -358,7 +358,7 @@ func pairDeviceHandler(w http.ResponseWriter, r *http.Request) {
 	INSERT INTO gafam_devices (device_name, device_id, is_primary) 
 	VALUES (?, ?, ?) 
 	ON CONFLICT(device_id) DO UPDATE SET is_primary = is_primary`
-	
+
 	_, err = db.Exec(stmt, params.DeviceName, params.DeviceID, isPrimary)
 	if err != nil {
 		http.Error(w, "Failed to pair device", http.StatusInternalServerError)
@@ -412,7 +412,11 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Self-phone remote quest trigger (Saṃyojaka via SMS, Settings → self_phone)
 	if instr, mode, isSelfQuest := selfQuestInstruction(senderStr, bodyStr); isSelfQuest {
-		triggerSelfQuest(senderStr, instr, mode)
+		if mode == "daksina" {
+			triggerDaksina(senderStr, instr)
+		} else {
+			triggerSelfQuest(senderStr, instr, mode)
+		}
 	}
 
 	// 911 Emergency Cascade — continuation relay first: a well-formed
@@ -422,7 +426,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Emergency Recovery Check
 	var guardianKeyword, guardian911Code, guardianName string
-	
+
 	sClean := regexp.MustCompile("[^0-9]").ReplaceAllString(senderStr, "")
 	sMatch := sClean
 	if len(sClean) >= 9 {
@@ -437,7 +441,9 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 			if err := rows.Scan(&p, &n, &k, &k911); err == nil {
 				pClean := regexp.MustCompile("[^0-9]").ReplaceAllString(p, "")
 				pMatch := pClean
-				if len(pClean) >= 9 { pMatch = pClean[len(pClean)-9:] }
+				if len(pClean) >= 9 {
+					pMatch = pClean[len(pClean)-9:]
+				}
 
 				if pMatch != "" && sMatch != "" && pMatch == sMatch {
 					guardianKeyword = k
@@ -474,7 +480,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 		var relayPhone string
 		// Since there is only one relay per VPC usually, we can just use the phone that is registered.
 		// Let's fetch the phone of the owner from gafam_contacts where is_verified = 1? No, from gafam_settings or similar.
-		// Wait! The user accesses `[phone].gafam.cloud`. 
+		// Wait! The user accesses `[phone].gafam.cloud`.
 		// Actually `depositSafeOnCloudflare` takes `phone`. Is there a setting for `relayPhone`?
 		errPhone := db.QueryRow("SELECT phone FROM gafam_sessions LIMIT 1").Scan(&relayPhone)
 		if errPhone == nil && relayPhone != "" {
@@ -500,7 +506,7 @@ func smsHandler(w http.ResponseWriter, r *http.Request) {
 	// Anti-Spam: Check if sender is a verified contact
 	var isVerified int
 	errContact := db.QueryRow("SELECT id FROM gafam_contacts WHERE phone LIKE ?", "%"+sMatch).Scan(&isVerified)
-	
+
 	status := "purgatory"
 	if errContact == nil {
 		status = "inbox"
@@ -865,7 +871,6 @@ func getSmsHandler(w http.ResponseWriter, r *http.Request) {
 
 // --- Legacy Web Client Auth Handlers (kept for backward compat) ---
 
-
 // getPublicIP fetches the VPC's external IPv4 address
 func getPublicIP() string {
 	resp, err := http.Get("https://api.ipify.org")
@@ -893,8 +898,6 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 }
-
-
 
 // ============================================================
 // === RENDEZ-VOUS SYNCHRONE MÉCANIQUE (Manifest 12) ===
@@ -972,8 +975,8 @@ func challengeAuthHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Challenge created for %s: time=%s clicks=%d", req.Phone, req.ChallengeTime, req.ChallengeClicks)
 
 	sendJSON(w, http.StatusOK, map[string]string{
-		"status":         "challenge_created",
-		"challengeTime":  req.ChallengeTime,
+		"status":        "challenge_created",
+		"challengeTime": req.ChallengeTime,
 	})
 }
 
@@ -994,7 +997,7 @@ func generateEmergencyChallenge(phone string) (string, int, error) {
 
 	sessionID := generateToken(32)
 	sessionToken := generateToken(64)
-	
+
 	t := time.Now().Add(15 * time.Minute).Format("2006-01-02 15:04:05")
 	expiresAtStr := &t
 
@@ -1103,8 +1106,6 @@ func startHoneypotGenerator() {
 
 // ============================================================
 
-
-
 func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
@@ -1173,11 +1174,11 @@ func sessionMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 type e2eResponseWriter struct {
 	http.ResponseWriter
-	buf        *bytes.Buffer
-	key        []byte
-	statusCode int
+	buf         *bytes.Buffer
+	key         []byte
+	statusCode  int
 	wroteHeader bool
-	header     http.Header
+	header      http.Header
 }
 
 func (w *e2eResponseWriter) Header() http.Header {
@@ -1369,7 +1370,7 @@ func addGuardianHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	
+
 	if req.Keyword == "" {
 		req.Keyword = "URGENCE_GAFAM"
 	}
@@ -1522,8 +1523,6 @@ func getContactsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
-
 func handleSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		rows, err := db.Query("SELECT key, value FROM gafam_settings")
@@ -1620,7 +1619,7 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			VALUES (?, ?) 
 			ON CONFLICT(key) DO UPDATE SET value=excluded.value
 		`, setting.Key, setting.Value)
-		
+
 		if err != nil {
 			http.Error(w, "DB error", http.StatusInternalServerError)
 			return

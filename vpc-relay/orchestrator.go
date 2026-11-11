@@ -113,6 +113,7 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("   contacts.search(q)   → find a phone number by name\n")
 	b.WriteString("   feed.publish(content)→ publish to the federated feed\n")
 	b.WriteString("💬 llm.chat  → ask the LLM directly\n")
+	b.WriteString("🧬 daksina.run → launch the Dakṣiṇā coding agent on the GAFAM repo: reads logs/history/opencode sessions, modifies code, runs tests, opens/merges a PR. Use for any request to improve or modify GAFAM itself (auto-amélioration, opencode, GitHub, ton propre code).\n")
 	b.WriteString("🤖 karaka.delegate → spawn a sub-agent for a self-contained subtask\n\n")
 
 	// Agent-written tools (custom.*) — discovered from the sandbox, so the
@@ -155,6 +156,9 @@ func buildPlannerPrompt(instruction string, maxQuests int) (system, user string)
 	b.WriteString("  plan a FINAL quest llm.chat whose prompt includes the previous results ({{qN.result...}})\n")
 	b.WriteString("  and which ANSWERS the question in natural language. Never end a mission with raw tool\n")
 	b.WriteString("  output and no answer — the judge will fail it.\n")
+	b.WriteString("  SELF-IMPROVEMENT: if the instruction asks to improve/modify GAFAM itself (auto-amélioration,\n")
+	b.WriteString("  opencode, GitHub, 'ton code', 'ton environnement', 'ton dépôt'), you MUST use\n")
+	b.WriteString("  daksina.run(instruction=...) instead of llm.chat. It launches the real coding agent.\n")
 	b.WriteString("  Use /files/ (not /tmp/) for sandbox file paths.\n\n")
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "Plan %d quests max. STRICT JSON:\n", maxQuests)
@@ -234,8 +238,42 @@ func extractJSON(s string) string {
 	return ""
 }
 
-func planQuests(ctx context.Context, instruction string, maxQuests int) (*planResult, string, error) {
-	// Refresh agent-written tools (sandbox /files/tools/) so a tool created
+// fallbackPlan is the deterministic safety net when the planner LLM returns
+// prose instead of JSON. Self-improvement requests go straight to Dakṣiṇā;
+// everything else gets a direct answer instead of a cancelled mission.
+func fallbackPlan(instruction string) *planResult {
+	lower := strings.ToLower(instruction)
+	selfImprove := []string{
+		"auto-amélior", "auto amélior", "auto-amelior", "auto amelior",
+		"améliore-toi", "ameliore-toi", "améliorer ton", "ameliorer ton",
+		"modifie ton code", "ton propre code", "ton environnement",
+		"open code", "opencode", "github", "gafam cloud", "gafam lui-même",
+	}
+	if daksinaEnabled() && daksinaGithubToken() != "" {
+		for _, k := range selfImprove {
+			if strings.Contains(lower, k) {
+				return &planResult{Quests: []plannedQuest{{
+					Title:  "Lancer Dakṣiṇā (auto-amélioration)",
+					Tool:   "daksina.run",
+					Params: map[string]interface{}{"instruction": instruction},
+				}}}
+			}
+		}
+	}
+	return &planResult{Quests: []plannedQuest{{
+		Title: "Répondre à l'instruction",
+		Tool:  "llm.chat",
+		Params: map[string]interface{}{
+			"prompt": instruction,
+			"scope":  "orchestrator",
+			"system": "Tu es GAFAM, le nœud personnel souverain de l'utilisateur. " +
+				"Réponds en français, de façon concise et utile. " +
+				"Si l'utilisateur demande de modifier GAFAM lui-même, rappelle que la commande /d <instruction> lance Dakṣiṇā.",
+		},
+	}}}
+}
+
+func planQuests(ctx context.Context, instruction string, maxQuests int) (*planResult, string, error) { // Refresh agent-written tools (sandbox /files/tools/) so a tool created
 	// during a previous quest or replan round is immediately plannable.
 	rescanCustomTools()
 
@@ -313,6 +351,14 @@ func runOrchestration(ctx context.Context, missionID, karakaID string, maxQuests
 			planCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 			plan, raw, err := planQuests(planCtx, instruction, maxQuests)
 			cancel()
+			if err != nil && iteration == 0 {
+				// The planner (especially reasoning models) sometimes answers in
+				// prose instead of JSON. Never cancel a /q because of that:
+				// fall back to a deterministic plan (Dakṣiṇā for self-improvement,
+				// otherwise a direct answer).
+				log.Printf("orchestrator: planning failed for %s — using fallback plan: %v", missionID, err)
+				plan, raw, err = fallbackPlan(instruction), "fallback plan", nil
+			}
 			if err != nil {
 				log.Printf("orchestrator: planning failed for %s (iter %d): %v", missionID, iteration, err)
 				if iteration == 0 {
@@ -1027,7 +1073,8 @@ func launchOrchestration(missionID, karakaID string, maxQuests int, mode string,
 
 // selfQuestInstruction checks whether an incoming SMS is a remote quest
 // command from the owner's self phone (Settings → self_phone).
-// Triggers: "/q " = action mission, "/r " = research mission (case-insensitive).
+// Triggers: "/q " = action mission, "/r " = research mission,
+// "/d " (or /dev, /dak, /code) = Dakṣiṇā self-improvement run (case-insensitive).
 func selfQuestInstruction(sender, body string) (instruction, mode string, ok bool) {
 	self := getSetting("self_phone")
 	if self == "" || !phonesMatch(sender, self) {
@@ -1043,6 +1090,10 @@ func selfQuestInstruction(sender, body string) (instruction, mode string, ok boo
 		{"/research ", "research"},
 		{"/q ", "action"},
 		{"/quest ", "action"},
+		{"/d ", "daksina"},
+		{"/dev ", "daksina"},
+		{"/dak ", "daksina"},
+		{"/code ", "daksina"},
 	}
 	for _, pre := range prefixes {
 		if strings.HasPrefix(lower, pre.p) {

@@ -114,7 +114,7 @@ docker run -d \
   --http-api-update \
   --http-api-periodic-polls \
   --http-api-token "${WATCHTOWER_TOKEN}" \
-  gafam-api gafam-browser gafam-sandbox
+  gafam-api gafam-browser gafam-sandbox gafam-opencode
 
 # 6. Deploy GAFAM API
 echo "[*] Starting GAFAM VPC services..."
@@ -318,6 +318,60 @@ if [ "${INSTALL_CHROMIUM:-1}" = "1" ]; then
     install_chromium_sidecar || echo "[!] Chromium install skipped/failed (non-fatal)."
 fi
 
+# 11. Sidecar opencode — Dakṣiṇā (self-improvement: opencode + git + gh + Go)
+install_opencode_sidecar() {
+    local OPENCODE_IMAGE="${OPENCODE_IMAGE:-ghcr.io/garletz/gafam:opencode}"
+    local DAKSINA_SECRET
+    DAKSINA_SECRET=$(printf '%s' "${JWT_SECRET}daksina-sidecar" | openssl dgst -sha256 -hex | awk '{print $2}' | cut -c1-40)
+
+    mkdir -p /root/gafam_data/daksina /root/gafam_data/opencode /root/gafam_data/opencode-config
+
+    echo "[*] Pulling opencode image $OPENCODE_IMAGE..."
+    if ! docker pull "$OPENCODE_IMAGE"; then
+        echo "[!] GHCR pull failed — building from Dockerfile.opencode fallback"
+        local work="/root/gafam-setup"
+        mkdir -p "$work/vpc-relay"
+
+        local SCRIPT_DIR
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+        if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/vpc-relay/Dockerfile.opencode" ]; then
+            cp -f "$SCRIPT_DIR/vpc-relay/Dockerfile.opencode" "$work/vpc-relay/" 2>/dev/null || true
+            cp -f "$SCRIPT_DIR/vpc-relay/opencode_server.py" "$work/vpc-relay/" 2>/dev/null || true
+        else
+            curl -fsSL "$REPO_RAW/vpc-relay/Dockerfile.opencode" -o "$work/vpc-relay/Dockerfile.opencode"
+            curl -fsSL "$REPO_RAW/vpc-relay/opencode_server.py" -o "$work/vpc-relay/opencode_server.py"
+        fi
+        docker build -t gafam-opencode -f "$work/vpc-relay/Dockerfile.opencode" "$work/vpc-relay"
+        OPENCODE_IMAGE="gafam-opencode"
+    fi
+
+    echo "[*] Creating gafam-opencode container (stopped until first SMS /d)..."
+    docker rm -f gafam-opencode 2>/dev/null || true
+    docker run -d \
+      --name gafam-opencode \
+      --network gafam-net \
+      --memory=1536m \
+      --memory-swap=3g \
+      --restart no \
+      -e OPENCODE_SECRET="$DAKSINA_SECRET" \
+      -e OPENCODE_PORT="6092" \
+      -e OPENCODE_DISABLE_AUTOUPDATE="1" \
+      -v /root/gafam_data/daksina:/daksina \
+      -v /root/gafam_data:/daksina/gafam-data:ro \
+      -v /root/gafam_data/opencode:/root/.local/share/opencode \
+      -v /root/gafam_data/opencode-config:/root/.config/opencode \
+      -v /root/gafam_data/logs:/daksina/logs:ro \
+      -v /root/gafam_data/sandbox/files:/daksina/vault:ro \
+      "$OPENCODE_IMAGE"
+    docker stop gafam-opencode
+}
+
+if [ "${INSTALL_OPENCODE:-1}" = "1" ]; then
+    echo "[*] Installing opencode sidecar (stopped until wake)..."
+    install_opencode_sidecar || echo "[!] opencode install skipped/failed (non-fatal)."
+fi
+
 echo ""
 echo "=========================================="
 echo "✅ GAFAM VPC successfully deployed!"
@@ -330,5 +384,6 @@ echo "🪶 Qwen: stopped by default (1 Go). Auto wake via Suparna API."
 echo "🌐 Browser: stopped by default (ghcr.io/garletz/gafam:browser). Wake via Browser tab."
 echo "🛠️  Sandbox: stopped by default (ghcr.io/garletz/gafam:sandbox). Wake via Sandbox tab."
 echo "🔮 Chromium: stopped by default (ghcr.io/garletz/gafam:chromium). Wake via Browser tab ?mode=chromium."
+echo "🧬 Dakṣiṇā: stopped by default (ghcr.io/garletz/gafam:opencode). SMS /d <mission> or Settings → Dakṣiṇā."
 echo "   Swap 4G: enabled by this script (SKIP_SWAP=1 to skip)."
 echo "=========================================="

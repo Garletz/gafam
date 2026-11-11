@@ -12,6 +12,7 @@
   import QuestBoard from '$lib/QuestBoard.svelte';
   import VaultView from '$lib/VaultView.svelte';
   import FederationView from '$lib/FederationView.svelte';
+  import DaksinaView from '$lib/DaksinaView.svelte';
   import SmsComposeAids from '$lib/SmsComposeAids.svelte';
   import SmsManagerView from '$lib/SmsManagerView.svelte';
   import ContactProfileModal, { type ContactFull } from '$lib/ContactProfileModal.svelte';
@@ -44,7 +45,7 @@
   let smsList: any[] = $state([]);
   let mmsList: any[] = $state([]);
   let contacts: Record<string, string> = $state({});
-  let sidebarTab: 'chats' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' = $state('chats');
+  let sidebarTab: 'chats' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault' | 'federation' | 'daksina' = $state('chats');
   let settingsSection: 'node' | 'recovery' | 'contacts' | 'sms_manager' = $state('node');
   let suparnaSection: 'vpc' | 'models' | 'rules' | 'phone' | 'providers' = $state('vpc');
   let contactSearchQuery: string = $state('');
@@ -107,13 +108,14 @@
   let isProfileMenuOpen = $state(false);
 
   // Navigation: Chat (left), Organic Tools (center), Settings (right)
-  type SidebarTab = 'chats' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault' | 'federation';
+  type SidebarTab = 'chats' | 'settings' | 'logs' | 'suparna' | 'browser' | 'sandbox' | 'quests' | 'vault' | 'federation' | 'daksina';
   let showContactsInChat = $state(false);
   let toolsWiggle = $state(false);
   let appsMenuOpen = $state(false);
 
   const toolsMenuItems: Array<{ id: SidebarTab; label: string; hint: string; icon: string }> = [
     { id: 'quests', label: 'Quests', hint: 'Mission board', icon: 'quests' },
+    { id: 'daksina', label: 'Dakṣiṇā', hint: 'opencode · self-improvement', icon: 'daksina' },
     { id: 'suparna', label: 'Suparna', hint: 'Edge & VPC AI', icon: 'suparna' },
     { id: 'browser', label: 'Browser', hint: 'Vātāyana', icon: 'browser' },
     { id: 'sandbox', label: 'Sandbox', hint: 'Yantraśālā', icon: 'sandbox' },
@@ -121,7 +123,7 @@
     { id: 'federation', label: 'Federation', hint: 'VPC↔VPC links & inbox', icon: 'links' },
     { id: 'logs', label: 'Logs', hint: 'Phone activity', icon: 'logs' },
   ];
-  const isToolTab = $derived(['quests', 'suparna', 'browser', 'sandbox', 'vault', 'federation', 'logs'].includes(sidebarTab));
+  const isToolTab = $derived(['quests', 'daksina', 'suparna', 'browser', 'sandbox', 'vault', 'federation', 'logs'].includes(sidebarTab));
   const toolsMenuActive = $derived(isToolTab);
 
   function selectSidebarTab(tab: SidebarTab) {
@@ -1221,6 +1223,8 @@
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
                     {:else if item.icon === 'suparna'}
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4.5"/><path d="M7.5 7.5l2 2M14.5 14.5l2 2M16.5 7.5l-2 2M9.5 14.5l-2 2"/></svg>
+                    {:else if item.icon === 'daksina'}
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6 8v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8M12 12v4"/></svg>
                     {:else}
                       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/></svg>
                     {/if}
@@ -1334,6 +1338,8 @@
             {/if}
           {:else if sidebarTab === 'quests'}
             <QuestBoard {sessionToken} {vpcUrl} />
+          {:else if sidebarTab === 'daksina'}
+            <DaksinaView {sessionToken} {vpcUrl} />
           {:else if sidebarTab === 'suparna'}
             <SuparnaPanel
               {sessionToken}

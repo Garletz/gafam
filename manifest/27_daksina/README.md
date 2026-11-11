@@ -99,6 +99,21 @@ Une page publique — `daksina.gafam.cloud` — séparée de toute infrastructur
 
 ---
 
+## Implémentation dans le nœud (2026-11)
+
+Dakṣiṇā est désormais intégrée au VPC comme un sidecar dédié (`gafam-opencode`) :
+
+- **Déclencheur SMS** : `/d <instruction>` (alias `/dev`, `/dak`, `/code`) depuis le téléphone self. Le rapport final (tests, PR, merge) revient par SMS.
+- **Contexte injecté** : logs relay/Android (`/daksina/logs`), logs Docker récents, Vault en lecture seule, et les conversations opencode récentes. Les exports opencode du poste (`opencode export <id> > session.json`) s'importent depuis l'onglet **Dakṣiṇā** et rejoignent cette mémoire.
+- **Boucle** : clone frais de `main` → `opencode run --auto` → tests Go/vet + build frontend si touché → réparation LLM jusqu'à 2 passes → branche `daksina/<run>` → PR → merge auto si les checks GitHub sont verts.
+- **Accès GitHub complet** : le token configuré est disponible dans l'environnement de l'agent (`GH_TOKEN`, `GITHUB_TOKEN`) — il peut lire issues/PRs/historique et écrire (branches, PRs, merges, workflows) comme le propriétaire. Utiliser un token dédié et révocable.
+- **Historique accessible** : snapshot SQLite cohérent (`gafam-history.sqlite`), `history.md` (derniers SMS/missions), `self.md` (runs précédents), sessions opencode, logs bruts et arborescence `/root/gafam_data` montée en lecture seule. L'agent peut donc s'auto-comprendre et éviter de répéter une erreur.
+- **Déclenchement par `/q`** : l'outil `daksina.run` est exposé à Saṃyojaka ; une demande du type « peux-tu t'auto-améliorer ? » déclenche directement Dakṣiṇā. Si le planificateur LLM répond en prose au lieu de JSON, un plan de secours déterministe évite l'annulation de la mission.
+- **Garde-fous** : token GitHub chiffré au repos (AES-GCM dérivé de `JWT_SECRET`), repo validé, une seule mission à la fois, timeout global 45 min, kill switch `daksina_enabled`, scan de secrets avant push. Android touché ⇒ PR ouverte sans auto-merge (pas de SDK dans le runner).
+- **Réglages** : onglet **Dakṣiṇā** du dashboard (repo, token, provider LLM, auto-merge) ou API `/api/web/daksina/*`.
+
+---
+
 ## Ce que Dakṣiṇā n'est pas
 
 - **Pas une DAO, pas un token, pas un investissement.** Une offrande ne donne droit à rien — pas de vote, pas de retour, pas de promesse. Comme la dakṣiṇā traditionnelle : on donne parce que la chose mérite d'exister.

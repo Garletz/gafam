@@ -28,6 +28,9 @@ GAFAM/
 │   ├── cron.go        ← Scheduled missions (SQLite table + 60s ticker)
 │   ├── scrcpy_hub.go  ← Remote phone control (H.264 + ADB shell)
 │   ├── research.go    ← The Vault (markdown notes + FTS5 search)
+│   ├── daksina.go     ← Dakṣiṇā self-improvement runner (opencode sidecar)
+│   ├── opencode_server.py ← Sidecar: opencode headless + git/gh + tests + PR/merge
+│   ├── Dockerfile.opencode ← Node + opencode CLI + Go + gh image
 │   ├── browser/       ← Vātāyana: Firefox sidecar control
 │   ├── sandbox/       ← Yantraśālā: terminal + file sandbox
 │   ├── edge/          ← L2 inference on the phone (ONNX Qwen3)
@@ -110,6 +113,7 @@ GAFAM/
 | **Web** | `POST /api/web/llm/chat` | Single LLM entry point |
 | **Web** | `POST /api/web/orchestrator/run` | Saṃyojaka mission runner |
 | **Web** | `GET/POST/DELETE /api/web/cron` | Scheduled missions (≥5 min interval) |
+| **Web** | `*/daksina/*` | Dakṣiṇā: self-improvement runs, settings, opencode sessions |
 | **Web** | `POST …/quest/{qid}/approve` | Human approve/reject of `ask` quests |
 | **Web** | `GET/POST /api/web/links` | Federation: link CRUD + scan |
 | **Web** | `GET /api/web/inbox` | Federation: inbox |
@@ -124,6 +128,7 @@ GAFAM/
 | `gafam-browser` (Vātāyana) | 600 MB | Firefox ESR + Xvfb + MJPEG/noVNC |
 | `gafam-sandbox` (Yantraśālā) | 384 MB | Terminal + file API + bash sessions + Python/Node runtimes (agents pip/npm-install packages on demand into the persistent `/sandbox/files` volume) |
 | `gafam-qwen` | 520 MB | llama.cpp server (Qwen3-0.6B GGUF) |
+| `gafam-opencode` (Dakṣiṇā) | 1.5 GB | opencode headless + Go + git/gh + repo checkout; tests, pushes a branch, opens/merges PRs |
 
 **LLM engine tiers:**
 
@@ -141,7 +146,8 @@ GAFAM/
 - **Self-made tools:** agents write `.sh`/`.py` scripts into the sandbox `/files/tools/` (with a `# desc:` header) → auto-registered as `custom.*` tools, re-scanned before every planning round. JSON in on stdin, JSON out on stdout. This is the safe self-improvement level: capabilities grow, the Go binary is never touched.
 - **Memory:** planner prompt injects recent vault notes + FTS5 search of past missions/research relevant to the instruction.
 - **Cron:** `gafam_cron` jobs fire missions on interval (≥5 min), optional SMS report to the self phone (`notify_phone: "self"`). Managed from the Quests tab.
-- Triggers: dashboard, SMS `/q` `/r` from the self phone, cron, sub-agents (`karaka.delegate`).
+- **Triggers:** dashboard, SMS `/q` `/r` from the self phone, cron, sub-agents (`karaka.delegate`).
+- **Dakṣiṇā (self-improvement, Manifest 27):** SMS `/d <instruction>` (also `/dev`, `/dak`, `/code`) wakes `gafam-opencode`, injects relay/Android/Docker logs, a consistent SQLite history snapshot (SMS, contacts, missions, runs), Vault paths, previous Dakṣiṇā runs and recent opencode sessions. The agent has full GitHub access (`GH_TOKEN`/`GITHUB_TOKEN`), runs `opencode run --auto` on a fresh clone, runs `go test`/`go vet` and the frontend build when affected, repairs up to 2×, then pushes `daksina/<id>` and opens a PR. Auto-merge (if enabled and tests are green) waits for GitHub checks before merging. The `daksina.run` kāraka tool lets a `/q` self-improvement request trigger the same runner; if the planner returns prose instead of JSON, a deterministic fallback prevents the mission from being cancelled.
 
 ---
 

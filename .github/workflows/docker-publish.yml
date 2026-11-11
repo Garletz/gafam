@@ -251,3 +251,49 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=gafam-mcp
           cache-to: type=gha,mode=max,scope=gafam-mcp
+
+  build-and-push-opencode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Lowercase repository name (same public package)
+        run: |
+          REPO_LOWERCASE=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image_name=$REPO_LOWERCASE" >> $GITHUB_ENV
+
+      - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for opencode tag
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.image_name }}
+          tags: |
+            type=raw,value=opencode,enable={{is_default_branch}}
+            type=sha,prefix=opencode-
+
+      - name: Build and push opencode (Dakṣiṇā) image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./vpc-relay
+          file: ./vpc-relay/Dockerfile.opencode
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=gafam-opencode
+          cache-to: type=gha,mode=max,scope=gafam-opencode

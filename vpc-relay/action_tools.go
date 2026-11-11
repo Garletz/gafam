@@ -215,14 +215,15 @@ func registerActionTools() {
 // read = allow, reach-the-outside-world = ask.
 func registerActionToolPermissions() {
 	karaka.SetPermissions("suparna_vpc", map[string]string{
-		"sms.send":        "ask",
-		"sms.history":     "allow",
-		"contacts.search": "allow",
-		"feed.publish":    "ask",
-		"vault.remember":  "allow",
-		"custom.*":        "allow", // agent-written scripts stay inside the sandbox
-		"memory.*":        "allow", // semantic search + embeddings (read-only over own data)
+		"sms.send":              "ask",
+		"sms.history":           "allow",
+		"contacts.search":       "allow",
+		"feed.publish":          "ask",
+		"vault.remember":        "allow",
+		"custom.*":              "allow", // agent-written scripts stay inside the sandbox
+		"memory.*":              "allow", // semantic search + embeddings (read-only over own data)
 		"contacts.auto_analyze": "allow",
+		"daksina.run":           "allow", // explicit user request → self-improvement runner
 	})
 	karaka.SetPermissions("edge_l2_phone", map[string]string{
 		"sms.*":      "ask",

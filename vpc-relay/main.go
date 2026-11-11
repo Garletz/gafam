@@ -291,6 +291,7 @@ func main() {
 	initCron()
 	initComposeSnippets()
 	initGeo()
+	initDaksina()
 	registerVaultTools()
 	sandbox.EnsureDirs()
 	browser.EnsureDataDirs()
@@ -308,9 +309,11 @@ func main() {
 	browser.StartIdleReaper()
 	registerActionTools()
 	registerActionToolPermissions()
+	registerDaksinaTool()
 	registerVectorTools()
 	registerContactsAutoTool()
 	startAutoAnalyzeTicker()
+	startDaksinaIdleReaper()
 	resumeInterruptedMissions()
 	// llm.chat routes through the active orchestration engine (Suparna → Provider tab).
 	// Registered here because it lives in package main (chatWithActiveEngine).
@@ -503,7 +506,7 @@ func main() {
 	mux.HandleFunc("POST /api/web/911/trigger", sessionMiddleware(trigger911WebHandler))
 	mux.HandleFunc("POST /api/web/settings", sessionMiddleware(handleSettings))
 	mux.HandleFunc("GET /api/web/settings", sessionMiddleware(handleSettings))
-	
+
 	mux.HandleFunc("GET /api/web/vpc-info", sessionMiddleware(vpcInfoHandler))
 	mux.HandleFunc("POST /api/web/vpc-update", sessionMiddleware(triggerUpdateHandler))
 
@@ -571,6 +574,20 @@ func main() {
 	mux.HandleFunc("POST /api/web/cron", sessionMiddleware(cronHandler))
 	mux.HandleFunc("DELETE /api/web/cron", sessionMiddleware(cronHandler))
 
+	// Dakṣiṇā — self-improvement runner (Manifest 27)
+	mux.HandleFunc("GET /api/web/daksina/status", sessionMiddleware(daksinaStatusHandler))
+	mux.HandleFunc("POST /api/web/daksina/wake", sessionMiddleware(daksinaWakeHandler))
+	mux.HandleFunc("POST /api/web/daksina/stop", sessionMiddleware(daksinaStopHandler))
+	mux.HandleFunc("GET /api/web/daksina/runs", sessionMiddleware(daksinaRunsHandler))
+	mux.HandleFunc("POST /api/web/daksina/runs", sessionMiddleware(daksinaRunsHandler))
+	mux.HandleFunc("GET /api/web/daksina/runs/{id}", sessionMiddleware(daksinaRunHandler))
+	mux.HandleFunc("DELETE /api/web/daksina/runs/{id}", sessionMiddleware(daksinaRunHandler))
+	mux.HandleFunc("GET /api/web/daksina/settings", sessionMiddleware(daksinaSettingsHandler))
+	mux.HandleFunc("POST /api/web/daksina/settings", sessionMiddleware(daksinaSettingsHandler))
+	mux.HandleFunc("GET /api/web/daksina/sessions", sessionMiddleware(daksinaSessionsHandler))
+	mux.HandleFunc("POST /api/web/daksina/sessions", sessionMiddleware(daksinaSessionsHandler))
+	mux.HandleFunc("GET /api/web/daksina/sessions/{id}", sessionMiddleware(daksinaSessionHandler))
+
 	// VPC↔VPC Federation (Manifest 17 — Poneglyph Part 3)
 	mux.HandleFunc("GET /api/web/links", sessionMiddleware(linksHandler))
 	mux.HandleFunc("POST /api/web/links", sessionMiddleware(linksHandler))
@@ -616,8 +633,8 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:      "0.0.0.0:" + port,
-		Handler:   corsMiddleware(mux),
+		Addr:    "0.0.0.0:" + port,
+		Handler: corsMiddleware(mux),
 	}
 
 	tlsPort := os.Getenv("TLS_PORT")
@@ -641,8 +658,8 @@ func main() {
 
 	if tlsPort != "" && tlsCert != "" && tlsKey != "" {
 		tlsServer := &http.Server{
-			Addr:    "0.0.0.0:" + tlsPort,
-			Handler: corsMiddleware(mux),
+			Addr:         "0.0.0.0:" + tlsPort,
+			Handler:      corsMiddleware(mux),
 			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler)), // Disable HTTP/2
 		}
 		log.Printf("GAFAM VPC Relay starting on 0.0.0.0:%s (HTTPS SNI Spoofing)", tlsPort)

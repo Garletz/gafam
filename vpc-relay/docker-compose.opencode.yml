@@ -1,0 +1,25 @@
+services:
+  gafam-opencode:
+    image: ghcr.io/garletz/gafam:opencode
+    container_name: gafam-opencode
+    mem_limit: 1536m
+    memswap_limit: 3g
+    expose:
+      - "6092"
+    volumes:
+      - /root/gafam_data/daksina:/daksina
+      - /root/gafam_data:/daksina/gafam-data:ro
+      - /root/gafam_data/opencode:/root/.local/share/opencode
+      - /root/gafam_data/opencode-config:/root/.config/opencode
+      - /root/gafam_data/logs:/daksina/logs:ro
+      - /root/gafam_data/sandbox/files:/daksina/vault:ro
+    environment:
+      - OPENCODE_SECRET=${OPENCODE_SECRET:-}
+    restart: "no"
+    networks:
+      - gafam-net
+
+networks:
+  gafam-net:
+    external: true
+    name: gafam-net

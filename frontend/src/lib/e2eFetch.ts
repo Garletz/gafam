@@ -13,6 +13,9 @@ interface E2EOptions extends RequestInit {
 
 export async function e2eFetch(url: string, sessionToken: string, options: E2EOptions = {}): Promise<any> {
 	const useE2E = sessionToken.length > 0 && !options.skipE2E;
+	// The relay derives the transport key as SHA-256("e2e:" + sessionToken),
+	// distinct from the app-level settings key (SHA-256(sessionToken)).
+	const transportSecret = `e2e:${sessionToken}`;
 
 	if (useE2E) {
 		options.headers = {
@@ -21,7 +24,7 @@ export async function e2eFetch(url: string, sessionToken: string, options: E2EOp
 			'Content-Type': 'application/json'
 		};
 		if (options.body && typeof options.body === 'string') {
-			const envelope = await encryptAESGCM(options.body, sessionToken);
+			const envelope = await encryptAESGCM(options.body, transportSecret);
 			options.body = JSON.stringify(envelope);
 		}
 	}
@@ -30,7 +33,7 @@ export async function e2eFetch(url: string, sessionToken: string, options: E2EOp
 	const data = await res.json();
 
 	if (useE2E && data.encrypted_data && data.iv) {
-		const plaintext = await decryptAESGCM(data.encrypted_data, data.iv, sessionToken);
+		const plaintext = await decryptAESGCM(data.encrypted_data, data.iv, transportSecret);
 		try {
 			return JSON.parse(plaintext);
 		} catch {

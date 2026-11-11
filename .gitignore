@@ -16,6 +16,9 @@ android/captures/
 vpc-relay/gafam_relay.sqlite
 vpc-relay/gafam_relay.sqlite-journal
 vpc-relay/vpc-relay
+vpc-relay/daksina/
+vpc-relay/opencode/
+vpc-relay/opencode-config/
 data/
 
 # Logs & Archives
